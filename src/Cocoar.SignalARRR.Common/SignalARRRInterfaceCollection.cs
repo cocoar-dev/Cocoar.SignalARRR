@@ -73,7 +73,7 @@ namespace Cocoar.SignalARRR.Common
             var type = TypeHelper.FindType(splitted[0]);
             var methodName = splitted[1];
 
-            if (RegisteredTypes.TryGetValue(type, out var methodsCache)) {
+            if (type != null && RegisteredTypes.TryGetValue(type, out var methodsCache)) {
                 return methodsCache.GetInvokeInformations(methodName);
             }
 

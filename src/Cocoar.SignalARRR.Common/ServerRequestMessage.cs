@@ -6,9 +6,9 @@ namespace Cocoar.SignalARRR.Common {
     public class ServerRequestMessage {
 
         public Guid Id { get; set; }
-        public string Method { get; set; }
-        public object[] Arguments { get; set; }
-        public string[] GenericArguments { get; set; }
+        public string Method { get; set; } = string.Empty;
+        public object[] Arguments { get; set; } = Array.Empty<object>();
+        public string[] GenericArguments { get; set; } = Array.Empty<string>();
         public Guid? CancellationGuid { get; set; }
 
         public ServerRequestMessage()

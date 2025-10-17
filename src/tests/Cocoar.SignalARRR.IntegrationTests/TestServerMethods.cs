@@ -1,11 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using SignalARRR.Tests.SharedModels;
 
-namespace SignalARRR.Tests {
+namespace Cocoar.SignalARRR.IntegrationTests {
     //public class TestServerMethods: ServerMethods<TestHub>, ITestServerMethods {
     //    public string GetName() {
     //        return "MyName";

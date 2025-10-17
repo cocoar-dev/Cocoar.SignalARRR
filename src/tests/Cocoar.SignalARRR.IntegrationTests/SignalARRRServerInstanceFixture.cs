@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,7 +20,7 @@ using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 using Xunit;
 
-namespace SignalARRR.Tests {
+namespace Cocoar.SignalARRR.IntegrationTests {
     public class SignalARRRServerInstanceFixture: IDisposable {
 
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Net;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
-namespace SignalARRR.Tests
+namespace Cocoar.SignalARRR.IntegrationTests
 {
     [Collection("Simple")]
     public class SimpleHARRRConnectionTests {

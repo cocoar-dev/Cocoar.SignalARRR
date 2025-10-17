@@ -21,8 +21,8 @@ namespace Cocoar.SignalARRR.ProxyGenerator {
         public override bool TryInvokeMember(InvokeMemberBinder binder, object?[]? args, out object? result) {
 
 
-            var argumentTypes = binder.Reflect().GetPropertyValue<Type[]>("TypeArguments")!;
-            var parameterTypes = args?.Where(a => a != null).Select(a => a!.GetType()).ToArray() ?? new Type[0];
+            var argumentTypes = binder.Reflect().GetPropertyValue<Type[]>("TypeArguments") ?? Array.Empty<Type>();
+            var parameterTypes = args?.Where(a => a != null).Select(a => a!.GetType()).ToArray() ?? Array.Empty<Type>();
             var methods = typeof(T).GetMethods().ToList();
             methods = methods.WithName(binder.Name).ToList();
             methods = methods.Where(m => m.HasGenericArgumentsLengthOf(argumentTypes.Length)).ToList();
@@ -47,7 +47,7 @@ namespace Cocoar.SignalARRR.ProxyGenerator {
             var methodParameters = methodInfo.GetParameters().WithoutAttribute("FromServicesAttribute");
             var cancellationToken = args?.Where(a => a is CancellationToken).Cast<CancellationToken>().FirstOrDefault() ?? default;
             var isStreamingMethod = IsStreamingType(methodInfo.ReturnType);
-            var genericArguments = argumentTypes.Select(arg => arg.FullName!).ToArray();
+            var genericArguments = argumentTypes.Select(arg => arg.FullName ?? string.Empty).Where(n => !string.IsNullOrEmpty(n)).ToArray();
 
 
             if (isVoid) {
@@ -81,10 +81,10 @@ namespace Cocoar.SignalARRR.ProxyGenerator {
                     var returnType = methodInfo.ReturnType.GetGenericArguments()[0];
 
                     var genericInvokeMethodInfo = _classCreatorHelper.GetType().GetMethod("InvokeAsync")!.MakeGenericMethod(returnType);
-                    var task = (Task)genericInvokeMethodInfo.Invoke(_classCreatorHelper, new object[] { methodName, args!, genericArguments, cancellationToken });
+                    var task = (Task?)genericInvokeMethodInfo.Invoke(_classCreatorHelper, new object[] { methodName, args!, genericArguments, cancellationToken });
                     var genericInvokeMethodInfo2 = (typeof(TaskExtensions)).GetMethod("CastToTaskOf")!.MakeGenericMethod(returnType);
 
-                    result = genericInvokeMethodInfo2.Invoke(null, new object[] { task });
+                    result = task != null ? genericInvokeMethodInfo2.Invoke(null, new object[] { task }) : null;
                     return true;
                 } else {
                     var returnType = methodInfo.ReturnType;

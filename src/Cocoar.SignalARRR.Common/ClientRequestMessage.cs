@@ -5,10 +5,10 @@ using System.Threading.Tasks;
 
 namespace Cocoar.SignalARRR.Common {
     public class ClientRequestMessage {
-        public string Method { get; set; }
-        public string Authorization { get; set; }
-        public object[] Arguments { get; set; }
-        public string[] GenericArguments { get; set; }
+        public string Method { get; set; } = string.Empty;
+        public string Authorization { get; set; } = string.Empty;
+        public object[] Arguments { get; set; } = Array.Empty<object>();
+        public string[] GenericArguments { get; set; } = Array.Empty<string>();
 
         public ClientRequestMessage() { }
 
@@ -30,7 +30,7 @@ namespace Cocoar.SignalARRR.Common {
         }
 
         public ClientRequestMessage WithAuthorization(Func<Task<string>> authorization) {
-            Authorization = authorization?.Invoke().GetAwaiter().GetResult();
+            Authorization = authorization?.Invoke().GetAwaiter().GetResult() ?? string.Empty;
             return this;
         }
 

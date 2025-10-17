@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.TestHost;
 using SignalARRR.Tests.SharedModels;
 using Xunit;
 
-namespace SignalARRR.Tests
+namespace Cocoar.SignalARRR.IntegrationTests
 {
     [Collection("Simple")]
     public class ClientToServerTests

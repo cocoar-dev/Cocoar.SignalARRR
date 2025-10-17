@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.TestHost;
 using SignalARRR.Tests.SharedModels;
 using Xunit;
 
-namespace SignalARRR.Tests
+namespace Cocoar.SignalARRR.IntegrationTests
 {
     [Collection("Simple")]
     public class ErrorHandlingTests

@@ -55,7 +55,7 @@ namespace Cocoar.SignalARRR.Server {
                     Logger.LogDebug("HARRR '{Name}' connected - {Ip}({ConnectionId})", this.GetType().Name, cl.RemoteIp, Context.ConnectionId);
 
             } catch (Exception ex) {
-                Logger.LogError(ex, "Error in HARRR '{HubName}' on Method \"OnConnect()\" from  - {Ip}({ConnectionId}", this.GetType().Name);
+                Logger.LogError(ex, "Error in HARRR '{HubName}' on Method \"OnConnect()\" from  - {Ip}({ConnectionId})", this.GetType().Name);
             }
         }
 
@@ -70,7 +70,7 @@ namespace Cocoar.SignalARRR.Server {
                     Logger.LogDebug("HARRR {Name} disconnected - {Ip}({ConnectionId})", this.GetType().Name, cl.RemoteIp, Context.ConnectionId);
 
             } catch (Exception ex) {
-                Logger.LogError(ex, "Error in HARRR '{HubName}' on Method \"OnDisconnected(bool stopCalled)\" from - {Ip}({ConnectionId}",
+                Logger.LogError(ex, "Error in HARRR '{HubName}' on Method \"OnDisconnected(bool stopCalled)\" from - {Ip}({ConnectionId})",
                     this.GetType().Name);
             }
 

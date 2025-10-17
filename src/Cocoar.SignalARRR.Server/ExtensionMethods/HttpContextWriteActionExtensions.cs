@@ -404,7 +404,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 throw new ArgumentNullException(nameof(uri));
             }
 
-            context.Response.Headers.Add("Location", uri);
+            context.Response.Headers["Location"] = uri;
             return context.WriteActionResult(new ObjectResult(value) {
                 StatusCode = StatusCodes.Status201Created
             });
@@ -415,7 +415,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 throw new ArgumentNullException(nameof(uri));
             }
 
-            context.Response.Headers.Add("Location", uri.ToString());
+            context.Response.Headers["Location"] = uri.ToString();
             return context.WriteActionResult(new ObjectResult(value) {
                 StatusCode = StatusCodes.Status201Created
             });
@@ -435,17 +435,17 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 throw new ArgumentNullException(nameof(uri));
             }
 
-            context.Response.Headers.Add("Location", uri.ToString());
+            context.Response.Headers["Location"] = uri.ToString();
             return context.StatusCode(StatusCodes.Status202Accepted);
         }
 
         public static Task Accepted(this HttpContext context, string uri) {
-            context.Response.Headers.Add("Location", uri);
+            context.Response.Headers["Location"] = uri;
             return context.StatusCode(StatusCodes.Status202Accepted);
         }
 
         public static Task Accepted(this HttpContext context, string uri, object value) {
-            context.Response.Headers.Add("Location", uri);
+            context.Response.Headers["Location"] = uri;
             return context.WriteActionResult(new ObjectResult(value) {
                 StatusCode = StatusCodes.Status202Accepted
             });
@@ -456,7 +456,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 throw new ArgumentNullException(nameof(uri));
             }
 
-            context.Response.Headers.Add("Location", uri.ToString());
+            context.Response.Headers["Location"] = uri.ToString();
             return context.WriteActionResult(new ObjectResult(value) {
                 StatusCode = StatusCodes.Status202Accepted
             });

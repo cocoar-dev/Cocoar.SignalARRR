@@ -7,7 +7,7 @@ namespace Cocoar.SignalARRR.Common.Helper {
         private static Dictionary<string, Type> TypeFromString { get; } = new Dictionary<string, Type>();
         private static object TypeFromStringLock { get; } = new object();
 
-        public static Type FindType(string typeName) {
+        public static Type? FindType(string typeName) {
 
             if (string.IsNullOrWhiteSpace(typeName))
                 return typeof(void);
@@ -17,7 +17,7 @@ namespace Cocoar.SignalARRR.Common.Helper {
                 if (TypeFromString.ContainsKey(typeName))
                     return TypeFromString[typeName];
 
-                Type foundType = null;
+                Type? foundType = null;
 
                 if (!typeName.Contains(".")) {
                     foundType = Type.GetType($"System.{typeName}", false, true);
@@ -45,7 +45,7 @@ namespace Cocoar.SignalARRR.Common.Helper {
                     }
                 }
 
-                TypeFromString.Add(typeName, foundType);
+                TypeFromString.Add(typeName, foundType!);
 
                 return foundType;
             }

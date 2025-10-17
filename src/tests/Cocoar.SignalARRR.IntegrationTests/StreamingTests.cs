@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Xunit;
 
-namespace SignalARRR.Tests
+namespace Cocoar.SignalARRR.IntegrationTests
 {
     [Collection("Simple")]
     public class StreamingTests

@@ -6,11 +6,15 @@ using Cocoar.SignalARRR.Common.Interfaces;
 namespace Cocoar.SignalARRR.Common {
     public class SignalARRRMethodsCollection: ISignalARRRMethodsCollection {
 
-        private readonly ConcurrentDictionary<string, (Delegate Factory, MethodInfo MethodInfo)> _collection = new ConcurrentDictionary<string, (Delegate Factory, MethodInfo MethodInfo)>();
+        private readonly ConcurrentDictionary<string, (Delegate? Factory, MethodInfo MethodInfo)> _collection = new ConcurrentDictionary<string, (Delegate? Factory, MethodInfo MethodInfo)>();
 
         public void AddMethod(string name, MethodInfo methodInfo) {
 
-            object Factory(IServiceProvider sp) {
+            object? Factory(IServiceProvider sp) {
+                if (methodInfo.DeclaringType == null) {
+                    return null;
+                }
+                
                 var fromServiceProvider = sp.GetService(methodInfo.DeclaringType);
                 if (fromServiceProvider != null) {
                     return fromServiceProvider;
@@ -26,13 +30,13 @@ namespace Cocoar.SignalARRR.Common {
             AddMethod(name, methodInfo, (sp) => instance);
         }
 
-        public void AddMethod<T>(string name, MethodInfo methodInfo, Func<IServiceProvider, T> factory = null) {
+        public void AddMethod<T>(string name, MethodInfo methodInfo, Func<IServiceProvider, T>? factory = null) {
             _collection.AddOrUpdate(name, (factory, methodInfo), (s, tuple) => (factory, methodInfo));
         }
 
         public (Delegate Factory, MethodInfo MethodInfo) GetMethodInformations(string name) {
             if (_collection.TryGetValue(name, out var methodsCache)) {
-                return methodsCache;
+                return (methodsCache.Factory!, methodsCache.MethodInfo);
             }
 
             throw new Exception($"Method '{name}' not found!");

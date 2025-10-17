@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server;
 using SignalARRR.Tests.SharedModels;
 
-namespace SignalARRR.Tests {
+namespace Cocoar.SignalARRR.IntegrationTests {
     
     public partial class TestHub : HARRR, ITestServerMethods {
 
