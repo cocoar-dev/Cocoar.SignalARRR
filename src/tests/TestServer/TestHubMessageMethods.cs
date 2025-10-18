@@ -21,7 +21,8 @@ namespace TestServer {
 
         public TestHubMessageMethods(ConsoleWriter2 consoleWriter2) {
             _consoleWriter2 = consoleWriter2;
-            GetNextInt = Observable.Interval(TimeSpan.FromSeconds(1)).Select(t => (int)t).AsObservable();
+            // Use 10ms interval for fast tests instead of 1 second
+            GetNextInt = Observable.Interval(TimeSpan.FromMilliseconds(10)).Select(t => (int)t).AsObservable();
         }
 
         public void WriteLine(string line) {

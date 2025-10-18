@@ -8,7 +8,6 @@ using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Attributes;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
-using NamedServices.Microsoft.Extensions.DependencyInjection;
 
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
     public static class ServiceCollectionExtensions {
@@ -132,12 +131,12 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             foreach (var (key, value) in hubMethodsDictionary) {
                 var n = key.FullName;
-                serviceCollection.AddNamedSingleton<ISignalARRRMethodsCollection>(n, _ => value);
+                serviceCollection.AddKeyedSingleton<ISignalARRRMethodsCollection>(n, (_, _) => value);
             }
 
             foreach (var (key, value) in interfaceDictionary) {
                 var n = key.FullName;
-                serviceCollection.AddNamedSingleton<ISignalARRRInterfaceCollection>(n, _ => value);
+                serviceCollection.AddKeyedSingleton<ISignalARRRInterfaceCollection>(n, (_, _) => value);
             }
 
             //foreach (var (key, (collection, serviceType)) in hubMethodsDictionary)

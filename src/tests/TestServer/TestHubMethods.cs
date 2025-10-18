@@ -23,9 +23,9 @@ namespace TestServer
 
         public async Task Ping()
         {
-
             Console.WriteLine($"Get Ping from {ClientContext.RemoteIp}");
-            await Task.Delay(2000);
+            // Removed Task.Delay to speed up tests
+            await Task.CompletedTask;
             Console.WriteLine($"Get Ping2 from {ClientContext.RemoteIp}");
         }
 

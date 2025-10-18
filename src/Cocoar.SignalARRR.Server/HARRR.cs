@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using NamedServices.Microsoft.Extensions.DependencyInjection;
 
 namespace Cocoar.SignalARRR.Server {
     public abstract class HARRR : Hub {
@@ -35,11 +34,11 @@ namespace Cocoar.SignalARRR.Server {
             ClientManager = serviceProvider.GetRequiredService<IHARRRClientManager>();
             Logger =  NullLogger.Instance;
 
-            MethodsCollection = serviceProvider.GetNamedService<ISignalARRRMethodsCollection>(this.GetType().FullName) ?? new SignalARRRMethodsCollection();
+            MethodsCollection = serviceProvider.GetKeyedService<ISignalARRRMethodsCollection>(this.GetType().FullName) ?? new SignalARRRMethodsCollection();
             //(ISignalARRRServerMethodsCollection)serviceProvider.GetRequiredService(
             //        typeof(SignalARRRServerMethodsCollection<>).MakeGenericType(this.GetType()));
 
-            InterfaceCollection = serviceProvider.GetNamedService<ISignalARRRInterfaceCollection>(this.GetType().FullName) ?? new SignalARRRInterfaceCollection();
+            InterfaceCollection = serviceProvider.GetKeyedService<ISignalARRRInterfaceCollection>(this.GetType().FullName) ?? new SignalARRRInterfaceCollection();
 
             //ServerRequestManager = serviceProvider.GetService<ServerRequestManager>();
         }

@@ -56,9 +56,8 @@ namespace TestClient {
 
         public List<string> GetContent(int count = 10) {
 
-
-            Task.Delay(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
-
+            // Removed Task.Delay to speed up tests
+            
             var chars = Enumerable.Range(0, char.MaxValue + 1)
                 .Select(i => (char)i)
                 .Where(c => !char.IsControl(c))

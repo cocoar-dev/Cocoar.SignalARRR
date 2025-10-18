@@ -9,9 +9,10 @@ using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Cocoar.SignalARRR.Server.JsonConverters;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -25,6 +26,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
 
         IHost _host;
+        public string ServerUrl { get; private set; }
 
         public SignalARRRServerInstanceFixture() {
              
@@ -33,7 +35,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 .ConfigureWebHost(webBuilder =>
                 {
                     webBuilder
-                        .UseTestServer()
+                        .UseKestrel()
+                        .UseUrls("http://127.0.0.1:0") // Use random available port
                         .ConfigureServices(services =>
                         {
 
@@ -73,6 +76,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
                     
                 _host = hostBuilder.Start();
+                
+                // Get the actual URL that the server is listening on
+                var addresses = _host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
+                ServerUrl = addresses!.Addresses.First();
 
         }
 
@@ -82,7 +89,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
         public void Dispose()
         {
-            _host.Dispose();
+            _host?.StopAsync().GetAwaiter().GetResult();
+            _host?.Dispose();
         }
     }
 

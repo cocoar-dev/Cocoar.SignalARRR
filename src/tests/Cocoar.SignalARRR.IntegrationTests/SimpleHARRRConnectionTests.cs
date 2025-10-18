@@ -1,16 +1,14 @@
 using System;
-using System.Net;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Cocoar.SignalARRR.IntegrationTests
 {
     [Collection("Simple")]
-    public class SimpleHARRRConnectionTests {
+    public class SimpleHARRRConnectionTests : IAsyncLifetime {
 
         SignalARRRServerInstanceFixture fixture;
         HARRRConnection harrrConnection;
@@ -19,23 +17,22 @@ namespace Cocoar.SignalARRR.IntegrationTests
         public SimpleHARRRConnectionTests(SignalARRRServerInstanceFixture fixture) {
             this.fixture = fixture;
 
-
-            var testServer = this.fixture.GetHost().GetTestServer();
-
             harrrConnection = HARRRConnection.Create(builder => {
-                builder.WithUrl($"{testServer.BaseAddress}signalr/testhub", options => {
-                    options.HttpMessageHandlerFactory = _ => testServer.CreateHandler();
-                    options.Proxy = new WebProxy("localhost.:8888");
-                });
+                builder.WithUrl($"{fixture.ServerUrl}/signalr/testhub");
             });
-            
+        }
+
+        public async Task InitializeAsync() {
+            await harrrConnection.StartAsync();
+        }
+
+        public async Task DisposeAsync() {
+            await harrrConnection.StopAsync();
+            await harrrConnection.DisposeAsync();
         }
 
         [Fact]
         public async Task GetString() {
-
-            await harrrConnection.StartAsync();
-
             var name = await harrrConnection.InvokeAsync<string>("GetName");
 
             Assert.Equal("MyName", name);
@@ -43,9 +40,6 @@ namespace Cocoar.SignalARRR.IntegrationTests
 
         [Fact]
         public async Task GetStringAsync() {
-
-            await harrrConnection.StartAsync();
-
             var name = await harrrConnection.InvokeAsync<string>("GetNameAsync");
 
             Assert.Equal("MyNameAsync", name);
