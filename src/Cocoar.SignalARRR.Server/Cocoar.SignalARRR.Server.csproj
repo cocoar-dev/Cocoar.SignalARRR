@@ -29,10 +29,10 @@
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="ImpromptuInterface" />
     <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
-    <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="System.Reactive.Linq" />
     <PackageReference Include="System.Interactive.Async" />
   </ItemGroup>
+
 
   <ItemGroup>
     <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />

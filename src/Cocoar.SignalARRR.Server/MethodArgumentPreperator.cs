@@ -29,6 +29,18 @@ namespace Cocoar.SignalARRR.Server {
                             continue;
                         }
                     case CancellationToken cancellationToken: {
+                        // TODO: Restore server-controlled client cancellation feature
+                        // This allows the server to cancel long-running operations on the client
+                        // Use case: Video conversion farm - cancel remote worker when user cancels in UI
+                        // 
+                        // Implementation needed:
+                        // 1. Create CancellationTokenReference class in Common.RemoteReferenceTypes
+                        // 2. Implement server-to-client cancellation message propagation
+                        // 3. Client should create local CancellationTokenSource from the reference
+                        // 
+                        // Original implementation (commented out for now):
+                        // yield return PrepareCancellationToken(cancellationToken);
+                        
                         yield return null;
                             continue;
                         }
@@ -44,8 +56,9 @@ namespace Cocoar.SignalARRR.Server {
             return new StreamReference() { Uri = identifier };
         }
 
+        // TODO: Restore this method when implementing server-controlled client cancellation
+        // See TODO comments in PrepareArguments method above
         //private CancellationTokenReference PrepareCancellationToken(CancellationToken cancellationToken) {
-
         //    var tokenReference = new CancellationTokenReference();
         //    cancellationToken.Register(async () => await _clientContext.CancelToken(tokenReference));
         //    return tokenReference;

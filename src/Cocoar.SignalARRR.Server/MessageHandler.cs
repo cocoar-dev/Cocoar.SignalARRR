@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Newtonsoft.Json.Linq;
 using ObservableExtensions = Cocoar.SignalARRR.Server.ExtensionMethods.ObservableExtensions;
 using TypeHelper = Cocoar.SignalARRR.Common.Helper.TypeHelper;
 
@@ -303,13 +302,8 @@ namespace Cocoar.SignalARRR.Server {
                 var par = @params[paramsPosition];
 
                 if (par != null && p.ParameterType != par.GetType()) {
-
-                    if (par is JToken jt) {
-                        par = jt.ToObject(p.ParameterType);
-                    } else {
-                        par = par.Reflect().To(p.ParameterType);
-                    }
-
+                    // Convert parameter to the expected type using Reflectensions
+                    par = par.Reflect().To(p.ParameterType);
                 }
 
                 paramsPosition++;
