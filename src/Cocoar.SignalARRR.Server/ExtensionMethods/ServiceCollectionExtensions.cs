@@ -16,16 +16,12 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             SignalARRRServerOptions serverOptions = options?.InvokeAction() ?? new SignalARRRServerOptionsBuilder();
 
             AddSignalARRRMethods(serviceCollection, serverOptions);
-            //serviceCollection.AddSingleton<ServerRequestManager>();
             serviceCollection.AddSingleton<ServerPushStreamManager>();
             serviceCollection.AddSingleton<InMemoryHARRRClientManager>();
             serviceCollection.AddSingleton<IHARRRClientManager>(sp => sp.GetRequiredService<InMemoryHARRRClientManager>());
             serviceCollection.AddSingleton<ClientManager>(sp => new ClientManager(sp.GetRequiredService<IHARRRClientManager>()));
             serviceCollection.AddTransient(typeof(ClientContextDispatcher<>));
 
-            //foreach (var type in serverOptions.PreBuiltClientMethods) {
-            //    ClassCreator.CreateTypeFromInterface(type);
-            //}
             return serviceCollection;
         }
 
