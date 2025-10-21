@@ -11,10 +11,4 @@
     <PackageReference Include="System.Threading.Channels" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="System.Threading.Channels">
-      <HintPath>..\TestClient_FullFramework\bin\Debug\System.Threading.Channels.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-
 </Project>

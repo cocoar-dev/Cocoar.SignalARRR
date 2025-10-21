@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net5.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\source\SignalARRR.Server\SignalARRR.Server.csproj" />
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
     <ProjectReference Include="..\TestShared\TestShared.csproj" />
   </ItemGroup>
 

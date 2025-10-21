@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -16,8 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\source\SignalARRR.Client\SignalARRR.Client.csproj" />
-    <ProjectReference Include="..\..\source\SignalARRR.Common\SignalARRR.Common.csproj" />
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.Client\Cocoar.SignalARRR.Client.csproj" />
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
     <ProjectReference Include="..\TestShared\TestShared.csproj" />
   </ItemGroup>
 
