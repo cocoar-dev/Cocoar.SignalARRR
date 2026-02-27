@@ -106,7 +106,34 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            throw new NotImplementedException();
+            var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
+
+            var streamId = Guid.NewGuid();
+            var msg = new ServerRequestMessage(methodName, preparedArguments);
+            msg.GenericArguments = genericArguments;
+            msg.StreamId = streamId;
+
+            if (cancellationToken != CancellationToken.None) {
+                msg.CancellationGuid = Guid.NewGuid();
+                cancellationToken.Register(() => {
+#pragma warning disable 4014
+                    _clientContext.CancelToken(msg.CancellationGuid.Value);
+#pragma warning restore 4014
+                });
+            }
+
+            var serverStreamManager = _clientContext.ServiceProvider.GetRequiredService<ServerStreamManager>();
+            serverStreamManager.CreateStream(streamId);
+
+            // Send in background — scope must outlive the send
+            var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
+            var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
+            var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+
+            _ = harrrContext.SendClientAsync(_clientContext.Id, msg, cancellationToken)
+                .ContinueWith(_ => serviceProviderScope.Dispose());
+
+            return serverStreamManager.ReadStream<TResult>(streamId, cancellationToken);
         }
 
         

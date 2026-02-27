@@ -27,7 +27,7 @@
   <ItemGroup>
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
-    <PackageReference Include="ImpromptuInterface" />
+
     <PackageReference Include="System.Reactive.Linq" />
   </ItemGroup>
 

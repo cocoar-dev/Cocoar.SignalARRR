@@ -10,6 +10,7 @@ namespace Cocoar.SignalARRR.Common {
         public object[] Arguments { get; set; } = Array.Empty<object>();
         public string[] GenericArguments { get; set; } = Array.Empty<string>();
         public Guid? CancellationGuid { get; set; }
+        public Guid? StreamId { get; set; }
 
         public ServerRequestMessage()
         {

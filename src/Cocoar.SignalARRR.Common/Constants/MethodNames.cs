@@ -14,5 +14,8 @@
         public static string InvokeServerMessage { get; set; } = "InvokeServerMessage";
 
         public static string CancelTokenFromServer { get; set; } = "CancelTokenFromServer";
+
+        public static string StreamItemToServer { get; } = "StreamItemToServer";
+        public static string StreamCompleteToServer { get; } = "StreamCompleteToServer";
     }
 }

@@ -21,9 +21,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cocoar.Reflectensions" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
-    <PackageReference Include="ImpromptuInterface" />
     <PackageReference Include="System.Reactive.Linq" />
   </ItemGroup>
 

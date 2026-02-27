@@ -37,5 +37,7 @@ namespace TestShared {
 
         string GetByGenericId(Guid id);
         string GetById(string id);
+
+        IAsyncEnumerable<int> StreamNumbers(int count);
     }
 }

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Cocoar.SignalARRR.Server.JsonConverters;
@@ -93,6 +94,60 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                         .SendCoreAsync(Cocoar.SignalARRR.Common.Constants.MethodNames.InvokeServerMessage, new object[] { msg }, default);
 
                                     return "Sent";
+                                });
+
+                                // Minimal API test trigger: server cancels client's CancellationToken
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-cancellation", async (context, clientManager) =>
+                                {
+                                    var request = context.Request;
+                                    var connectionId = request.Query["connectionId"].ToString();
+                                    var delayMs = int.TryParse(request.Query["delayMs"].ToString(), out var d) ? d : 200;
+
+                                    if (string.IsNullOrWhiteSpace(connectionId))
+                                    {
+                                        return Results.BadRequest("Missing connectionId");
+                                    }
+
+                                    var cts = new CancellationTokenSource();
+                                    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
+
+                                    // Start the Wait call and cancel after delay
+                                    var waitTask = typedClient.Wait(30, cts.Token);
+                                    await Task.Delay(delayMs);
+                                    cts.Cancel();
+
+                                    try
+                                    {
+                                        await waitTask;
+                                        return (object)"completed";
+                                    }
+                                    catch (Exception)
+                                    {
+                                        // Expected: cancellation causes InvokeCoreAsync to abort
+                                        return (object)"cancelled";
+                                    }
+                                });
+
+                                // Minimal API test trigger: server requests stream from client
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-stream", async (context, clientManager) =>
+                                {
+                                    var request = context.Request;
+                                    var connectionId = request.Query["connectionId"].ToString();
+                                    var count = int.TryParse(request.Query["count"].ToString(), out var c) ? c : 5;
+
+                                    if (string.IsNullOrWhiteSpace(connectionId))
+                                    {
+                                        return Results.BadRequest("Missing connectionId");
+                                    }
+
+                                    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
+                                    var items = new List<int>();
+                                    await foreach (var item in typedClient.StreamNumbers(count))
+                                    {
+                                        items.Add(item);
+                                    }
+
+                                    return (object)items;
                                 });
 
                                 // Minimal API test trigger: server -> client typed call using SignalARRR typed methods

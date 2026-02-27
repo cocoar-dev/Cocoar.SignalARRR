@@ -66,5 +66,14 @@ namespace Cocoar.SignalARRR.IntegrationTests
         {
             return id;
         }
+
+        public async IAsyncEnumerable<int> StreamNumbers(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                await Task.Delay(10);
+                yield return i;
+            }
+        }
     }
 }

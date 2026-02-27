@@ -263,6 +263,34 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
+        /// <summary>
+        /// Receives a single stream item from the client for a server-initiated stream request.
+        /// </summary>
+        /// <param name="streamId">The stream correlation identifier.</param>
+        /// <param name="item">The streamed item.</param>
+        public void StreamItemToServer(Guid streamId, object item) {
+            try {
+                var streamManager = ServiceProvider.GetRequiredService<ServerStreamManager>();
+                streamManager.WriteItem(streamId, item);
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Error writing stream item for StreamId: {StreamId}", streamId);
+            }
+        }
+
+        /// <summary>
+        /// Signals completion of a client-to-server stream.
+        /// </summary>
+        /// <param name="streamId">The stream correlation identifier.</param>
+        /// <param name="error">Optional error message if the stream failed.</param>
+        public void StreamCompleteToServer(Guid streamId, string error = null) {
+            try {
+                var streamManager = ServiceProvider.GetRequiredService<ServerStreamManager>();
+                streamManager.CompleteStream(streamId, error);
+            } catch (Exception ex) {
+                Logger.LogError(ex, "Error completing stream for StreamId: {StreamId}", streamId);
+            }
+        }
+
         // Note: ReplyServerRequest hub method was removed during ASP.NET Core 3.x → .NET 8 migration.
         // 
         // In the old implementation (SignalR Core 1.x/2.x), server-to-client RPC required a workaround:

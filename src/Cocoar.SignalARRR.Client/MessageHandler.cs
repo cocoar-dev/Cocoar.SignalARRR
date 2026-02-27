@@ -16,6 +16,7 @@ using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Cocoar.SignalARRR.Client {
     public class MessageHandler {
@@ -59,9 +60,60 @@ namespace Cocoar.SignalARRR.Client {
 
             try {
                 message = PrepareServerRequestMessage(message);
-                await InvokeAsync(message);
+                if (message.StreamId.HasValue) {
+                    await InvokeAndStreamBackAsync(message);
+                } else {
+                    await InvokeAsync(message);
+                }
             } catch {
                 // ignored
+            }
+        }
+
+        private async Task InvokeAndStreamBackAsync(ServerRequestMessage message) {
+            var streamId = message.StreamId!.Value;
+            var hubConnection = _harrrContext.GetHubConnection();
+            try {
+                var result = await InvokeAsync(message);
+                await StreamResultToServer(hubConnection, streamId, result);
+                await hubConnection.SendCoreAsync(MethodNames.StreamCompleteToServer, new object[] { streamId, (string)null });
+            } catch (Exception ex) {
+                try {
+                    await hubConnection.SendCoreAsync(MethodNames.StreamCompleteToServer, new object[] { streamId, ex.GetBaseException().Message });
+                } catch {
+                    // Best effort — connection may be gone
+                }
+            }
+        }
+
+        private static async Task StreamResultToServer(HubConnection hubConnection, Guid streamId, object result) {
+            if (result == null) return;
+
+            // Try to enumerate as IAsyncEnumerable<T> using reflection-free helper
+            var enumerateMethod = typeof(MessageHandler)
+                .GetMethod(nameof(EnumerateAsyncEnumerable), BindingFlags.NonPublic | BindingFlags.Static);
+
+            // Find the IAsyncEnumerable<T> interface to get T
+            var asyncEnumInterface = result.GetType().GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
+
+            if (asyncEnumInterface == null && result.GetType().IsGenericType && result.GetType().GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>)) {
+                asyncEnumInterface = result.GetType();
+            }
+
+            if (asyncEnumInterface != null) {
+                var elementType = asyncEnumInterface.GetGenericArguments()[0];
+                var genericMethod = enumerateMethod!.MakeGenericMethod(elementType);
+                await (Task)genericMethod.Invoke(null, new object[] { hubConnection, streamId, result })!;
+            } else {
+                // Single result — send as one item
+                await hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, result });
+            }
+        }
+
+        private static async Task EnumerateAsyncEnumerable<T>(HubConnection hubConnection, Guid streamId, IAsyncEnumerable<T> source) {
+            await foreach (var item in source) {
+                await hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, item });
             }
         }
 
@@ -219,6 +271,9 @@ namespace Cocoar.SignalARRR.Client {
             object result = null;
             if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
                 await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
+            } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
+                // IAsyncEnumerable<T> — invoke directly, don't try to await as Task
+                result = methodInfo.Invoke(instance, parameters);
             } else {
                 result = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
             }
@@ -248,6 +303,12 @@ namespace Cocoar.SignalARRR.Client {
                 paramsPosition++;
 
                 if (parameterInfo.ParameterType == typeof(CancellationToken)) {
+                    // Check if the argument is a CancellationTokenReference (per-parameter cancellation from server)
+                    var tokenFromRef = TryGetCancellationTokenFromReference(par);
+                    if (tokenFromRef.HasValue) {
+                        argumentList.Add(tokenFromRef.Value);
+                        continue;
+                    }
                     argumentList.Add(cancellation);
                     continue;
                 }
@@ -348,6 +409,30 @@ namespace Cocoar.SignalARRR.Client {
             }
 
             return message;
+        }
+
+        private static bool IsAsyncEnumerableType(Type type) {
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
+                return true;
+            return type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
+        }
+
+        private CancellationToken? TryGetCancellationTokenFromReference(object argument) {
+            if (argument == null) return null;
+
+            CancellationTokenReference reference = null;
+            try {
+                var json = JsonSerializer.Serialize(argument);
+                reference = JsonSerializer.Deserialize<CancellationTokenReference>(json);
+            } catch {
+                // Not a CancellationTokenReference
+            }
+
+            if (reference == null || reference.Id == Guid.Empty) return null;
+
+            var cts = new CancellationTokenSource();
+            cancellationTokenSources.TryAdd(reference.Id, cts);
+            return cts.Token;
         }
 
         public void CancelTokenFromServer(ServerRequestMessage requestMessage) {
