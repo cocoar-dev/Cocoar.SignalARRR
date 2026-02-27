@@ -4,8 +4,10 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Cocoar.SignalARRR.Contracts;
 
 namespace TestShared {
+    [SignalARRRContract]
     public interface ITestClientMethods {
 
         //string GetName();

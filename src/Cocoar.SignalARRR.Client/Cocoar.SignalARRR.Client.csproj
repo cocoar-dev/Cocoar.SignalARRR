@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>Cocoar.SignalARRR.Client</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Client</RootNamespace>
     <LangVersion>latest</LangVersion>
@@ -25,13 +25,15 @@
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
-    <PackageReference Include="System.Interactive.Async" />
-    <PackageReference Include="System.Net.Http" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.Contracts\Cocoar.SignalARRR.Contracts.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                       OutputItemType="Analyzer"
+                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

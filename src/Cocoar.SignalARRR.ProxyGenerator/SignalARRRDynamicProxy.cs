@@ -70,7 +70,7 @@ namespace Cocoar.SignalARRR.ProxyGenerator {
                             return true;
                         }
                     case StreamingType.Observable: {
-                            result = AsyncEnumerable.ToObservable(stream);
+                            result = _classCreatorHelper.ToObservable(stream);
                             return true;
                         }
                 }

@@ -1,14 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.ExpandableObject" />
-    <PackageReference Include="System.Threading.Channels" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.Contracts\Cocoar.SignalARRR.Contracts.csproj" />
+    <!-- SourceGenerator flows automatically via NuGet; for project-reference development we need an explicit analyzer ref -->
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                       OutputItemType="Analyzer"
+                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

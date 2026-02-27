@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -12,7 +14,7 @@ namespace Cocoar.SignalARRR.ProxyGenerator {
 
         public abstract T Invoke<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default);
         public abstract Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default);
-        
+
         public abstract IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default);
 
         public ChannelReader<T> ToChannelReader<T>(IAsyncEnumerable<T> asyncEnumerable, CancellationToken token = default) {
@@ -29,6 +31,21 @@ namespace Cocoar.SignalARRR.ProxyGenerator {
                 writer.TryComplete();
             });
             return output.Reader;
+        }
+
+        public IObservable<T> ToObservable<T>(IAsyncEnumerable<T> asyncEnumerable) {
+            return Observable.Create<T>(async (observer, ct) => {
+                try {
+                    await foreach (var item in asyncEnumerable.WithCancellation(ct)) {
+                        observer.OnNext(item);
+                    }
+                    observer.OnCompleted();
+                } catch (OperationCanceledException) {
+                    // Subscription was disposed
+                } catch (Exception ex) {
+                    observer.OnError(ex);
+                }
+            });
         }
     }
 }

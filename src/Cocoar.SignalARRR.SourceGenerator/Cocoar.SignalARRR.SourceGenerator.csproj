@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Cocoar.SignalARRR.SourceGenerator</AssemblyName>
+    <RootNamespace>Cocoar.SignalARRR.SourceGenerator</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IsRoslynComponent>true</IsRoslynComponent>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Bernhard Windisch</Authors>
+    <Company>-</Company>
+    <Description>Source generator for SignalARRR proxy generation</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageId>Cocoar.SignalARRR.SourceGenerator</PackageId>
+    <Product>Cocoar.SignalARRR.SourceGenerator</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

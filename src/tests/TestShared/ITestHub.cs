@@ -4,9 +4,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Cocoar.SignalARRR.Contracts;
 
 namespace TestShared
 {
+    [SignalARRRContract]
     public interface ITestHub {
         void WriteLine(string line);
         Task<Guid> StringToGuid(Guid guid, string test = null);

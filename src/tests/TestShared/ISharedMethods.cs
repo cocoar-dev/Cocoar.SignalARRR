@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Cocoar.SignalARRR.Contracts;
 
 namespace TestShared {
+    [SignalARRRContract]
     public interface ISharedMethods {
 
         //string Name { get; }
@@ -20,6 +22,7 @@ namespace TestShared {
     }
 
 
+    [SignalARRRContract]
     public interface IStringMethods {
 
         string Reverse(string value);

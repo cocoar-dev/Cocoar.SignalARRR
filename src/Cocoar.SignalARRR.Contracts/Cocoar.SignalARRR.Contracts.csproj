@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Cocoar.SignalARRR.Contracts</AssemblyName>
+    <RootNamespace>Cocoar.SignalARRR.Contracts</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Bernhard Windisch</Authors>
+    <Company>-</Company>
+    <Description>Contracts, attributes and source generator for SignalARRR proxy generation. Reference this package from any project that defines [SignalARRRContract] interfaces.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageId>Cocoar.SignalARRR.Contracts</PackageId>
+    <Product>Cocoar.SignalARRR.Contracts</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ProxyGenerator flows transitively so generated code can compile (uses ProxyCreatorHelper) -->
+    <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
+
+    <!-- SourceGenerator runs as an analyzer in the consuming project -->
+    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                       OutputItemType="Analyzer"
+                       ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- NuGet packaging: bundle the source generator DLL as an analyzer -->
+  <PropertyGroup>
+    <DevelopmentDependency>false</DevelopmentDependency>
+    <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+    <IncludeBuildOutput>true</IncludeBuildOutput>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Copy the SourceGenerator DLL to the analyzers folder when packing -->
+    <GetTargetPathDependsOn>$(GetTargetPathDependsOn);_AddSourceGeneratorToPackage</GetTargetPathDependsOn>
+  </PropertyGroup>
+
+  <Target Name="_AddSourceGeneratorToPackage" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <None Include="$(OutputPath)..\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll"
+            Pack="true"
+            PackagePath="analyzers/dotnet/cs"
+            Visible="false"
+            Condition="Exists('$(OutputPath)..\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll')" />
+    </ItemGroup>
+  </Target>
+
+</Project>

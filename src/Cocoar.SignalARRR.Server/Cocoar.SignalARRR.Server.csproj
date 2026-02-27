@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>Cocoar.SignalARRR.Server</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
@@ -28,15 +28,17 @@
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="ImpromptuInterface" />
-    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
     <PackageReference Include="System.Reactive.Linq" />
-    <PackageReference Include="System.Interactive.Async" />
   </ItemGroup>
 
 
   <ItemGroup>
     <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.Contracts\Cocoar.SignalARRR.Contracts.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                       OutputItemType="Analyzer"
+                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>
