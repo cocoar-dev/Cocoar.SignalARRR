@@ -20,6 +20,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 using Xunit;
+using Cocoar.SignalARRR.IntegrationTests.Extensions;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
     public class SignalARRRServerInstanceFixture: IDisposable {
@@ -67,6 +68,50 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                             app.UseEndpoints(endpoints =>
                             {
                                 endpoints.MapHARRRController<TestHub>("/signalr/testhub");
+
+                                // Minimal API test trigger: server -> client call via HTTP
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-call", async (context, _clientManager) =>
+                                {
+                                    var request = context.Request;
+                                    var connectionId = request.Query["connectionId"].ToString();
+                                    var method = request.Query["method"].ToString();
+                                    var arg = request.Query["arg"].ToString();
+
+                                    if (string.IsNullOrWhiteSpace(connectionId) || string.IsNullOrWhiteSpace(method))
+                                    {
+                                        return Results.BadRequest("Missing connectionId or method");
+                                    }
+
+                                    // Resolve hub context to talk to connected clients
+                                    var hubContext = context.RequestServices.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<TestHub>>();
+
+                                    // Build a SignalARRR server request message targeting client interface methods
+                                    var msg = new Cocoar.SignalARRR.Common.ServerRequestMessage(method, string.IsNullOrEmpty(arg) ? Array.Empty<object>() : new object[] { arg });
+
+                                    // Fire-and-forget: send a server message to the client (no awaited result)
+                                    await hubContext.Clients.Client(connectionId)
+                                        .SendCoreAsync(Cocoar.SignalARRR.Common.Constants.MethodNames.InvokeServerMessage, new object[] { msg }, default);
+
+                                    return "Sent";
+                                });
+
+                                // Minimal API test trigger: server -> client typed call using SignalARRR typed methods
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-typed-call", (context, clientManager) =>
+                                {
+                                    var request = context.Request;
+                                    var connectionId = request.Query["connectionId"].ToString();
+
+                                    if (string.IsNullOrWhiteSpace(connectionId))
+                                    {
+                                        return Results.BadRequest("Missing connectionId");
+                                    }
+
+                                    // Use helper to get typed proxy for the specific client (throws if not found)
+                                    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
+                                    typedClient.Nix();
+
+                                    return "Sent";
+                                });
                             });
 
                         });

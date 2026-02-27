@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Client\Cocoar.SignalARRR.Client.csproj" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Tests.SharedModels\Cocoar.SignalARRR.Tests.SharedModels.csproj" />
+    <ProjectReference Include="..\TestShared\TestShared.csproj" />
   </ItemGroup>
 
 </Project>
