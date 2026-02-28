@@ -3,14 +3,14 @@
 namespace Cocoar.SignalARRR.Client {
     public partial class HARRRConnection {
 
-        
 
 
-        public void RegisterInterface<TInterface, TClass>() where TClass : class, TInterface { 
+
+        public void RegisterInterface<TInterface, TClass>() where TClass : class, TInterface {
             _harrrContext.MessageHandler.RegisterInterface<TInterface, TClass>();
         }
 
-       
+
         public void RegisterInterface<TInterface, TClass>(TClass instance) where TClass : class, TInterface {
 
             _harrrContext.MessageHandler.RegisterInterface<TInterface, TClass>(instance);
@@ -23,7 +23,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public void RegisterInterface(Type interfaceType, Type instanceType) {
-            
+
             _harrrContext.MessageHandler.RegisterInterface(interfaceType, instanceType);
         }
 
@@ -35,6 +35,6 @@ namespace Cocoar.SignalARRR.Client {
             _harrrContext.MessageHandler.RegisterInterface(interfaceType, factory);
         }
 
-       
+
     }
 }

@@ -15,7 +15,7 @@ namespace Cocoar.SignalARRR.Server {
     internal class StreamingResult<T> : StreamingResult {
         private readonly MethodInfo _methodInfo;
 
-        private IAsyncEnumerable<T> _enumerable;
+        private IAsyncEnumerable<T> _enumerable = null!;
 
         public ClientContext ClientContext { get; }
 
@@ -41,10 +41,10 @@ namespace Cocoar.SignalARRR.Server {
                     if (!authResult.Succeeded) {
                         throw new UnauthorizedException();
                     }
-                    yield return enumerator.Current;
+                    yield return enumerator.Current!;
                 }
             } finally { await enumerator.DisposeAsync(); }
-                                  
+
         }
     }
 }

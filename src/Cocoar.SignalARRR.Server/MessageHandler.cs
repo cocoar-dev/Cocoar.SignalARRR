@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -22,7 +23,7 @@ namespace Cocoar.SignalARRR.Server {
 
         private ISignalARRRMethodsCollection MethodsCollection { get; }
 
-        private ISignalARRRInterfaceCollection InterfaceCollection { get;  }
+        private ISignalARRRInterfaceCollection InterfaceCollection { get; }
 
         private ILogger Logger { get; }
 
@@ -38,7 +39,7 @@ namespace Cocoar.SignalARRR.Server {
             InterfaceCollection = signalARRRInterfaceCollection;
             ClientContext = clientContext;
             _serviceProvider = serviceProvider;
-            Logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(GetType().FullName) ?? NullLogger.Instance;
+            Logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(GetType().FullName!) ?? NullLogger.Instance;
         }
 
 
@@ -48,7 +49,7 @@ namespace Cocoar.SignalARRR.Server {
 
             if (clientMessage.Method.Contains("|")) {
                 return await InvokeInterfaceStreamAsync(clientMessage, cancellationToken);
-                
+
             }
 
             return await InvokeMethodStreamAsync(clientMessage, cancellationToken);
@@ -58,7 +59,7 @@ namespace Cocoar.SignalARRR.Server {
 
             var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method);
 
-           
+
             var authentication = new SignalARRRAuthentication(_serviceProvider);
             var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, methodInformations.MethodInfo);
 
@@ -70,11 +71,11 @@ namespace Cocoar.SignalARRR.Server {
             if (methodInformations.MethodInfo.DeclaringType == HARRR.GetType()) {
                 instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
             } else {
-                instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType);
+                instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType!);
             }
 
             return await InvokeStreamMethodInfoAsync(instance, methodInformations.MethodInfo, clientMessage.Arguments, cancellationToken);
-            
+
         }
 
         public async Task<IAsyncEnumerable<object>> InvokeInterfaceStreamAsync(ClientRequestMessage clientMessage, CancellationToken cancellationToken) {
@@ -88,8 +89,8 @@ namespace Cocoar.SignalARRR.Server {
                 throw new UnauthorizedException();
             }
 
-            var instance = invokeInfos.Factory.DynamicInvoke(_serviceProvider);
-            
+            var instance = invokeInfos.Factory.DynamicInvoke(_serviceProvider)!;
+
 
             return await InvokeStreamMethodInfoAsync(instance, invokeInfos.MethodInfo, clientMessage.Arguments,
                 cancellationToken);
@@ -97,7 +98,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public async Task<IAsyncEnumerable<object>> InvokeStreamMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, CancellationToken cancellationToken) {
-            
+
             var taskType = methodInfo.ReturnType;
             if (taskType.IsGenericTypeOf(typeof(Task<>))) {
                 taskType = methodInfo.ReturnType.GenericTypeArguments[0];
@@ -139,7 +140,7 @@ namespace Cocoar.SignalARRR.Server {
         public async Task<object> InvokeMethodAsync(ClientRequestMessage clientMessage) {
 
             var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method);
-            
+
             var authentication = new SignalARRRAuthentication(_serviceProvider);
             var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, methodInformations.MethodInfo);
 
@@ -151,7 +152,7 @@ namespace Cocoar.SignalARRR.Server {
             if (methodInformations.MethodInfo.DeclaringType == HARRR.GetType()) {
                 instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
             } else {
-                instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType);
+                instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType!);
             }
 
             return await InvokeMethodInfoAsync(instance, methodInformations.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments);
@@ -161,7 +162,7 @@ namespace Cocoar.SignalARRR.Server {
         public async Task<object> InvokeInterfaceAsync(ClientRequestMessage clientMessage) {
 
             var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method);
-            
+
             var authentication = new SignalARRRAuthentication(_serviceProvider);
             var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, invokeInfos.MethodInfo);
 
@@ -173,10 +174,10 @@ namespace Cocoar.SignalARRR.Server {
             if (invokeInfos.MethodInfo.DeclaringType == HARRR.GetType()) {
                 instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
             } else {
-                instance = invokeInfos.Factory.DynamicInvoke(_serviceProvider);
+                instance = invokeInfos.Factory.DynamicInvoke(_serviceProvider)!;
             }
 
-            
+
 
 
             return await InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments);
@@ -185,7 +186,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments) {
 
-            var parameters = BuildExecuteMethodParameters(methodInfo,arguments);
+            var parameters = BuildExecuteMethodParameters(methodInfo, arguments);
 
             SetInvokingInstanceProperties(instance);
 
@@ -193,14 +194,14 @@ namespace Cocoar.SignalARRR.Server {
             if (genericArguments?.Any() == true) {
 
                 var arrType = genericArguments.Select(TypeHelper.FindType).ToList();
-                methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray());
+                methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray()!);
             }
 
             if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
                 await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
-                return null;
+                return null!;
             } else {
-                return await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
+                return await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters) ?? null!;
             }
 
 
@@ -214,7 +215,7 @@ namespace Cocoar.SignalARRR.Server {
             if (methodInfo.DeclaringType == HARRR.GetType()) {
                 instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
             } else {
-                instance = _serviceProvider.GetRequiredService(methodInfo.ReflectedType);
+                instance = _serviceProvider.GetRequiredService(methodInfo.ReflectedType!);
             }
 
             var reflectInstance = instance.Reflect();
@@ -222,20 +223,20 @@ namespace Cocoar.SignalARRR.Server {
             reflectInstance.SetPropertyValue("Context", HARRR.Context);
             reflectInstance.SetPropertyValue("Clients", HARRR.Clients);
             reflectInstance.SetPropertyValue("Groups", HARRR.Groups);
-            var logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(instance.GetType().FullName) ?? NullLogger.Instance;
+            var logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(instance.GetType().FullName!) ?? NullLogger.Instance;
             reflectInstance.SetPropertyValue("Logger", logger);
 
             return instance;
         }
 
         private object SetInvokingInstanceProperties(object instance) {
-            
+
             var reflectInstance = instance.Reflect();
             reflectInstance.SetPropertyValue("ClientContext", ClientContext);
             reflectInstance.SetPropertyValue("Context", HARRR.Context);
             reflectInstance.SetPropertyValue("Clients", HARRR.Clients);
             reflectInstance.SetPropertyValue("Groups", HARRR.Groups);
-            var logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(instance.GetType().FullName) ?? NullLogger.Instance;
+            var logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(instance.GetType().FullName!) ?? NullLogger.Instance;
             reflectInstance.SetPropertyValue("Logger", logger);
 
             return instance;
@@ -253,7 +254,7 @@ namespace Cocoar.SignalARRR.Server {
 
             var convType = typeof(StreamingResult<>).MakeGenericType(taskType.GenericTypeArguments[0]);
 
-            var conv = (StreamingResult)Activator.CreateInstance(convType, ch, ClientContext, methodInfo);
+            var conv = (StreamingResult)Activator.CreateInstance(convType, ch, ClientContext, methodInfo)!;
 
             return conv;
         }
@@ -269,11 +270,11 @@ namespace Cocoar.SignalARRR.Server {
 
             var obsGenType = taskType.GenericTypeArguments[0];
             // ReSharper disable once PossibleNullReferenceException
-            var convMethod = typeof(ObservableExtensions).GetMethod("AsChannelReaderInternal", BindingFlags.Static | BindingFlags.NonPublic).MakeGenericMethod(obsGenType);
+            var convMethod = typeof(ObservableExtensions).GetMethod("AsChannelReaderInternal", BindingFlags.Static | BindingFlags.NonPublic)!.MakeGenericMethod(obsGenType);
             var channelReader = convMethod.Invoke(null, new[] { ch, cancellationToken });
 
             var convType = typeof(StreamingResult<>).MakeGenericType(taskType.GenericTypeArguments[0]);
-            var conv = (StreamingResult)Activator.CreateInstance(convType, channelReader, ClientContext, methodInfo);
+            var conv = (StreamingResult)Activator.CreateInstance(convType, channelReader, ClientContext, methodInfo)!;
 
             return conv;
         }
@@ -283,12 +284,12 @@ namespace Cocoar.SignalARRR.Server {
 
             int paramsPosition = 0;
             var @params = parameters.ToList();
-            return methodInfo.GetParameters().Select(p => {
+            return methodInfo.GetParameters().Select<ParameterInfo, object>(p => {
 
                 if (p.ParameterType == typeof(CancellationToken)) {
                     return cancellation;
                 }
-                
+
                 var fromServices = p.GetCustomAttribute<FromServicesAttribute>();
 
                 if (fromServices != null) {
@@ -302,12 +303,15 @@ namespace Cocoar.SignalARRR.Server {
                 var par = @params[paramsPosition];
 
                 if (par != null && p.ParameterType != par.GetType()) {
-                    // Convert parameter to the expected type using Reflectensions
-                    par = par.Reflect().To(p.ParameterType);
+                    if (par is JsonElement je) {
+                        par = je.Deserialize(p.ParameterType)!;
+                    } else {
+                        par = par.Reflect().To(p.ParameterType)!;
+                    }
                 }
 
                 paramsPosition++;
-                return par;
+                return par!;
 
             }).ToArray();
 

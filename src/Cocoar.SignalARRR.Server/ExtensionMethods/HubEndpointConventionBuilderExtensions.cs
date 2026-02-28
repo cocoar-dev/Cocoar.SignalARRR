@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Cocoar.Reflectensions;
 using Microsoft.AspNetCore.Builder;
@@ -43,7 +43,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             var stream = streamManager.GetByIdentifier(uri);
 
-            await stream
+            await stream!
                 .CopyToAsync(context.Response.Body, 131072, context.RequestAborted)
                 .ConfigureAwait(false);
 

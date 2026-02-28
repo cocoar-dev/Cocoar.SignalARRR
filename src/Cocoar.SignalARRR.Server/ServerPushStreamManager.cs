@@ -12,13 +12,13 @@ namespace Cocoar.SignalARRR.Server {
         public string StoreStreamForDownload(Stream stream, Uri baseUrl) {
 
             var uri = new Uri($"{baseUrl}/download/{Guid.NewGuid()}".ToLower());
-            
+
             _pendingStreams.TryAdd(uri.ToString(), stream);
             return uri.ToString();
 
         }
 
-        public Stream GetByIdentifier(string identifier) {
+        public Stream? GetByIdentifier(string identifier) {
             if (_pendingStreams.TryGetValue(identifier, out var str)) {
                 return str;
             }
@@ -27,11 +27,10 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public void DisposeStream(string identifier) {
-            if(_pendingStreams.TryRemove(identifier, out var stream))
-            {
+            if (_pendingStreams.TryRemove(identifier, out var stream)) {
                 stream?.Dispose();
             }
         }
     }
-    
+
 }

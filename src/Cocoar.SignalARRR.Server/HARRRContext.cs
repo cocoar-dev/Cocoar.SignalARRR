@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
@@ -11,7 +11,7 @@ namespace Cocoar.SignalARRR.Server {
 
         private IHubContext<T> HubContext { get; }
 
-        
+
 
 
         public ClientContextDispatcher(IHubContext<T> hubContext) {
@@ -38,7 +38,7 @@ namespace Cocoar.SignalARRR.Server {
                 Console.WriteLine(e);
                 throw;
             }
-            
+
         }
 
         public async Task CancelToken(string clientId, Guid id) {

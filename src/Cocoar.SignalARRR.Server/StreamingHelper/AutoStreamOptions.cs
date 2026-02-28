@@ -4,9 +4,9 @@ namespace Cocoar.SignalARRR.Server.StreamingHelper {
     public class AutoStreamOptions {
         public int? MemoryThreshold { get; internal set; }
 
-        public string TempDirectory { get; internal set; }
+        public string TempDirectory { get; internal set; } = null!;
 
-        public string FilePrefix { get; internal set; }
+        public string FilePrefix { get; internal set; } = null!;
 
 
     }

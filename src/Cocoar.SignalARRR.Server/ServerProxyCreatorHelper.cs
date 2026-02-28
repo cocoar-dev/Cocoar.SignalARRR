@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -34,7 +34,7 @@ namespace Cocoar.SignalARRR.Server {
         //}
 
         public override T Invoke<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-           return SimpleAsyncHelper.RunSync(() => InvokeAsync<T>(methodName, arguments, genericArguments, cancellationToken));
+            return SimpleAsyncHelper.RunSync(() => InvokeAsync<T>(methodName, arguments, genericArguments, cancellationToken));
         }
 
         //public override Task<object> InvokeAsync(Type returnType, string methodName, IEnumerable<object> arguments,
@@ -51,7 +51,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public override async Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
 
-            
+
             var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
@@ -69,7 +69,7 @@ namespace Cocoar.SignalARRR.Server {
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
             var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
-            
+
             //if(_httpContext != null)
             //{
             //    await harrrContext.ProxyClientAsync(_clientContext.Id, msg, _httpContext);
@@ -102,7 +102,7 @@ namespace Cocoar.SignalARRR.Server {
             if (_httpContext != null) {
                 await _httpContext.Ok();
             }
-            
+
         }
 
         public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
@@ -136,6 +136,6 @@ namespace Cocoar.SignalARRR.Server {
             return serverStreamManager.ReadStream<TResult>(streamId, cancellationToken);
         }
 
-        
+
     }
 }

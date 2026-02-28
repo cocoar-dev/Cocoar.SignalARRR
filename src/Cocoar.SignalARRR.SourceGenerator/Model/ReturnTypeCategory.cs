@@ -1,7 +1,6 @@
-namespace Cocoar.SignalARRR.SourceGenerator.Model;
+﻿namespace Cocoar.SignalARRR.SourceGenerator.Model;
 
-internal enum ReturnTypeCategory
-{
+internal enum ReturnTypeCategory {
     Void,
     Task,
     TaskOfT,

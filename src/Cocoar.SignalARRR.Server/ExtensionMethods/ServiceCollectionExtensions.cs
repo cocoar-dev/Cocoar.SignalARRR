@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
     public static class ServiceCollectionExtensions {
-        public static IServiceCollection AddSignalARRR(this IServiceCollection serviceCollection, Action<SignalARRRServerOptionsBuilder> options = null) {
+        public static IServiceCollection AddSignalARRR(this IServiceCollection serviceCollection, Action<SignalARRRServerOptionsBuilder>? options = null) {
 
             SignalARRRServerOptions serverOptions = options?.InvokeAction() ?? new SignalARRRServerOptionsBuilder();
 
@@ -86,7 +86,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             foreach (var grouping in grouped) {
 
-                if (!hubMethodsDictionary.TryGetValue(grouping.Key, out var coll))
+                if (grouping.Key == null || !hubMethodsDictionary.TryGetValue(grouping.Key, out var coll))
                     continue;
 
 

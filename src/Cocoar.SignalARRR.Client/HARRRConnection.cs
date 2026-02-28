@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
@@ -17,7 +17,7 @@ namespace Cocoar.SignalARRR.Client {
         private ConcurrentDictionary<string, Delegate> ServerRequestHandlers { get; } = new ConcurrentDictionary<string, Delegate>();
         private HARRRContext _harrrContext { get; }
 
-        
+
 
         public HARRRConnection(HARRRContext harrrContext) {
 
@@ -34,13 +34,13 @@ namespace Cocoar.SignalARRR.Client {
 #pragma warning disable 4014
             this.On<ServerRequestMessage>(MethodNames.InvokeServerRequest,
                  (requestMessage) => {
-                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage)); 
+                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
                      _harrrContext.MessageHandler.InvokeServerRequest(requestMessage);
                  });
 
             this.On<ServerRequestMessage>(MethodNames.InvokeServerMessage,
                  (requestMessage) => {
-                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage)); 
+                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
                      _harrrContext.MessageHandler.InvokeServerMessage(requestMessage);
 
                  });
@@ -54,7 +54,7 @@ namespace Cocoar.SignalARRR.Client {
         //}
 
         public T GetTypedMethods<T>() where T : class {
-            var instance =  ProxyCreator.CreateInstanceFromInterface<T>(new ClientProxyCreatorHelper(this));
+            var instance = ProxyCreator.CreateInstanceFromInterface<T>(new ClientProxyCreatorHelper(this));
             return instance;
         }
 
@@ -96,7 +96,7 @@ namespace Cocoar.SignalARRR.Client {
 
 
 
-        public IDisposable On(string methodName, Type[] parameterTypes, Func<object[], object, Task> handler, object state) {
+        public IDisposable On(string methodName, Type[] parameterTypes, Func<object?[], object, Task> handler, object state) {
             return HubConnection.On(methodName, parameterTypes, handler, state);
         }
 
@@ -131,7 +131,7 @@ namespace Cocoar.SignalARRR.Client {
 
         public async Task<object> InvokeCoreAsync(ClientRequestMessage message, Type returnType, CancellationToken cancellationToken = default) {
             message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
-            return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { message }, cancellationToken);
+            return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { message }, cancellationToken) ?? null!;
         }
 
         public async Task InvokeCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
@@ -141,7 +141,7 @@ namespace Cocoar.SignalARRR.Client {
 
         public async Task<object> InvokeCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
             var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
-            return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { msg }, cancellationToken);
+            return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { msg }, cancellationToken) ?? null!;
         }
 
         public async Task InvokeCoreAsync(string methodName, object[] args, CancellationToken cancellationToken = default) {
@@ -180,9 +180,9 @@ namespace Cocoar.SignalARRR.Client {
             return HubConnection.StreamAsyncCore<TResult>(MethodNames.StreamMessageFromServer, new object[] { msg }, cancellationToken);
         }
 
-        public Task<ChannelReader<object>> StreamAsChannelCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
+        public async Task<ChannelReader<object>> StreamAsChannelCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
             var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
-            return HubConnection.StreamAsChannelCoreAsync(MethodNames.StreamMessageFromServer, returnType, new object[] { msg }, cancellationToken);
+            return (await HubConnection.StreamAsChannelCoreAsync(MethodNames.StreamMessageFromServer, returnType, new object[] { msg }, cancellationToken))!;
         }
 
         public async Task<ChannelReader<TResult>> StreamAsChannelCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
@@ -197,13 +197,13 @@ namespace Cocoar.SignalARRR.Client {
             return HubConnection;
         }
 
-        public static HARRRConnection Create(Action<HubConnectionBuilder> builder, Action<HARRRConnectionOptionsBuilder> optionsBuilder = null) {
+        public static HARRRConnection Create(Action<HubConnectionBuilder> builder, Action<HARRRConnectionOptionsBuilder>? optionsBuilder = null) {
             var intermediateBuilder = builder.InvokeAction();
             var hubConnection = intermediateBuilder.Build();
             return Create(hubConnection, optionsBuilder);
         }
 
-        public static HARRRConnection Create(HubConnection hubConnection, Action<HARRRConnectionOptionsBuilder> optionsBuilder = null) {
+        public static HARRRConnection Create(HubConnection hubConnection, Action<HARRRConnectionOptionsBuilder>? optionsBuilder = null) {
             var harrrContext = new HARRRContext(hubConnection.GetServiceProvider(), optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder());
             return new HARRRConnection(harrrContext);
         }
@@ -240,7 +240,7 @@ namespace Cocoar.SignalARRR.Client {
             set => HubConnection.HandshakeTimeout = value;
         }
 
-        public string ConnectionId => HubConnection.ConnectionId;
+        public string? ConnectionId => HubConnection.ConnectionId;
 
         public HubConnectionState State => HubConnection.State;
 

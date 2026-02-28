@@ -22,15 +22,15 @@ namespace Cocoar.SignalARRR.Server {
 
                 switch (argument) {
                     case null: {
-                            yield return null;
+                            yield return null!;
                             continue;
                         }
                     case Stream stream: {
-                        yield return PrepareStream(stream);
+                            yield return PrepareStream(stream);
                             continue;
                         }
                     case CancellationToken cancellationToken: {
-                        yield return PrepareCancellationToken(cancellationToken);
+                            yield return PrepareCancellationToken(cancellationToken);
                             continue;
                         }
                     default:

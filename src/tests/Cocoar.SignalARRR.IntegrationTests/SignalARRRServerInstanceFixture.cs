@@ -1,85 +1,73 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Cocoar.SignalARRR.IntegrationTests.Extensions;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
-using Cocoar.SignalARRR.Server.JsonConverters;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
 using Xunit;
-using Cocoar.SignalARRR.IntegrationTests.Extensions;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
-    public class SignalARRRServerInstanceFixture: IDisposable {
+    public class SignalARRRServerInstanceFixture : IDisposable {
 
 
         IHost _host;
         public string ServerUrl { get; private set; }
 
         public SignalARRRServerInstanceFixture() {
-             
-            
+
+
             var hostBuilder = new HostBuilder()
-                .ConfigureWebHost(webBuilder =>
-                {
+                .ConfigureWebHost(webBuilder => {
                     webBuilder
                         .UseKestrel()
                         .UseUrls("http://127.0.0.1:0") // Use random available port
-                        .ConfigureServices(services =>
-                        {
+                        .ConfigureServices(services => {
 
                             services.AddRouting();
 
-                            services.AddMvc().AddNewtonsoftJson(options => {
-                                options.SerializerSettings.Converters.Add(new IpAddressConverter());
-                                options.SerializerSettings.Converters.Add(new StringEnumConverter());
-                                options.SerializerSettings.ContractResolver = new DefaultContractResolver();
+                            services.AddMvc().AddJsonOptions(options => {
+                                options.JsonSerializerOptions.PropertyNamingPolicy = null;
+                                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
                             });
 
-                            services.AddSignalR().AddNewtonsoftJsonProtocol(options =>
-                                {
-                                    options.PayloadSerializerSettings.ContractResolver = new DefaultContractResolver();
-                                    options.PayloadSerializerSettings.Converters.Add(new StringEnumConverter());
-                                    options.PayloadSerializerSettings.Converters.Add(new IpAddressConverter());
-                                    options.PayloadSerializerSettings.ReferenceLoopHandling = ReferenceLoopHandling.Ignore;
-                                });
+                            services.AddSignalR().AddJsonProtocol(options => {
+                                options.PayloadSerializerOptions.PropertyNamingPolicy = null;
+                                options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                                options.PayloadSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+                            });
                             services.AddSignalARRR(builder => builder
                                 .AddServerMethodsFrom(typeof(TestHub).Assembly)
                             );
-                            
+
                         })
-                        .Configure(app =>
-                        {
+                        .Configure(app => {
 
                             app.UseRouting();
-                            app.UseEndpoints(endpoints =>
-                            {
+                            app.UseEndpoints(endpoints => {
                                 endpoints.MapHARRRController<TestHub>("/signalr/testhub");
 
                                 // Minimal API test trigger: server -> client call via HTTP
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-call", async (context, _clientManager) =>
-                                {
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-call", async (context, _clientManager) => {
                                     var request = context.Request;
                                     var connectionId = request.Query["connectionId"].ToString();
                                     var method = request.Query["method"].ToString();
                                     var arg = request.Query["arg"].ToString();
 
-                                    if (string.IsNullOrWhiteSpace(connectionId) || string.IsNullOrWhiteSpace(method))
-                                    {
+                                    if (string.IsNullOrWhiteSpace(connectionId) || string.IsNullOrWhiteSpace(method)) {
                                         return Results.BadRequest("Missing connectionId or method");
                                     }
 
@@ -97,14 +85,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                 });
 
                                 // Minimal API test trigger: server cancels client's CancellationToken
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-cancellation", async (context, clientManager) =>
-                                {
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-cancellation", async (context, clientManager) => {
                                     var request = context.Request;
                                     var connectionId = request.Query["connectionId"].ToString();
                                     var delayMs = int.TryParse(request.Query["delayMs"].ToString(), out var d) ? d : 200;
 
-                                    if (string.IsNullOrWhiteSpace(connectionId))
-                                    {
+                                    if (string.IsNullOrWhiteSpace(connectionId)) {
                                         return Results.BadRequest("Missing connectionId");
                                     }
 
@@ -116,34 +102,28 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                     await Task.Delay(delayMs);
                                     cts.Cancel();
 
-                                    try
-                                    {
+                                    try {
                                         await waitTask;
                                         return (object)"completed";
-                                    }
-                                    catch (Exception)
-                                    {
+                                    } catch (Exception) {
                                         // Expected: cancellation causes InvokeCoreAsync to abort
                                         return (object)"cancelled";
                                     }
                                 });
 
                                 // Minimal API test trigger: server requests stream from client
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-stream", async (context, clientManager) =>
-                                {
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-stream", async (context, clientManager) => {
                                     var request = context.Request;
                                     var connectionId = request.Query["connectionId"].ToString();
                                     var count = int.TryParse(request.Query["count"].ToString(), out var c) ? c : 5;
 
-                                    if (string.IsNullOrWhiteSpace(connectionId))
-                                    {
+                                    if (string.IsNullOrWhiteSpace(connectionId)) {
                                         return Results.BadRequest("Missing connectionId");
                                     }
 
                                     var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
                                     var items = new List<int>();
-                                    await foreach (var item in typedClient.StreamNumbers(count))
-                                    {
+                                    await foreach (var item in typedClient.StreamNumbers(count)) {
                                         items.Add(item);
                                     }
 
@@ -151,13 +131,11 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                 });
 
                                 // Minimal API test trigger: server -> client typed call using SignalARRR typed methods
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-typed-call", (context, clientManager) =>
-                                {
+                                endpoints.MapSignalARRRTest("/__test/trigger-client-typed-call", (context, clientManager) => {
                                     var request = context.Request;
                                     var connectionId = request.Query["connectionId"].ToString();
 
-                                    if (string.IsNullOrWhiteSpace(connectionId))
-                                    {
+                                    if (string.IsNullOrWhiteSpace(connectionId)) {
                                         return Results.BadRequest("Missing connectionId");
                                     }
 
@@ -171,15 +149,15 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
                         });
 
-                    
+
                 });
 
-                    
-                _host = hostBuilder.Start();
-                
-                // Get the actual URL that the server is listening on
-                var addresses = _host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
-                ServerUrl = addresses!.Addresses.First();
+
+            _host = hostBuilder.Start();
+
+            // Get the actual URL that the server is listening on
+            var addresses = _host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
+            ServerUrl = addresses!.Addresses.First();
 
         }
 
@@ -187,8 +165,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             return _host;
         }
 
-        public void Dispose()
-        {
+        public void Dispose() {
             _host?.StopAsync().GetAwaiter().GetResult();
             _host?.Dispose();
         }

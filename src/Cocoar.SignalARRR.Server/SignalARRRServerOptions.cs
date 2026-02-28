@@ -5,9 +5,9 @@ using System.Reflection;
 namespace Cocoar.SignalARRR.Server {
     public class SignalARRRServerOptions {
 
-        public List<Assembly> AssembliesContainingServerMethods { get; }= new List<Assembly>()
+        public List<Assembly> AssembliesContainingServerMethods { get; } = new List<Assembly>()
         {
-            Assembly.GetEntryAssembly()
+            Assembly.GetEntryAssembly()!
         };
 
         public List<Type> PreBuiltClientMethods { get; } = new List<Type>();

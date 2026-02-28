@@ -5,9 +5,8 @@ using Cocoar.SignalARRR.Common.Helper;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cocoar.SignalARRR.Common
-{
-    public class SignalARRRInterfaceCollection: ISignalARRRInterfaceCollection {
+namespace Cocoar.SignalARRR.Common {
+    public class SignalARRRInterfaceCollection : ISignalARRRInterfaceCollection {
 
         private ConcurrentDictionary<Type, ClientInterfaceMethodsCache> RegisteredTypes = new ConcurrentDictionary<Type, ClientInterfaceMethodsCache>();
 
@@ -22,7 +21,7 @@ namespace Cocoar.SignalARRR.Common
                 return Activator.CreateInstance<TClass>();
             }
 
-            RegisterInterface<TInterface, TClass>((Func<IServiceProvider, TClass>) Factory);
+            RegisterInterface<TInterface, TClass>((Func<IServiceProvider, TClass>)Factory);
         }
         public void RegisterInterface<TInterface, TClass>(TClass instance) where TClass : class, TInterface {
 
@@ -30,14 +29,14 @@ namespace Cocoar.SignalARRR.Common
         }
         public void RegisterInterface<TInterface, TClass>(Func<IServiceProvider, TClass> factory)
             where TClass : class, TInterface {
-            
+
             RegisteredTypes.AddOrUpdate(typeof(TInterface),
-                type => new ClientInterfaceMethodsCache(factory, type), 
+                type => new ClientInterfaceMethodsCache(factory, type),
                 (type, del) => new ClientInterfaceMethodsCache(factory, type));
         }
 
         public void RegisterInterface(Type interfaceType, Type instanceType) {
-            
+
             object Factory(IServiceProvider sp) {
                 var fromServiceProvider = sp.GetService(instanceType);
                 if (fromServiceProvider != null) {
@@ -45,7 +44,7 @@ namespace Cocoar.SignalARRR.Common
                 }
 
                 return ActivatorUtilities.CreateInstance(sp, instanceType);
-                
+
                 //return Activator.CreateInstance(instanceType);
             }
 

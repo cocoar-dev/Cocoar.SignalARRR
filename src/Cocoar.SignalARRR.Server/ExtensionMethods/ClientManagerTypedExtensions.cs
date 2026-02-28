@@ -1,16 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
-namespace Cocoar.SignalARRR.Server.ExtensionMethods
-{
-    public static class ClientManagerTypedExtensions
-    {
+namespace Cocoar.SignalARRR.Server.ExtensionMethods {
+    public static class ClientManagerTypedExtensions {
         /// <summary>
         /// Get typed client methods proxy for a specific connection id.
         /// Throws InvalidOperationException when the client is not found.
         /// </summary>
-        public static T GetTypedMethods<T>(this ClientManager clientManager, string connectionId) where T : class
-        {
+        public static T GetTypedMethods<T>(this ClientManager clientManager, string connectionId) where T : class {
             if (clientManager == null) throw new ArgumentNullException(nameof(clientManager));
             if (string.IsNullOrWhiteSpace(connectionId)) throw new ArgumentNullException(nameof(connectionId));
 
@@ -23,12 +20,10 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods
         /// <summary>
         /// Enumerate all connected clients and their typed method proxies.
         /// </summary>
-        public static IEnumerable<(ClientContext Context, T Methods)> GetAllTypedMethods<T>(this ClientManager clientManager) where T : class
-        {
+        public static IEnumerable<(ClientContext Context, T Methods)> GetAllTypedMethods<T>(this ClientManager clientManager) where T : class {
             if (clientManager == null) throw new ArgumentNullException(nameof(clientManager));
 
-            foreach (var ctx in clientManager.GetAllClients())
-            {
+            foreach (var ctx in clientManager.GetAllClients()) {
                 yield return (ctx, ctx.GetTypedMethods<T>());
             }
         }
@@ -38,12 +33,10 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods
         /// </summary>
         public static IEnumerable<(ClientContext Context, T Methods)> GetTypedMethodsForHub<T, THub>(this ClientManager clientManager)
             where T : class
-            where THub : HARRR
-        {
+            where THub : HARRR {
             if (clientManager == null) throw new ArgumentNullException(nameof(clientManager));
 
-            foreach (var ctx in clientManager.GetHARRRClients<THub>())
-            {
+            foreach (var ctx in clientManager.GetHARRRClients<THub>()) {
                 yield return (ctx, ctx.GetTypedMethods<T>());
             }
         }

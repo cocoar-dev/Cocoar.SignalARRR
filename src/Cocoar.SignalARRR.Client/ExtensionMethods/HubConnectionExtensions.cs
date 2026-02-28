@@ -9,18 +9,18 @@ namespace Cocoar.SignalARRR.Client.ExtensionMethods {
 
         public static IServiceProvider GetServiceProvider(this HubConnection hubConnection) {
 
-            var serviceProvider = (IServiceProvider)hubConnection.GetType().GetField("_serviceProvider", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(hubConnection);
+            var serviceProvider = (IServiceProvider)hubConnection.GetType().GetField("_serviceProvider", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(hubConnection)!;
             return serviceProvider;
 
         }
 
-        public static Func<Task<string>> GetAccessTokenProvider(this HubConnection hubConnection) {
+        public static Func<Task<string>>? GetAccessTokenProvider(this HubConnection hubConnection) {
 
             var connectionFactory = hubConnection.GetType().GetField("_connectionFactory", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(hubConnection);
 
             var httpConnectionOption = connectionFactory?.GetType().GetField("_httpConnectionOptions", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(connectionFactory) as HttpConnectionOptions;
 
-            return httpConnectionOption?.AccessTokenProvider;
+            return httpConnectionOption?.AccessTokenProvider!;
         }
     }
 }

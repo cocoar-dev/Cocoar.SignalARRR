@@ -13,8 +13,8 @@ namespace Cocoar.SignalARRR.Client.ExtensionMethods {
             var methodParameters = methodInfo.GetParameters();
             var arguments = new List<Type>(methodParameters.Select(p => p.ParameterType));
             arguments.Add(methodInfo.ReturnType);
-            
-            
+
+
             if (methodInfo.ReturnType == typeof(void)) {
                 var action = Expression.GetActionType(arguments.ToArray());
                 return Delegate.CreateDelegate(action, target, methodInfo);

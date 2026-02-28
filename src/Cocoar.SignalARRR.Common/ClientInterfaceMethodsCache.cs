@@ -2,8 +2,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 
-namespace Cocoar.SignalARRR.Common
-{
+namespace Cocoar.SignalARRR.Common {
     public class ClientInterfaceMethodsCache {
 
         private ConcurrentDictionary<string, MethodInfo> Methods = new ConcurrentDictionary<string, MethodInfo>();
@@ -23,6 +22,6 @@ namespace Cocoar.SignalARRR.Common
             var method = Methods.TryGetValue(methodName, out var methodInfo) ? methodInfo : throw new Exception($"Method '{methodName}' not found!");
             return (Factory, method);
         }
-        
+
     }
 }

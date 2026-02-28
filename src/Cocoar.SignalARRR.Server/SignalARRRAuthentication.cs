@@ -42,7 +42,7 @@ namespace Cocoar.SignalARRR.Server {
         //        }
         //        ctx.Request.Headers["Authorization"] = authorization;
 
-                
+
         //        authenticateResult = await authenticationService.AuthenticateAsync(ctx, scheme);
 
         //    } else {
@@ -55,20 +55,20 @@ namespace Cocoar.SignalARRR.Server {
         //}
 
 
-        
+
         public async Task<PolicyAuthorizationResult> Authorize(ClientContext clientContext, string authorization, MethodInfo methodInfo) {
 
 
             var authorizeData = methodInfo.GetAuthorizeData();
 
-            if(!authorizeData.Any())
+            if (!authorizeData.Any())
                 return PolicyAuthorizationResult.Success();
 
             var authenticationService = _serviceProvider.GetRequiredService<IAuthenticationService>();
             var policyEvaluator = _serviceProvider.GetRequiredService<IPolicyEvaluator>();
             var policyProvider = _serviceProvider.GetRequiredService<IAuthorizationPolicyProvider>();
 
-           
+
             if (!authorizeData.Any()) {
                 authorizeData = methodInfo.DeclaringType?.GetCustomAttributes<AuthorizeAttribute>().ToList() ?? new List<AuthorizeAttribute>();
             }
@@ -100,19 +100,19 @@ namespace Cocoar.SignalARRR.Server {
 
                     authenticateResult = await authenticationService.AuthenticateAsync(ctx, policyAuthenticationScheme);
                     if (authenticateResult.Succeeded) {
-                        clientContext.SetPrincipal(authenticateResult.Principal);
+                        clientContext.SetPrincipal(authenticateResult.Principal!);
                         break;
                     }
                 }
 
-                
+
             } else {
-                var t = new AuthenticationTicket(clientContext.User, clientContext.User.Identity.AuthenticationType);
+                var t = new AuthenticationTicket(clientContext.User, clientContext.User.Identity?.AuthenticationType ?? string.Empty);
                 authenticateResult = AuthenticateResult.Success(t);
             }
 
-            ctx.User = authenticateResult.Principal;
-            
+            ctx.User = authenticateResult.Principal ?? new System.Security.Claims.ClaimsPrincipal();
+
 
             if (methodInfo.GetCustomAttribute<AllowAnonymousAttribute>() != null) {
                 return PolicyAuthorizationResult.Success();

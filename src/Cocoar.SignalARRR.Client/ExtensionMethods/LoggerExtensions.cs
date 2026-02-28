@@ -2,7 +2,7 @@
 
 namespace Cocoar.SignalARRR.Client.ExtensionMethods {
 
-    
+
     public static class LoggerExtensions {
 
         public static ILoggerProvider AsLoggerProvider(this ILogger logger) {

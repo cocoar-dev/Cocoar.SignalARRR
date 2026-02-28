@@ -12,12 +12,11 @@ namespace Cocoar.SignalARRR.Common {
         public Guid? CancellationGuid { get; set; }
         public Guid? StreamId { get; set; }
 
-        public ServerRequestMessage()
-        {
+        public ServerRequestMessage() {
             Id = Guid.NewGuid();
         }
 
-        public ServerRequestMessage(string methodName): this() {
+        public ServerRequestMessage(string methodName) : this() {
             Method = methodName;
         }
 

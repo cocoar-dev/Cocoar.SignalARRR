@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using SignalARRR;
 using SignalARRR.Server;
 using SignalARRR.Server.ExtensionMethods;
@@ -24,7 +24,7 @@ namespace TestServer.Controllers {
         }
 
         [HttpPost]
-        public async Task<IActionResult> SendToClient([FromBody] JToken query) {
+        public async Task<IActionResult> SendToClient([FromBody] JsonElement query) {
 
 
             var result = await ClientManager
@@ -35,7 +35,7 @@ namespace TestServer.Controllers {
             return Ok(result);
         }
         [HttpPost("all")]
-        public async Task<IActionResult> SendToAll([FromBody] JToken query) {
+        public async Task<IActionResult> SendToAll([FromBody] JsonElement query) {
 
 
             var result = await ClientManager

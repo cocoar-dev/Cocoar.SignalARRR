@@ -1,10 +1,9 @@
-using System;
+﻿using System;
 using Cocoar.SignalARRR.SourceGenerator.Helpers;
 
 namespace Cocoar.SignalARRR.SourceGenerator.Model;
 
-internal readonly struct ContractInterfaceInfo : IEquatable<ContractInterfaceInfo>
-{
+internal readonly struct ContractInterfaceInfo : IEquatable<ContractInterfaceInfo> {
     public string Namespace { get; }
     public string InterfaceName { get; }
     public string FullName { get; }
@@ -16,8 +15,7 @@ internal readonly struct ContractInterfaceInfo : IEquatable<ContractInterfaceInf
         string interfaceName,
         string fullName,
         string proxyClassName,
-        EquatableArray<ContractMethodInfo> methods)
-    {
+        EquatableArray<ContractMethodInfo> methods) {
         Namespace = @namespace;
         InterfaceName = interfaceName;
         FullName = fullName;
@@ -34,8 +32,7 @@ internal readonly struct ContractInterfaceInfo : IEquatable<ContractInterfaceInf
 
     public override bool Equals(object? obj) => obj is ContractInterfaceInfo other && Equals(other);
 
-    public override int GetHashCode()
-    {
+    public override int GetHashCode() {
         var hash = HashCombine.Of(Namespace);
         hash = HashCombine.Combine(hash, HashCombine.Of(InterfaceName));
         hash = HashCombine.Combine(hash, HashCombine.Of(FullName));

@@ -1,10 +1,9 @@
-using System;
+﻿using System;
 using Cocoar.SignalARRR.SourceGenerator.Helpers;
 
 namespace Cocoar.SignalARRR.SourceGenerator.Model;
 
-internal readonly struct ContractParameterInfo : IEquatable<ContractParameterInfo>
-{
+internal readonly struct ContractParameterInfo : IEquatable<ContractParameterInfo> {
     public string TypeFullName { get; }
     public string Name { get; }
     public bool HasDefaultValue { get; }
@@ -16,8 +15,7 @@ internal readonly struct ContractParameterInfo : IEquatable<ContractParameterInf
         string name,
         bool hasDefaultValue,
         string? defaultValueLiteral,
-        bool isCancellationToken)
-    {
+        bool isCancellationToken) {
         TypeFullName = typeFullName;
         Name = name;
         HasDefaultValue = hasDefaultValue;
@@ -34,8 +32,7 @@ internal readonly struct ContractParameterInfo : IEquatable<ContractParameterInf
 
     public override bool Equals(object? obj) => obj is ContractParameterInfo other && Equals(other);
 
-    public override int GetHashCode()
-    {
+    public override int GetHashCode() {
         var hash = HashCombine.Of(TypeFullName);
         hash = HashCombine.Combine(hash, HashCombine.Of(Name));
         hash = HashCombine.Combine(hash, HasDefaultValue ? 1 : 0);

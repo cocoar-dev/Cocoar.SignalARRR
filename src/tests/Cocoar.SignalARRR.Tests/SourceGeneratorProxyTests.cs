@@ -1,25 +1,21 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.CompilerServices;
 using Cocoar.SignalARRR.ProxyGenerator;
-using SignalARRR.Tests.SharedModels;
+using Cocoar.SignalARRR.Tests.SharedModels;
 using TestShared;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Cocoar.SignalARRR.Tests;
 
-public class SourceGeneratorProxyTests
-{
+public class SourceGeneratorProxyTests {
     private readonly ITestOutputHelper _output;
 
-    public SourceGeneratorProxyTests(ITestOutputHelper output)
-    {
+    public SourceGeneratorProxyTests(ITestOutputHelper output) {
         _output = output;
     }
 
     [Fact]
-    public void ModuleInitializer_IsPresent_InTestSharedAssembly()
-    {
+    public void ModuleInitializer_IsPresent_InTestSharedAssembly() {
         var asm = typeof(ITestHub).Assembly;
         _output.WriteLine($"Assembly: {asm.FullName}");
         _output.WriteLine($"Location: {asm.Location}");
@@ -39,8 +35,7 @@ public class SourceGeneratorProxyTests
     }
 
     [Fact]
-    public void ModuleInitializer_RegistersFactories_WhenCalledExplicitly()
-    {
+    public void ModuleInitializer_RegistersFactories_WhenCalledExplicitly() {
         // Call the generated initializer explicitly via reflection
         var asm = typeof(ITestHub).Assembly;
         var regType = asm.GetType("TestShared.SignalARRR.SignalARRRProxyRegistration");
@@ -60,10 +55,9 @@ public class SourceGeneratorProxyTests
     }
 
     [Fact]
-    public void ModuleInitializer_RegistersFactories_ForSharedModels()
-    {
+    public void ModuleInitializer_RegistersFactories_ForSharedModels() {
         var asm = typeof(ITestServerMethods).Assembly;
-        var regType = asm.GetType("SignalARRR.Tests.SharedModels.SignalARRR.SignalARRRProxyRegistration");
+        var regType = asm.GetType("Cocoar.SignalARRR.Tests.SharedModels.SignalARRR.SignalARRRProxyRegistration");
         Assert.NotNull(regType);
 
         var initMethod = regType!.GetMethod("Initialize",

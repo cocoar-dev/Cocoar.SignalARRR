@@ -3,7 +3,7 @@
 namespace Cocoar.SignalARRR.Client {
     public partial class HARRRConnection {
 
-        public event EventHandler<ServerRequestEventArgs> OnServerRequestMessage;
+        public event EventHandler<ServerRequestEventArgs> OnServerRequestMessage = null!;
 
     }
 }

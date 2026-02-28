@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -8,44 +8,36 @@ using Cocoar.SignalARRR.Client;
 using Microsoft.AspNetCore.SignalR.Client;
 using Xunit;
 
-namespace Cocoar.SignalARRR.IntegrationTests
-{
+namespace Cocoar.SignalARRR.IntegrationTests {
     [Collection("Simple")]
-    public class StreamingTests : IAsyncLifetime
-    {
+    public class StreamingTests : IAsyncLifetime {
         private readonly SignalARRRServerInstanceFixture _fixture;
         private readonly HARRRConnection _connection;
 
-        public StreamingTests(SignalARRRServerInstanceFixture fixture)
-        {
+        public StreamingTests(SignalARRRServerInstanceFixture fixture) {
             _fixture = fixture;
 
-            _connection = HARRRConnection.Create(builder =>
-            {
+            _connection = HARRRConnection.Create(builder => {
                 builder.WithUrl($"{fixture.ServerUrl}/signalr/testhub");
             });
         }
 
-        public async Task InitializeAsync()
-        {
+        public async ValueTask InitializeAsync() {
             await _connection.StartAsync();
         }
 
-        public async Task DisposeAsync()
-        {
+        public async ValueTask DisposeAsync() {
             await _connection.StopAsync();
             await _connection.DisposeAsync();
         }
 
         [Fact]
-        public async Task StreamChannel_ReceivesAllItems()
-        {
+        public async Task StreamChannel_ReceivesAllItems() {
             var items = new List<int>();
             // Use very small delay (10ms) for fast tests
-            var stream = _connection.StreamAsync<int>("Counter", 5, 10, CancellationToken.None);
+            var stream = _connection.StreamAsync<int>("Counter", 5, 10, TestContext.Current.CancellationToken);
 
-            await foreach (var item in stream)
-            {
+            await foreach (var item in stream) {
                 items.Add(item);
             }
 
@@ -54,28 +46,22 @@ namespace Cocoar.SignalARRR.IntegrationTests
         }
 
         [Fact]
-        public async Task StreamChannel_CancellationStopsStream()
-        {
+        public async Task StreamChannel_CancellationStopsStream() {
             var cts = new CancellationTokenSource();
             var items = new List<int>();
             // Use very small delay (10ms) for fast tests
             var stream = _connection.StreamAsync<int>("Counter", 100, 10, cts.Token);
 
-            try
-            {
+            try {
                 var count = 0;
-                await foreach (var item in stream)
-                {
+                await foreach (var item in stream) {
                     items.Add(item);
                     count++;
-                    if (count == 3)
-                    {
+                    if (count == 3) {
                         cts.Cancel();
                     }
                 }
-            }
-            catch (OperationCanceledException)
-            {
+            } catch (OperationCanceledException) {
                 // Expected when cancellation is requested
             }
 

@@ -16,7 +16,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(clientContext.HARRRType);
             var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
-            
+
             var msg = new ServerRequestMessage(method, arguments);
             var res = await harrrContext.InvokeClientAsync<TResult>(clientContext.Id, msg, cancellationToken);
             return new ClientCollectionResult<TResult>(clientContext.Id, res);
@@ -43,7 +43,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         //    var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
         //    var msg = new ServerRequestMessage(method, arguments);
         //    await harrrContext.ProxyClientAsync(clientContext.Id, msg, httpContext);
-            
+
         //}
 
         //public static async Task<string> Challenge(this ClientContext clientContext) {
@@ -56,9 +56,9 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         //}
 
         public static async Task<IEnumerable<ClientCollectionResult<TResult>>> InvokeAllAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
-            
+
             var tasks = new List<Task<ClientCollectionResult<TResult>>>();
-            
+
             foreach (var context in clientContext) {
                 tasks.Add(context.Invoke<TResult>(method, arguments, cancellationToken));
             }
@@ -71,24 +71,24 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         public static async Task<ClientCollectionResult<TResult>> InvokeOneAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
 
 
-            ClientCollectionResult<TResult> result = default;
+            ClientCollectionResult<TResult>? result = default;
             foreach (var context in clientContext) {
 
                 try {
-                    
+
                     result = await context.Invoke<TResult>(method, arguments, cancellationToken);
                     break;
                 } catch (Exception e) {
                     Console.WriteLine(e);
                 }
-                
+
             }
-            
-            return result;
+
+            return result!;
         }
 
 
-        public static T InvokeSingle<T>(this IEnumerable<ClientContext> clientContext) {
+        public static T? InvokeSingle<T>(this IEnumerable<ClientContext> clientContext) {
 
             return default;
         }

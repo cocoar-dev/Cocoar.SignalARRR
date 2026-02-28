@@ -7,13 +7,13 @@ using Microsoft.AspNetCore.Http;
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
     public static class HttpContextExtensions {
 
-        public static Task<string> GetRawBodyStringAsync(this HttpContext httpContext, Encoding encoding) {
+        public static async Task<string?> GetRawBodyStringAsync(this HttpContext httpContext, Encoding encoding) {
 
             if (httpContext.Request.ContentLength == null || !(httpContext.Request.ContentLength > 0))
-                return Task.FromResult<string>(null);
+                return null;
 
             using var reader = new StreamReader(httpContext.Request.Body, encoding, true, 1024, true);
-            return reader.ReadToEndAsync();
+            return await reader.ReadToEndAsync();
 
         }
 

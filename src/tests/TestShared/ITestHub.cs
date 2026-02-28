@@ -6,12 +6,11 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Contracts;
 
-namespace TestShared
-{
+namespace TestShared {
     [SignalARRRContract]
     public interface ITestHub {
         void WriteLine(string line);
-        Task<Guid> StringToGuid(Guid guid, string test = null);
+        Task<Guid> StringToGuid(Guid guid, string? test = null);
 
         IObservable<string> ObservableCounter(int count, int delay);
 

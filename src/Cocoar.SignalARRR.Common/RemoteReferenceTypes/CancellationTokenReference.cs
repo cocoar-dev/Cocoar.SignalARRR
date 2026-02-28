@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace Cocoar.SignalARRR.Common.RemoteReferenceTypes {
     public class CancellationTokenReference {

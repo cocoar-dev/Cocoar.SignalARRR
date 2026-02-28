@@ -18,9 +18,8 @@ namespace Cocoar.SignalARRR.Client {
           string methodName,
           Type[] parameterTypes,
           Action<object[]> handler) {
-            return harrrConnection.On(methodName, parameterTypes, (Func<object[], object, Task>)((parameters, state) =>
-            {
-                ((Action<object[]>)state)(parameters);
+            return harrrConnection.On(methodName, parameterTypes, (Func<object?[], object, Task>)((parameters, state) => {
+                ((Action<object[]>)state)(parameters!);
                 return Task.CompletedTask;
             }), (object)handler);
         }
@@ -270,7 +269,7 @@ namespace Cocoar.SignalARRR.Client {
           string methodName,
           Type[] parameterTypes,
           Func<object[], Task> handler) {
-            return harrrConnection.On(methodName, parameterTypes, (Func<object[], object, Task>)((parameters, state) => ((Func<object[], Task>)state)(parameters)), (object)handler);
+            return harrrConnection.On(methodName, parameterTypes, (Func<object?[], object, Task>)((parameters, state) => ((Func<object[], Task>)state)(parameters!)), (object)handler);
         }
 
         /// <summary>
@@ -505,8 +504,8 @@ namespace Cocoar.SignalARRR.Client {
             }, (Func<object[], Task>)(args => handler((T1)args[0], (T2)args[1], (T3)args[2], (T4)args[3], (T5)args[4], (T6)args[5], (T7)args[6], (T8)args[7])));
         }
 
-        
-        
+
+
         /// <summary>
         /// Invokes a hub method on the server using the specified method name.
         /// </summary>
@@ -2033,7 +2032,7 @@ namespace Cocoar.SignalARRR.Client {
                 label_6:
                     if (await inputChannel.WaitToReadAsync(new CancellationToken())) {
                     label_2:
-                        object item;
+                        object? item;
                         if (inputChannel.TryRead(out item)) {
                             while (!outputChannel.Writer.TryWrite((TResult)item)) {
                                 if (!await outputChannel.Writer.WaitToWriteAsync(new CancellationToken()))
@@ -2047,7 +2046,7 @@ namespace Cocoar.SignalARRR.Client {
                 } catch (Exception ex) {
                     outputChannel.Writer.TryComplete(ex);
                 } finally {
-                    outputChannel.Writer.TryComplete((Exception)null);
+                    outputChannel.Writer.TryComplete((Exception?)null);
                 }
             }
         }

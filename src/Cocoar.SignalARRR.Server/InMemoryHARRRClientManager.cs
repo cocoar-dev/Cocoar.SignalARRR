@@ -15,13 +15,13 @@ namespace Cocoar.SignalARRR.Server {
         public ClientContext Register(HARRR huc, HubCallerContext hubContext) {
 
             return ClientStore.AddOrUpdate(hubContext.ConnectionId, id => {
-            
+
                 return new ClientContext(huc, hubContext) {
                     ConnectedAt = DateTime.UtcNow
                 };
 
             }, (s, cl) => {
-                
+
                 cl.ReconnectedAt.Add(DateTime.UtcNow);
                 return cl;
 
@@ -30,11 +30,11 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public ClientContext UnRegister(string connectionId) {
-            return ClientStore.TryRemove(connectionId, out var client) ? client : null;
+            return ClientStore.TryRemove(connectionId, out var client) ? client : null!;
         }
 
         public ClientContext GetClient(string connectionId) {
-            return ClientStore.TryGetValue(connectionId, out var client) ? client : null;
+            return ClientStore.TryGetValue(connectionId, out var client) ? client : null!;
         }
 
         public IEnumerable<ClientContext> GetClients() {

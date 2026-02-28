@@ -1,14 +1,12 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Cocoar.SignalARRR.SourceGenerator.Model;
 
 namespace Cocoar.SignalARRR.SourceGenerator.Emitters;
 
-internal static class RegistrationEmitter
-{
-    public static string Emit(IReadOnlyList<ContractInterfaceInfo> interfaces)
-    {
+internal static class RegistrationEmitter {
+    public static string Emit(IReadOnlyList<ContractInterfaceInfo> interfaces) {
         if (interfaces.Count == 0)
             return string.Empty;
 
@@ -25,12 +23,13 @@ internal static class RegistrationEmitter
         sb.AppendLine();
         sb.AppendLine("internal static class SignalARRRProxyRegistration");
         sb.AppendLine("{");
+        sb.AppendLine("#pragma warning disable CA2255 // The 'ModuleInitializer' attribute should not be used in libraries");
         sb.AppendLine("    [ModuleInitializer]");
         sb.AppendLine("    internal static void Initialize()");
+        sb.AppendLine("#pragma warning restore CA2255");
         sb.AppendLine("    {");
 
-        foreach (var iface in interfaces)
-        {
+        foreach (var iface in interfaces) {
             sb.AppendLine($"        ProxyCreator.RegisterFactory<global::{iface.FullName}>(helper => new global::{iface.Namespace}.SignalARRR.{iface.ProxyClassName}(helper));");
         }
 

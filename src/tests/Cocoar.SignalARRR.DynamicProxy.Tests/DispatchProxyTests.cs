@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
@@ -163,7 +163,7 @@ public class DispatchProxyTests {
         var helper = new MockProxyCreatorHelper();
         var proxy = (IStreamingMethods)SignalARRRDispatchProxy.CreateForType(typeof(IStreamingMethods), helper);
 
-        var stream = proxy.StreamItems("test");
+        var stream = proxy.StreamItems("test", TestContext.Current.CancellationToken);
 
         Assert.NotNull(stream);
         Assert.Equal(nameof(MockProxyCreatorHelper.StreamAsync), helper.LastCalledMethod);
@@ -175,7 +175,7 @@ public class DispatchProxyTests {
         var helper = new MockProxyCreatorHelper();
         var proxy = (IStreamingMethods)SignalARRRDispatchProxy.CreateForType(typeof(IStreamingMethods), helper);
 
-        var reader = proxy.StreamChannel();
+        var reader = proxy.StreamChannel(TestContext.Current.CancellationToken);
 
         Assert.NotNull(reader);
         Assert.Equal(nameof(MockProxyCreatorHelper.StreamAsync), helper.LastCalledMethod);

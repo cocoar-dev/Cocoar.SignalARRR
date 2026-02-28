@@ -26,7 +26,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 //        }
                 //    }
                 //}
-                
+
             }
 
             return authorizeData;

@@ -1,15 +1,13 @@
-﻿using System;
+using System;
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions.JsonConverters;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
 using SignalARRR.Client;
 using TestShared;
 
@@ -19,31 +17,18 @@ namespace TestClient {
 
         static async Task Main(string[] args) {
 
-
-
-           
-
-
-
             connection = HARRRConnection.Create(
                 builder => builder
                     .WithUrl("http://localhost.:5000/signalr/testhub", options => {
                         options.Headers["#tag"] = "bpk";
                         options.Headers["#Hostname"] = Environment.MachineName;
                         options.Transports = HttpTransportType.WebSockets;
-                        //options.AccessTokenProvider = () => {
-                        //    var dt = DateTime.Now.ToString();
-                        //    return Task.FromResult(dt);
-                        //};
-                        
                     })
-                    .AddNewtonsoftJsonProtocol(options => {
-                        options.PayloadSerializerSettings.ContractResolver = new DefaultContractResolver();
-                        options.PayloadSerializerSettings.Converters.Add(new StringEnumConverter());
-                        options.PayloadSerializerSettings.Converters.Add(new IpAddressConverter());
-                        options.PayloadSerializerSettings.ReferenceLoopHandling = ReferenceLoopHandling.Ignore;
+                    .AddJsonProtocol(options => {
+                        options.PayloadSerializerOptions.PropertyNamingPolicy = null;
+                        options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                        options.PayloadSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
                     })
-                    //.AddMessagePackProtocol()
                     .ConfigureLogging(log => {
                         log.AddConsole();
                         log.SetMinimumLevel(LogLevel.Error);
@@ -51,21 +36,14 @@ namespace TestClient {
                 optionsBuilder => optionsBuilder.UseHttpResponse()
                 );
 
-            
+
             connection.RegisterType<ISharedMethods, MySharedMethods>();
-
-
-            //connection.RegisterClientMethods<PS>();
-
-
-            //connection.RegisterClientMethods<ITestClientMethods, TestClientMethods>();
 
             await connection.StartAsync();
 
 
             connection.On<string>("test", s => Console.WriteLine(s));
             connection.OnServerRequest("GetDate", (par) => {
-                //Task.Delay(3000).GetAwaiter().GetResult();
                 return new {
                     Date = DateTime.Now,
                     Framework = ".Net Core",
@@ -127,10 +105,8 @@ namespace TestClient {
 
                             try {
                                 var g = Guid.NewGuid();
-                                //var dt = connection.InvokeAsync<Guid>("Test1.StringToGuid", g).GetAwaiter().GetResult();
-                                //Console.WriteLine(dt);
 
-                                
+
                                 var stg = testHubClient3.StringToGuid(g).GetAwaiter().GetResult();
                                 Console.WriteLine($"From Typed Client: {stg}");
 
@@ -235,7 +211,7 @@ namespace TestClient {
                                 dm.Name = "Bernhard";
                                 dm.Timestamp = DateTime.Now;
                                 dm.Year = dm.Timestamp.Year + 10;
-                                
+
                                 var res = connection.InvokeAsync<DummyClass>("Test1.GetDummyOrException", dm).GetAwaiter().GetResult();
                                 Console.WriteLine(res.Name);
                             } catch (Exception e) {
@@ -260,6 +236,6 @@ namespace TestClient {
             return new { Date = DateTime.Now, Name = "Bernhard" };
         }
 
-        
+
     }
 }

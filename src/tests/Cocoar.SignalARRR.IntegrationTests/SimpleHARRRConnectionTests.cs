@@ -5,8 +5,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
-namespace Cocoar.SignalARRR.IntegrationTests
-{
+namespace Cocoar.SignalARRR.IntegrationTests {
     [Collection("Simple")]
     public class SimpleHARRRConnectionTests : IAsyncLifetime {
 
@@ -22,25 +21,25 @@ namespace Cocoar.SignalARRR.IntegrationTests
             });
         }
 
-        public async Task InitializeAsync() {
+        public async ValueTask InitializeAsync() {
             await harrrConnection.StartAsync();
         }
 
-        public async Task DisposeAsync() {
+        public async ValueTask DisposeAsync() {
             await harrrConnection.StopAsync();
             await harrrConnection.DisposeAsync();
         }
 
         [Fact]
         public async Task GetString() {
-            var name = await harrrConnection.InvokeAsync<string>("GetName");
+            var name = await harrrConnection.InvokeAsync<string>("GetName", TestContext.Current.CancellationToken);
 
             Assert.Equal("MyName", name);
         }
 
         [Fact]
         public async Task GetStringAsync() {
-            var name = await harrrConnection.InvokeAsync<string>("GetNameAsync");
+            var name = await harrrConnection.InvokeAsync<string>("GetNameAsync", TestContext.Current.CancellationToken);
 
             Assert.Equal("MyNameAsync", name);
         }

@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using Cocoar.SignalARRR.SourceGenerator.Emitters;
@@ -10,12 +10,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Cocoar.SignalARRR.SourceGenerator;
 
 [Generator]
-public class SignalARRRGenerator : IIncrementalGenerator
-{
+public class SignalARRRGenerator : IIncrementalGenerator {
     private const string AttributeFullName = "Cocoar.SignalARRR.Contracts.SignalARRRContractAttribute";
 
-    public void Initialize(IncrementalGeneratorInitializationContext context)
-    {
+    public void Initialize(IncrementalGeneratorInitializationContext context) {
         var interfaceDeclarations = context.SyntaxProvider.ForAttributeWithMetadataName(
             AttributeFullName,
             predicate: static (node, _) => node is InterfaceDeclarationSyntax,
@@ -25,20 +23,17 @@ public class SignalARRRGenerator : IIncrementalGenerator
 
         var collected = interfaceDeclarations.Collect();
 
-        context.RegisterSourceOutput(collected, static (spc, interfaces) =>
-        {
+        context.RegisterSourceOutput(collected, static (spc, interfaces) => {
             if (interfaces.IsDefaultOrEmpty)
                 return;
 
-            foreach (var info in interfaces)
-            {
+            foreach (var info in interfaces) {
                 var proxySource = ProxyEmitter.Emit(info);
                 spc.AddSource($"{info.InterfaceName}.SignalARRRProxy.g.cs", proxySource);
             }
 
             var registrationSource = RegistrationEmitter.Emit(interfaces.ToList());
-            if (!string.IsNullOrEmpty(registrationSource))
-            {
+            if (!string.IsNullOrEmpty(registrationSource)) {
                 spc.AddSource("SignalARRRProxyRegistration.g.cs", registrationSource);
             }
         });
@@ -46,8 +41,7 @@ public class SignalARRRGenerator : IIncrementalGenerator
 
     private static ContractInterfaceInfo? ExtractInterfaceInfo(
         GeneratorAttributeSyntaxContext context,
-        CancellationToken ct)
-    {
+        CancellationToken ct) {
         if (context.TargetSymbol is not INamedTypeSymbol interfaceSymbol)
             return null;
 
@@ -74,8 +68,7 @@ public class SignalARRRGenerator : IIncrementalGenerator
             new EquatableArray<ContractMethodInfo>(methods));
     }
 
-    private static ContractMethodInfo ExtractMethodInfo(IMethodSymbol method, CancellationToken ct)
-    {
+    private static ContractMethodInfo ExtractMethodInfo(IMethodSymbol method, CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
 
         var (category, elementType) = ReturnTypeClassifier.Classify(method.ReturnType);

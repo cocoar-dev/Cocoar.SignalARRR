@@ -13,7 +13,7 @@ using Microsoft.Net.Http.Headers;
 
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
     public static class HttpContextWriteActionExtensions {
-        
+
         public static Task WriteActionResult<TResult>(this HttpContext context, TResult result) where TResult : IActionResult {
             var executor = context.RequestServices.GetService<IActionResultExecutor<TResult>>();
 
@@ -41,7 +41,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         }
 
         public static Task Content(this HttpContext context, string content)
-            => context.Content(content, (MediaTypeHeaderValue)null);
+            => context.Content(content, (MediaTypeHeaderValue?)null);
 
         public static Task Content(this HttpContext context, string content, string contentType)
             => context.Content(content, MediaTypeHeaderValue.Parse(contentType));
@@ -52,7 +52,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             return context.Content(content, mediaTypeHeaderValue);
         }
 
-        public static Task Content(this HttpContext context, string content, MediaTypeHeaderValue contentType) {
+        public static Task Content(this HttpContext context, string content, MediaTypeHeaderValue? contentType) {
             var result = new ContentResult {
                 Content = content,
                 ContentType = contentType?.ToString()
@@ -137,10 +137,10 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         }
 
         public static Task File(this HttpContext context, byte[] fileContents, string contentType)
-            => context.File(fileContents, contentType, fileDownloadName: null);
+            => context.File(fileContents, contentType, fileDownloadName: null!);
 
         public static Task File(this HttpContext context, byte[] fileContents, string contentType, bool enableRangeProcessing)
-            => context.File(fileContents, contentType, fileDownloadName: null, enableRangeProcessing: enableRangeProcessing);
+            => context.File(fileContents, contentType, fileDownloadName: null!, enableRangeProcessing: enableRangeProcessing);
 
         public static Task File(this HttpContext context, byte[] fileContents, string contentType, string fileDownloadName)
             => context.WriteActionResult(new FileContentResult(fileContents, contentType) { FileDownloadName = fileDownloadName });
@@ -180,10 +180,10 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             });
 
         public static Task File(this HttpContext context, Stream fileStream, string contentType)
-            => context.File(fileStream, contentType, fileDownloadName: null);
+            => context.File(fileStream, contentType, fileDownloadName: null!);
 
         public static Task File(this HttpContext context, Stream fileStream, string contentType, bool enableRangeProcessing)
-            => context.File(fileStream, contentType, fileDownloadName: null, enableRangeProcessing: enableRangeProcessing);
+            => context.File(fileStream, contentType, fileDownloadName: null!, enableRangeProcessing: enableRangeProcessing);
 
         public static Task File(this HttpContext context, Stream fileStream, string contentType, string fileDownloadName)
             => context.WriteActionResult(new FileStreamResult(fileStream, contentType) { FileDownloadName = fileDownloadName });
@@ -223,10 +223,10 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             });
 
         public static Task File(this HttpContext context, string virtualPath, string contentType)
-            => context.File(virtualPath, contentType, fileDownloadName: null);
+            => context.File(virtualPath, contentType, fileDownloadName: null!);
 
         public static Task File(this HttpContext context, string virtualPath, string contentType, bool enableRangeProcessing)
-            => context.File(virtualPath, contentType, fileDownloadName: null, enableRangeProcessing: enableRangeProcessing);
+            => context.File(virtualPath, contentType, fileDownloadName: null!, enableRangeProcessing: enableRangeProcessing);
 
         public static Task File(this HttpContext context, string virtualPath, string contentType, string fileDownloadName)
             => context.WriteActionResult(new VirtualFileResult(virtualPath, contentType) { FileDownloadName = fileDownloadName });
@@ -266,10 +266,10 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             });
 
         public static Task PhysicalFile(this HttpContext context, string physicalPath, string contentType)
-            => context.PhysicalFile(physicalPath, contentType, fileDownloadName: null);
+            => context.PhysicalFile(physicalPath, contentType, fileDownloadName: null!);
 
         public static Task PhysicalFile(this HttpContext context, string physicalPath, string contentType, bool enableRangeProcessing)
-            => context.PhysicalFile(physicalPath, contentType, fileDownloadName: null, enableRangeProcessing: enableRangeProcessing);
+            => context.PhysicalFile(physicalPath, contentType, fileDownloadName: null!, enableRangeProcessing: enableRangeProcessing);
 
         public static Task PhysicalFile(this HttpContext context,
             string physicalPath,

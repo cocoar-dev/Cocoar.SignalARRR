@@ -20,7 +20,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             // block on WaitToWriteAsync. This will block a thread pool thread and isn't recommended and isn't shown here.
             var channel = maxBufferSize != null ? Channel.CreateBounded<T>(maxBufferSize.Value) : Channel.CreateUnbounded<T>();
 
-            var cancel = Observable.Create<T>(observer => cancellationToken.Register(() => observer.OnNext(default)));
+            var cancel = Observable.Create<T>(observer => cancellationToken.Register(() => observer.OnNext(default!)));
 
             var disposable = observable.TakeUntil(cancel).Subscribe(
                                 value => channel.Writer.TryWrite(value),

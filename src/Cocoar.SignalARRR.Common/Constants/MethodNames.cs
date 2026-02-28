@@ -1,7 +1,5 @@
-﻿namespace Cocoar.SignalARRR.Common.Constants
-{
-    public class MethodNames
-    {
+﻿namespace Cocoar.SignalARRR.Common.Constants {
+    public class MethodNames {
         public static string InvokeMessageOnServer { get; } = "InvokeMessage";
         public static string InvokeMessageResultOnServer { get; } = "InvokeMessageResult";
         public static string SendMessageToServer { get; } = "SendMessage";

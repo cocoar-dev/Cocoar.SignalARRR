@@ -1,10 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cocoar.Reflectensions.ExtensionMethods;
 
-namespace Cocoar.SignalARRR.Server
-{
+namespace Cocoar.SignalARRR.Server {
     public class ClientManager {
 
         private IHARRRClientManager HARRRClientManager { get; }

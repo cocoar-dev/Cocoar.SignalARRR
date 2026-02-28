@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using Cocoar.Reflectensions.ExtensionMethods;
@@ -23,7 +24,7 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
-        public void CompleteStream(Guid streamId, string error = null) {
+        public void CompleteStream(Guid streamId, string? error = null) {
             if (_pendingStreams.TryRemove(streamId, out var channel)) {
                 if (!string.IsNullOrEmpty(error)) {
                     channel.Writer.TryComplete(new Exception($"Client streaming error: {error}"));
@@ -42,8 +43,10 @@ namespace Cocoar.SignalARRR.Server {
                 await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken)) {
                     if (item is TResult typed) {
                         yield return typed;
+                    } else if (item is JsonElement je) {
+                        yield return je.Deserialize<TResult>()!;
                     } else {
-                        yield return item.Reflect().To<TResult>();
+                        yield return item.Reflect().To<TResult>()!;
                     }
                 }
             } finally {

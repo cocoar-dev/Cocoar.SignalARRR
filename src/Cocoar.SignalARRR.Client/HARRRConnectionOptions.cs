@@ -1,5 +1,4 @@
-﻿namespace Cocoar.SignalARRR.Client
-{
+﻿namespace Cocoar.SignalARRR.Client {
     public class HARRRConnectionOptions {
 
         public bool HttpResponse { get; set; }
@@ -16,7 +15,7 @@
         }
 
         public static implicit operator HARRRConnectionOptions(HARRRConnectionOptionsBuilder builder) {
-            return builder?.Options;
+            return builder?.Options!;
         }
     }
 }

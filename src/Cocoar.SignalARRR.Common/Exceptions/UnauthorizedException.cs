@@ -1,6 +1,6 @@
 ﻿using System;
 
 namespace Cocoar.SignalARRR.Common.Exceptions {
-    public class UnauthorizedException: Exception {
+    public class UnauthorizedException : Exception {
     }
 }

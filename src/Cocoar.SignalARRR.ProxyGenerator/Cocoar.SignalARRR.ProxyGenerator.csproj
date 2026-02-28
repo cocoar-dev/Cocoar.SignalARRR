@@ -16,8 +16,8 @@
     <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
     <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageId>Cocoar.SignalARRR.CodeGenerator</PackageId>
-    <Product>Cocoar.SignalARRR.CodeGenerator</Product>
+    <PackageId>Cocoar.SignalARRR.ProxyGenerator</PackageId>
+    <Product>Cocoar.SignalARRR.ProxyGenerator</Product>
   </PropertyGroup>
 
   <ItemGroup>

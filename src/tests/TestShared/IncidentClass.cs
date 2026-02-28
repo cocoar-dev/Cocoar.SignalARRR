@@ -5,9 +5,9 @@ using Cocoar.Reflectensions.Internal;
 
 
 namespace TestShared {
-    public class IncidentClass: ExpandableBaseObject {
+    public class IncidentClass : ExpandableBaseObject {
 
-        public string Id { get; set; }
+        public string Id { get; set; } = null!;
 
         public TestEnum TestEnum { get; set; }
 

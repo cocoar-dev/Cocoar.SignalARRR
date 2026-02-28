@@ -23,12 +23,12 @@ namespace Cocoar.SignalARRR.Client {
 
                 case "http":
                 case "https": {
-                    return await DownloadStream(uri);
-                    
-                }
+                        return await DownloadStream(uri);
+
+                    }
                 default: {
-                    throw new Exception($"StreamReference.Scheme '{uri.Scheme}' is not implemented!");
-                }
+                        throw new Exception($"StreamReference.Scheme '{uri.Scheme}' is not implemented!");
+                    }
             }
         }
 

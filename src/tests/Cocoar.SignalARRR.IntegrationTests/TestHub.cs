@@ -1,17 +1,17 @@
-using System;
+﻿using System;
 using System.Reactive.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server;
-using SignalARRR.Tests.SharedModels;
+using Cocoar.SignalARRR.Tests.SharedModels;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
-    
+
     public partial class TestHub : HARRR, ITestServerMethods {
 
         private IObservable<int> GetNextInt { get; }
-        
+
         public TestHub(IServiceProvider serviceProvider) : base(serviceProvider) {
             // Use 10ms interval for fast tests instead of 1 second
             GetNextInt = Observable.Interval(TimeSpan.FromMilliseconds(10)).Select(t => (int)t).AsObservable();
@@ -35,7 +35,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         public void Nothing() {
-            
+
         }
 
         public Task NothingAsync() {

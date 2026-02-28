@@ -17,7 +17,7 @@ namespace TestShared {
         //Task<Dictionary<string, object>> GetDictionary(DateTime dt);
 
         //Task<T> InvokeAsync<T>(string command, Dictionary<string, object> variables = null);
-        T Invoke<T>(string command, Dictionary<string, object> variables = null);
+        T Invoke<T>(string command, Dictionary<string, object>? variables = null);
 
         void Nix();
 

@@ -1,13 +1,12 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
+using Cocoar.SignalARRR.Tests.SharedModels;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
-using SignalARRR.Tests.SharedModels;
 using Xunit;
 
-namespace Cocoar.SignalARRR.IntegrationTests
-{
+namespace Cocoar.SignalARRR.IntegrationTests {
     [Collection("Simple")]
     public class TypedHARRRConnectionTests : IAsyncLifetime {
 
@@ -23,12 +22,12 @@ namespace Cocoar.SignalARRR.IntegrationTests
             });
         }
 
-        public async Task InitializeAsync() {
+        public async ValueTask InitializeAsync() {
             // Start connection once for all tests in this class
             await harrrConnection.StartAsync();
         }
 
-        public async Task DisposeAsync() {
+        public async ValueTask DisposeAsync() {
             // Stop connection after all tests in this class
             await harrrConnection.StopAsync();
             await harrrConnection.DisposeAsync();

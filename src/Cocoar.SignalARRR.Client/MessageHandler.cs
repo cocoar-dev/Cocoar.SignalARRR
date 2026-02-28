@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -24,34 +24,34 @@ namespace Cocoar.SignalARRR.Client {
         private ISignalARRRMethodsCollection MethodsCollection { get; set; } = new SignalARRRMethodsCollection();
 
         private ISignalARRRInterfaceCollection InterfaceCollection { get; set; } = new SignalARRRInterfaceCollection();
-        
+
         public MessageHandler(HARRRContext harrrContext) {
             _harrrContext = harrrContext;
         }
 
         public async Task ChallengeAuthentication(ServerRequestMessage message) {
 
-            string payload = null;
-            string error = null;
+            string? payload = null;
+            string? error = null;
             try {
                 payload = await _harrrContext.AccessTokenProvider();
             } catch (Exception e) {
                 error = e.GetBaseException().Message;
             }
-            
 
-            await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object[] { message.Id, payload, error });
+
+            await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object?[] { message.Id, payload, error });
 
         }
 
         public async Task InvokeServerRequest(ServerRequestMessage message) {
-            
+
             try {
                 message = PrepareServerRequestMessage(message);
                 var payload = await InvokeAsync(message);
-                await SendResponse(message.Id, payload, null);
+                await SendResponse(message.Id, payload, null!);
             } catch (Exception e) {
-                await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object[] { message.Id, null, e.GetBaseException().Message });
+                await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object?[] { message.Id, null, e.GetBaseException().Message });
             }
 
         }
@@ -76,7 +76,7 @@ namespace Cocoar.SignalARRR.Client {
             try {
                 var result = await InvokeAsync(message);
                 await StreamResultToServer(hubConnection, streamId, result);
-                await hubConnection.SendCoreAsync(MethodNames.StreamCompleteToServer, new object[] { streamId, (string)null });
+                await hubConnection.SendCoreAsync(MethodNames.StreamCompleteToServer, new object?[] { streamId, (string?)null });
             } catch (Exception ex) {
                 try {
                     await hubConnection.SendCoreAsync(MethodNames.StreamCompleteToServer, new object[] { streamId, ex.GetBaseException().Message });
@@ -113,7 +113,7 @@ namespace Cocoar.SignalARRR.Client {
 
         private static async Task EnumerateAsyncEnumerable<T>(HubConnection hubConnection, Guid streamId, IAsyncEnumerable<T> source) {
             await foreach (var item in source) {
-                await hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, item });
+                await hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, item! });
             }
         }
 
@@ -180,7 +180,7 @@ namespace Cocoar.SignalARRR.Client {
 
 
         public void RegisterInterface(Type interfaceType, Type instanceType) {
-            
+
             InterfaceCollection.RegisterInterface(interfaceType, instanceType);
         }
 
@@ -193,7 +193,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
 
-       
+
 
 
         //public void RegisterISignalARRRClientMethodsCollection(ISignalARRRClientMethodsCollection methodsCollection) {
@@ -203,7 +203,7 @@ namespace Cocoar.SignalARRR.Client {
 
 
 
-        private async Task SendResponse(Guid id, object payload, string error) {
+        private async Task SendResponse(Guid id, object payload, string? error) {
 
             if (_harrrContext.UseHttpResponse) {
                 var url = _harrrContext.GetResponseUri(id, error);
@@ -215,9 +215,9 @@ namespace Cocoar.SignalARRR.Client {
                     var jsonPayload = JsonSerializer.Serialize(payload);
                     await httpClient.PostAsync(url, new StringContent(jsonPayload, Encoding.UTF8, "application/json"));
                 }
-                
+
             } else {
-                await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object[] { id, payload, error });
+                await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object?[] { id, payload, error });
             }
         }
 
@@ -231,20 +231,20 @@ namespace Cocoar.SignalARRR.Client {
         }
         private async Task<object> InvokeMethodAsync(ServerRequestMessage serverRequestMessage) {
 
-           
+
 
             var methodCallInfo = MethodsCollection.GetMethodInformations(serverRequestMessage.Method);
-            
-            var instance = methodCallInfo.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider());
+
+            var instance = methodCallInfo.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider())!;
 
             return InvokeMethodInfoAsync(instance, methodCallInfo.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
 
         }
 
         private Task<object> InvokeInterfaceMethodAsync(ServerRequestMessage serverRequestMessage) {
-            
+
             var invokeInfos = InterfaceCollection.GetInvokeInformation(serverRequestMessage.Method);
-            var instance = invokeInfos.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider());
+            var instance = invokeInfos.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider())!;
             return InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
 
         }
@@ -265,10 +265,10 @@ namespace Cocoar.SignalARRR.Client {
             if (genericArguments?.Any() == true) {
 
                 var arrType = genericArguments.Select(TypeHelper.FindType).ToList();
-                methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray());
+                methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray()!);
             }
 
-            object result = null;
+            object? result = null;
             if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
                 await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
             } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
@@ -282,7 +282,7 @@ namespace Cocoar.SignalARRR.Client {
                 cancellationTokenSources.TryRemove(cancellationTokenGuid.Value, out var token);
             }
 
-            return result;
+            return result!;
         }
 
         private ConcurrentDictionary<Guid, CancellationTokenSource> cancellationTokenSources = new ConcurrentDictionary<Guid, CancellationTokenSource>();
@@ -294,8 +294,7 @@ namespace Cocoar.SignalARRR.Client {
 
             var argumentList = new List<object>();
 
-            foreach (var parameterInfo in methodInfo.GetParameters())
-            {
+            foreach (var parameterInfo in methodInfo.GetParameters()) {
                 if (@params.Count < paramsPosition) {
                     throw new IndexOutOfRangeException();
                 }
@@ -316,7 +315,7 @@ namespace Cocoar.SignalARRR.Client {
                 par = await PrepareArgumentForType(parameterInfo.ParameterType, par);
 
                 if (par == null) {
-                    argumentList.Add(null);
+                    argumentList.Add(null!);
                     continue;
                 }
 
@@ -328,10 +327,10 @@ namespace Cocoar.SignalARRR.Client {
                         var json = JsonSerializer.Serialize(par);
                         par = JsonSerializer.Deserialize(json, parameterInfo.ParameterType);
                     }
-                   
+
                 }
 
-                argumentList.Add(par);
+                argumentList.Add(par!);
 
             }
 
@@ -367,7 +366,7 @@ namespace Cocoar.SignalARRR.Client {
 
         }
 
-        private async Task<object> PrepareArgumentForType(Type type, object argument) {
+        private async Task<object?> PrepareArgumentForType(Type type, object argument) {
 
             if (argument == null) {
                 if (type.IsNullableType()) {
@@ -378,9 +377,9 @@ namespace Cocoar.SignalARRR.Client {
             }
 
             if (type == typeof(Stream)) {
-                
+
                 var json = JsonSerializer.Serialize(argument);
-                var streamReference = JsonSerializer.Deserialize<StreamReference>(json);
+                var streamReference = JsonSerializer.Deserialize<StreamReference>(json)!;
                 var resolver = new StreamReferenceResolver(streamReference, _harrrContext);
                 return await resolver.ProcessStreamArgument();
             }
@@ -388,26 +387,12 @@ namespace Cocoar.SignalARRR.Client {
             return argument;
         }
 
-        
+
 
 
         private ServerRequestMessage PrepareServerRequestMessage(ServerRequestMessage message) {
-            switch (_harrrContext.HubProtocolType)
-            {
-                case HubProtocolType.JsonHubProtocol:
-                {
-                    var requestJson = JsonSerializer.Serialize(message);
-                    message = JsonSerializer.Deserialize<ServerRequestMessage>(requestJson);
-                    break;
-                }
-                case HubProtocolType.MessagePackHubProtocol:
-                {
-                    var requestJson = JsonSerializer.Serialize(message);
-                    message = JsonSerializer.Deserialize<ServerRequestMessage>(requestJson);
-                    break;
-                }
-            }
-
+            var requestJson = JsonSerializer.Serialize(message);
+            message = JsonSerializer.Deserialize<ServerRequestMessage>(requestJson)!;
             return message;
         }
 
@@ -420,7 +405,7 @@ namespace Cocoar.SignalARRR.Client {
         private CancellationToken? TryGetCancellationTokenFromReference(object argument) {
             if (argument == null) return null;
 
-            CancellationTokenReference reference = null;
+            CancellationTokenReference? reference = null;
             try {
                 var json = JsonSerializer.Serialize(argument);
                 reference = JsonSerializer.Deserialize<CancellationTokenReference>(json);

@@ -4,7 +4,7 @@ using System.Reflection;
 using Cocoar.SignalARRR.Common.Interfaces;
 
 namespace Cocoar.SignalARRR.Common {
-    public class SignalARRRMethodsCollection: ISignalARRRMethodsCollection {
+    public class SignalARRRMethodsCollection : ISignalARRRMethodsCollection {
 
         private readonly ConcurrentDictionary<string, (Delegate? Factory, MethodInfo MethodInfo)> _collection = new ConcurrentDictionary<string, (Delegate? Factory, MethodInfo MethodInfo)>();
 
@@ -14,7 +14,7 @@ namespace Cocoar.SignalARRR.Common {
                 if (methodInfo.DeclaringType == null) {
                     return null;
                 }
-                
+
                 var fromServiceProvider = sp.GetService(methodInfo.DeclaringType);
                 if (fromServiceProvider != null) {
                     return fromServiceProvider;

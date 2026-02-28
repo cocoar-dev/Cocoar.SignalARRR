@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,7 +29,7 @@ namespace Cocoar.SignalARRR.Client {
 
         //public override object Invoke(Type returnType, string methodName, IEnumerable<object> arguments, string[] genericArguments,
         //    CancellationToken cancellationToken = default) {
-            
+
         //    var methodInfo = typeof(ClientProxyCreatorHelper).GetMethods()
         //        .WithName(nameof(Invoke)).First(p => p.HasGenericArgumentsLengthOf(1));
         //    var generic = methodInfo.MakeGenericMethod(returnType);

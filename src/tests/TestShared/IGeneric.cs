@@ -8,7 +8,7 @@ namespace TestShared {
     [SignalARRRContract]
     public interface IGeneric {
 
-        Task<T> InvokeAsync<T>(string command, Dictionary<string, object> variables = null);
-        T Invoke<T>(string command, Dictionary<string, object> variables = null);
+        Task<T> InvokeAsync<T>(string command, Dictionary<string, object>? variables = null);
+        T Invoke<T>(string command, Dictionary<string, object>? variables = null);
     }
 }

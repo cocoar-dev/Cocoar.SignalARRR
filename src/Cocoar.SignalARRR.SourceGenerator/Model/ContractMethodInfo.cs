@@ -1,10 +1,9 @@
-using System;
+﻿using System;
 using Cocoar.SignalARRR.SourceGenerator.Helpers;
 
 namespace Cocoar.SignalARRR.SourceGenerator.Model;
 
-internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo>
-{
+internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo> {
     public string Name { get; }
     public ReturnTypeCategory ReturnCategory { get; }
     public string ReturnTypeFullName { get; }
@@ -18,8 +17,7 @@ internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo>
         string returnTypeFullName,
         string? elementTypeFullName,
         EquatableArray<ContractParameterInfo> parameters,
-        EquatableArray<string> typeParameterNames)
-    {
+        EquatableArray<string> typeParameterNames) {
         Name = name;
         ReturnCategory = returnCategory;
         ReturnTypeFullName = returnTypeFullName;
@@ -38,8 +36,7 @@ internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo>
 
     public override bool Equals(object? obj) => obj is ContractMethodInfo other && Equals(other);
 
-    public override int GetHashCode()
-    {
+    public override int GetHashCode() {
         var hash = HashCombine.Of(Name);
         hash = HashCombine.Combine(hash, (int)ReturnCategory);
         hash = HashCombine.Combine(hash, HashCombine.Of(ReturnTypeFullName));

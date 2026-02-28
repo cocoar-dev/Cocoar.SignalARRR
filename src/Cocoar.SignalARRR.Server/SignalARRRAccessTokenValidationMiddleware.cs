@@ -12,16 +12,16 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public async Task Invoke(HttpContext httpContext) {
-            
+
             var endp = httpContext.GetEndpoint();
-            var isSignalRHub = endp.IsSignalREndpoint();
+            var isSignalRHub = endp?.IsSignalREndpoint() ?? false;
             if (isSignalRHub) {
                 var accessToken = httpContext.Request.Query["access_token"];
                 if (!string.IsNullOrEmpty(accessToken)) {
                     httpContext.Request.Headers["Authorization"] = $"Bearer {accessToken}";
                 }
             }
-            
+
 
             await _next(httpContext);
         }
