@@ -10,6 +10,7 @@
     <IsRoslynComponent>true</IsRoslynComponent>
     <!-- Source generators must ship in analyzers/, not lib/ -->
     <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
     <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     <DevelopmentDependency>true</DevelopmentDependency>
   </PropertyGroup>
