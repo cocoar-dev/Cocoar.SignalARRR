@@ -88,6 +88,19 @@ jobs:
         run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=${{ steps.gv.outputs.SemVer }}
         working-directory: ./src
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build and pack npm alpha
+        working-directory: src/Cocoar.SignalARRR.Typescript
+        run: |
+          npm install
+          npm version ${{ steps.gv.outputs.SemVer }} --no-git-tag-version
+          npm run build
+          npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts"
+
       - name: Upload artifacts for testing
         uses: actions/upload-artifact@v4
         with:
