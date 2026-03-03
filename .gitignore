@@ -343,3 +343,6 @@ healthchecksdb
 
 # Claude Code
 .claude/
+
+# Generated agent skills (copied by NuGet buildTransitive targets)
+.github/skills/

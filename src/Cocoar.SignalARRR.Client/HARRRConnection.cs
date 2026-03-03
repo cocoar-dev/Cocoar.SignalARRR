@@ -48,53 +48,10 @@ namespace Cocoar.SignalARRR.Client {
         }
 
 
-        //public HARRRConnection PreBuiltTypedMethods<T>() {
-        //    ClassCreator.CreateTypeFromInterface<T>();
-        //    return this;
-        //}
-
         public T GetTypedMethods<T>() where T : class {
             var instance = ProxyCreator.CreateInstanceFromInterface<T>(new ClientProxyCreatorHelper(this));
             return instance;
         }
-
-
-        //public void RegisterClientMethods<TClass>(string prefix = null) where TClass : class {
-        //    _harrrContext.MessageHandler.RegisterMethods<TClass>(prefix);
-        //}
-        //public void RegisterClientMethods<TClass>(TClass instance, string prefix = null) where TClass : class {
-        //    _harrrContext.MessageHandler.RegisterMethods<TClass>(instance, prefix);
-        //}
-        //public void RegisterClientMethods<TClass>(Func<TClass> factory, string prefix = null) where TClass : class {
-        //    _harrrContext.MessageHandler.RegisterMethods<TClass>(factory, prefix);
-        //}
-
-        //public void RegisterClientMethods<TInterface, TClass>(string prefix = null) where TClass : class, TInterface {
-        //    _harrrContext.MessageHandler.RegisterMethods<TInterface, TClass>(prefix);
-        //}
-        //public void RegisterClientMethods<TInterface, TClass>(TClass instance, string prefix = null) where TClass : class, TInterface {
-        //    _harrrContext.MessageHandler.RegisterMethods<TInterface, TClass>(instance, prefix);
-        //}
-        //public void RegisterClientMethods<TInterface, TClass>(Func<TClass> factory, string prefix = null) where TClass : class, TInterface {
-        //    _harrrContext.MessageHandler.RegisterMethods<TInterface, TClass>(factory, prefix);
-        //}
-
-        //public void RegisterClientMethods(Type interfaceType, Type instanceType, string prefix = null) {
-        //    _harrrContext.MessageHandler.RegisterMethods(interfaceType, instanceType, prefix);
-        //}
-        //public void RegisterClientMethods(Type interfaceType, Type instanceType, object instance, string prefix = null) {
-        //    _harrrContext.MessageHandler.RegisterMethods(interfaceType, instanceType, instance, prefix);
-        //}
-        //public void RegisterClientMethods(Type interfaceType, Type instanceType, Func<object> factory, string prefix = null) {
-        //    _harrrContext.MessageHandler.RegisterMethods(interfaceType, instanceType, factory, prefix);
-        //}
-
-
-        //public void RegisterISignalARRRClientMethodsCollection(ISignalARRRClientMethodsCollection methodsCollection) {
-        //    _harrrContext.MessageHandler.RegisterISignalARRRClientMethodsCollection(methodsCollection);
-        //}
-
-
 
         public IDisposable On(string methodName, Type[] parameterTypes, Func<object?[], object, Task> handler, object state) {
             return HubConnection.On(methodName, parameterTypes, handler, state);

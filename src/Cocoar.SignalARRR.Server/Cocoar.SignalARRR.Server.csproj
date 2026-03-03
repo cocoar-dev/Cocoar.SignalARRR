@@ -44,9 +44,9 @@
 
   <!-- Pack .targets + skills + docs into buildTransitive so consuming projects get them -->
   <ItemGroup>
-    <None Include="build\Cocoar.SignalARRR.Server.targets" Pack="true" PackagePath="buildTransitive\" />
-    <None Include="..\..\skills\signalarrr\**\*" Pack="true" PackagePath="buildTransitive\skills\signalarrr\" />
-    <None Include="..\..\docs\**\*" Pack="true" PackagePath="buildTransitive\docs\" />
+    <None Include="build/Cocoar.SignalARRR.Server.targets" Pack="true" PackagePath="buildTransitive/Cocoar.SignalARRR.Server.targets" />
+    <None Include="../../skills/signalarrr/**/*" Pack="true" PackagePath="buildTransitive/skills/signalarrr/" />
+    <None Include="../../docs/**/*" Pack="true" PackagePath="buildTransitive/docs/" />
   </ItemGroup>
 
 </Project>

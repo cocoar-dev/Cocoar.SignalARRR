@@ -190,7 +190,6 @@ namespace Cocoar.SignalARRR.Server {
 
             SetInvokingInstanceProperties(instance);
 
-            //var enumerable = genericArguments as string[] ?? genericArguments.ToArray();
             if (genericArguments?.Any() == true) {
 
                 var arrType = genericArguments.Select(TypeHelper.FindType).ToList();
