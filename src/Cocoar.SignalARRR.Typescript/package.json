@@ -1,25 +1,34 @@
 {
-  "name": "signalarrr",
-  "version": "2.1.2",
-  "description": "",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "lint": "tslint --project \"./tsconfig.json\"",
-    "prepare": "npm run build"
+  "name": "@cocoar/signalarrr",
+  "version": "4.0.0",
+  "description": "TypeScript client for SignalARRR — type-safe RPC over SignalR",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
   },
-  "author": "Bernhard Windisch",
-  "license": "ISC",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
   "files": [
     "dist/"
   ],
-  "devDependencies": {
-    "@types/node": "^16.11.24",
-    "tslint": "^6.1.2",
-    "typescript": "^4.5.5"
-  },
+  "author": "Bernhard Windisch",
+  "license": "ISC",
   "dependencies": {
-    "@microsoft/signalr": "^7.0.3"
+    "@microsoft/signalr": "^10.0.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.7.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

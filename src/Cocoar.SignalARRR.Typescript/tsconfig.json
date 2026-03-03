@@ -1,10 +1,13 @@
 {
   "compilerOptions": {
-    "target": "es2017",
-    "module": "es2020",
-    "moduleResolution": "node",
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
     "declaration": true,
     "outDir": "./dist",
-    "strict": true
-  }
+    "rootDir": "./src"
+  },
+  "include": ["src"]
 }

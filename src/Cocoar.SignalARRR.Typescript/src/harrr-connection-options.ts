@@ -1,4 +1,1 @@
-export class HARRRConnectionOptions {
-    HttpResponse: boolean = false;
-    
-}
+export class HARRRConnectionOptions {}

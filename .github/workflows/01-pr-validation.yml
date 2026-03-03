@@ -27,6 +27,15 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build TypeScript client
+        working-directory: src/Cocoar.SignalARRR.Typescript
+        run: npm install && npm run build
+
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v3
         with:

@@ -341,6 +341,9 @@ healthchecksdb
 
 .local
 
+# TypeScript build output
+src/Cocoar.SignalARRR.Typescript/dist/
+
 # Claude Code
 .claude/
 
