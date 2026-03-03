@@ -13,7 +13,8 @@
   <PropertyGroup>
     <Authors>Bernhard Windisch</Authors>
     <Company>-</Company>
-    <Description>Source generator for SignalARRR proxy generation</Description>
+    <Description>Roslyn incremental source generator for SignalARRR — generates compile-time proxy classes from [SignalARRRContract] interfaces for zero-reflection RPC dispatch.</Description>
+    <PackageTags>signalr;rpc;signalarrr;sourcegenerator;roslyn;codegen</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
     <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>

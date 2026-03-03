@@ -11,7 +11,8 @@
   <PropertyGroup>
     <Authors>Bernhard Windisch</Authors>
     <Company>-</Company>
-    <Description></Description>
+    <Description>SignalARRR client library — typed bidirectional RPC over SignalR with streaming, cancellation, and source-generated proxies.</Description>
+    <PackageTags>signalr;rpc;signalarrr;client;realtime;streaming</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
     <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>

@@ -1,7 +1,6 @@
 <Project>
   <PropertyGroup>
-    <!-- Temporarily disabled to see if we have any actual errors -->
-    <!-- <TreatWarningsAsErrors>true</TreatWarningsAsErrors> -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>NU1507</WarningsNotAsErrors>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>

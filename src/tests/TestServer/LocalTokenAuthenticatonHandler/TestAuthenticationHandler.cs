@@ -3,7 +3,8 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Http;
+
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -12,9 +13,9 @@ namespace TestServer.LocalTokenAuthenticatonHandler
     public class TestAuthenticationHandler : AuthenticationHandler<TestAuthenticationOptions>
     {
 
-        public TestAuthenticationHandler(IOptionsMonitor<TestAuthenticationOptions> options, ILoggerFactory logger, UrlEncoder encoder, ISystemClock clock) : base(options, logger, encoder, clock)
+        public TestAuthenticationHandler(IOptionsMonitor<TestAuthenticationOptions> options, ILoggerFactory logger, UrlEncoder encoder) : base(options, logger, encoder)
         {
-         
+
         }
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync() {

@@ -14,18 +14,18 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 var declaringType = methodInfo.DeclaringType;
                 if (declaringType != null) {
                     authorizeData = declaringType.GetCustomAttributes<AuthorizeAttribute>().ToList();
+
+                    // Inherit [Authorize] from the SignalR Hub if the ServerMethods class has none
+                    if (!authorizeData.Any()) {
+                        if (declaringType.BaseType is { IsGenericType: true } baseType
+                            && baseType.GetGenericTypeDefinition() == typeof(ServerMethods<>)) {
+                            var harrType = baseType.GenericTypeArguments.FirstOrDefault();
+                            if (harrType != null && typeof(HARRR).IsAssignableFrom(harrType)) {
+                                authorizeData = harrType.GetCustomAttributes<AuthorizeAttribute>().ToList();
+                            }
+                        }
+                    }
                 }
-
-
-                /// Currently disable - would use Authorize Attributes from the Signalr Hub, if no Attribute at DeclaringType exists
-                //if (!authorizeData.Any()) {
-                //    if (declaringType.InheritFromClass(typeof(ServerMethods<>), false, false)) {
-                //        var harrType = declaringType.BaseType.GenericTypeArguments.FirstOrDefault();
-                //        if (harrType.InheritFromClass<HARRR>()) {
-                //            authorizeData = harrType.GetCustomAttributes<AuthorizeAttribute>().ToList();
-                //        }
-                //    }
-                //}
 
             }
 

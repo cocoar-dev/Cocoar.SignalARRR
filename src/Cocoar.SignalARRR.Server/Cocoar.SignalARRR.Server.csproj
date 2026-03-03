@@ -11,7 +11,8 @@
   <PropertyGroup>
     <Authors>Bernhard Windisch</Authors>
     <Company>-</Company>
-    <Description></Description>
+    <Description>SignalARRR server library — typed bidirectional RPC over SignalR with authorization, streaming, server-to-client calls, and ServerMethods organization.</Description>
+    <PackageTags>signalr;rpc;signalarrr;server;realtime;streaming;authorization</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
     <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
@@ -39,6 +40,13 @@
     <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
                        OutputItemType="Analyzer"
                        ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Pack .targets + skills + docs into buildTransitive so consuming projects get them -->
+  <ItemGroup>
+    <None Include="build\Cocoar.SignalARRR.Server.targets" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="..\..\skills\signalarrr\**\*" Pack="true" PackagePath="buildTransitive\skills\signalarrr\" />
+    <None Include="..\..\docs\**\*" Pack="true" PackagePath="buildTransitive\docs\" />
   </ItemGroup>
 
 </Project>

@@ -4,7 +4,7 @@
 
 ---
 
-## Phase 1: Foundation (v4.0)
+## Phase 1: Foundation (v4.0) — COMPLETE
 
 - [x] **1.1** Source generator for proxy generation (replace ImpromptuInterface)
   - [x] Create `Cocoar.SignalARRR.Contracts` project (`[SignalARRRContract]` attribute)
@@ -63,9 +63,26 @@
 
 ---
 
+### Phase 1 Finalization Notes
+
+- **Non-generic `Invoke(Type, ...)` overloads**: Removed from both `ClientProxyCreatorHelper` and `ServerProxyCreatorHelper`. DynamicProxy dispatches to generic methods via reflection; no callers exist for the non-generic versions.
+- **Hub-level `[Authorize]` inheritance**: Restored. If a Hub class has `[Authorize]`, `ServerMethods<THub>` classes inherit it automatically. Uses standard reflection (no Reflectensions dependency for this check).
+- **HTTP Proxy pass-through**: Deferred to Phase 2. Commented code removed; see Phase 2 description below.
+- **Custom `IAuthenticator` interface**: Removed. Users should migrate to ASP.NET Core authentication handlers and `[Authorize]` policies.
+- **Old `RegisterMethods` API**: Removed from client `MessageHandler`. Replaced by `RegisterInterface<TInterface, TClass>()`.
+- **`TreatWarningsAsErrors`**: Enabled globally. Build is 0 warnings, 0 errors.
+- **Authentication tests**: Re-enabled in TestServer Startup. New integration tests added (authenticated success, unauthenticated rejection, hub-level auth inheritance).
+- **Test count**: 39 tests (12 DynamicProxy + 3 unit + 24 integration)
+
+---
+
 ## Phase 2: Power Features (v4.1)
 
-- [ ] **2.1** HTTP Proxy pass-through system (restore)
+- [ ] **2.1** HTTP Proxy pass-through system
+  - Allows the server to forward HTTP requests through connected SignalR clients that don't have direct network access
+  - Server creates a request message, client processes it and sends the response back via a dedicated HTTP endpoint (`/response/{id}`)
+  - Enables reverse-proxy scenarios where clients behind firewalls can serve HTTP content through the SignalR connection
+  - Was present in v2.x but removed during the v4.0 migration; needs redesign for the new proxy architecture
 - [ ] **2.2** Distributed tracing / OpenTelemetry integration
 - [ ] **2.3** Metrics + Health checks
 - [ ] **2.4** RPC interceptors/middleware pipeline

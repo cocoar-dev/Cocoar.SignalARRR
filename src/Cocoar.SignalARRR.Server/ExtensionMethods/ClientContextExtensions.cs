@@ -35,26 +35,6 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             await harrrContext.CancelToken(clientContext.Id, tokenReference);
         }
 
-        //public static async Task Proxy(this ClientContext clientContext, string method, object[] arguments, HttpContext httpContext) {
-
-        //    using var serviceProviderScope = clientContext.ServiceProvider.CreateScope();
-
-        //    var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(clientContext.HARRRType);
-        //    var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
-        //    var msg = new ServerRequestMessage(method, arguments);
-        //    await harrrContext.ProxyClientAsync(clientContext.Id, msg, httpContext);
-
-        //}
-
-        //public static async Task<string> Challenge(this ClientContext clientContext) {
-
-
-        //    var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(clientContext.HARRRType);
-        //    var harrrContext = (IClientContextDispatcher)clientContext.ServiceProvider.GetRequiredService(hubContextType);
-        //    var res = await harrrContext.Challenge(clientContext.Id);
-        //    return res;
-        //}
-
         public static async Task<IEnumerable<ClientCollectionResult<TResult>>> InvokeAllAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
 
             var tasks = new List<Task<ClientCollectionResult<TResult>>>();

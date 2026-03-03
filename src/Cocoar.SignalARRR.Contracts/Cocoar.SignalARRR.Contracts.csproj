@@ -12,6 +12,7 @@
     <Authors>Bernhard Windisch</Authors>
     <Company>-</Company>
     <Description>Contracts, attributes and source generator for SignalARRR proxy generation. Reference this package from any project that defines [SignalARRRContract] interfaces.</Description>
+    <PackageTags>signalr;rpc;signalarrr;contracts;sourcegenerator;codegen</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
     <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>

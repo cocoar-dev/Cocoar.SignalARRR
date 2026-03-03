@@ -118,52 +118,6 @@ namespace Cocoar.SignalARRR.Client {
         }
 
 
-        //public void RegisterMethods<TClass>(string prefix = null) where TClass : class {
-        //    RegisterMethods(typeof(TClass), typeof(TClass), prefix);
-        //}
-        //public void RegisterMethods<TClass>(TClass instance, string prefix = null) where TClass : class {
-        //    RegisterMethods(typeof(TClass), typeof(TClass), instance, prefix);
-        //}
-        //public void RegisterMethods<TClass>(Func<TClass> factory, string prefix = null) where TClass : class {
-        //    RegisterMethods(typeof(TClass), typeof(TClass), factory, prefix);
-        //}
-
-        //public void RegisterMethods<TInterface, TClass>(string prefix = null) where TClass : class, TInterface {
-        //    RegisterMethods(typeof(TInterface), typeof(TClass), prefix);
-        //}
-        //public void RegisterMethods<TInterface, TClass>(TClass instance, string prefix = null) where TClass : class, TInterface {
-        //    RegisterMethods(typeof(TInterface), typeof(TClass), instance, prefix);
-        //}
-        //public void RegisterMethods<TInterface, TClass>(Func<TClass> factory, string prefix = null) where TClass : class, TInterface {
-        //    RegisterMethods(typeof(TInterface), typeof(TClass), factory, prefix);
-        //}
-
-        //public void RegisterMethods(Type interfaceType, Type instanceType, string prefix = null) {
-        //    Func<object> factory = () => {
-        //        var fromServiceProvider = _harrrContext.GetHubConnection().GetServiceProvider().GetService(instanceType);
-        //        if (fromServiceProvider != null) {
-        //            return fromServiceProvider;
-        //        }
-
-        //        return Activator.CreateInstance(instanceType);
-        //    };
-        //    RegisterMethods(interfaceType, instanceType, factory, prefix);
-        //}
-        //public void RegisterMethods(Type interfaceType, Type instanceType, object instance, string prefix = null) {
-        //    RegisterMethods(interfaceType, instanceType, () => instance, prefix);
-        //}
-        //public void RegisterMethods(Type interfaceType, Type instanceType, Func<object> factory, string prefix = null) {
-
-        //    var rootName = instanceType.GetCustomAttribute<MessageNameAttribute>()?.Name ?? prefix.ToNull() ?? instanceType.Name;
-        //    var methodsWithName = interfaceType.GetMethods().Select(m => (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
-        //    foreach (var (methodInfo, methodNameAttribute) in methodsWithName) {
-        //        var methodName = methodNameAttribute?.Name ?? methodInfo.Name;
-        //        var concatNames = $"{rootName}.{methodName}";
-        //        MethodsCollection.AddMethod(interfaceType, methodInfo, factory);
-        //    }
-        //}
-
-
         public void RegisterInterface<TInterface, TClass>() where TClass : class, TInterface {
             InterfaceCollection.RegisterInterface<TInterface, TClass>();
         }
@@ -194,11 +148,6 @@ namespace Cocoar.SignalARRR.Client {
 
 
 
-
-
-        //public void RegisterISignalARRRClientMethodsCollection(ISignalARRRClientMethodsCollection methodsCollection) {
-        //    MethodsCollection = methodsCollection;
-        //}
 
 
 
@@ -335,35 +284,6 @@ namespace Cocoar.SignalARRR.Client {
             }
 
             return argumentList.ToArray();
-            //return methodInfo.GetParameters().Select(p => {
-
-            //    if (p.ParameterType == typeof(CancellationToken)) {
-            //        return cancellation;
-            //    }
-
-            //    if (@params.Count < paramsPosition) {
-            //        throw new IndexOutOfRangeException();
-            //    }
-
-            //    var par = @params[paramsPosition];
-
-            //    par = await PrepareArgumentForType(p.ParameterType, par);
-
-            //    if (par != null && p.ParameterType != par.GetType()) {
-
-            //        if (par is JToken jt) {
-            //            par = jt.ToObject(p.ParameterType);
-            //        } else {
-            //            par = par.To(p.ParameterType);
-            //        }
-
-            //    }
-
-            //    paramsPosition++;
-            //    return par;
-
-            //}).ToArray();
-
         }
 
         private async Task<object?> PrepareArgumentForType(Type type, object argument) {

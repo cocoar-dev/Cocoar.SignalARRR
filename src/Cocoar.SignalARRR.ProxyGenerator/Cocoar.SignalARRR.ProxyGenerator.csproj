@@ -11,7 +11,8 @@
   <PropertyGroup>
     <Authors>Bernhard Windisch</Authors>
     <Company>-</Company>
-    <Description></Description>
+    <Description>Proxy infrastructure for SignalARRR — factory registry and abstract dispatch base class for generated and dynamic proxies.</Description>
+    <PackageTags>signalr;rpc;signalarrr;proxy;codegen</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
     <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>

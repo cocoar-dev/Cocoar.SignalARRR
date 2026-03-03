@@ -27,7 +27,11 @@ namespace TestServer
                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
             });
 
-            //services.AddAuthentication("AccessToken").AddTestTokenValidation();
+            services.AddAuthentication("AccessToken").AddTestTokenValidation();
+
+            services.AddAuthorization(options => {
+                options.AddPolicy("TestPolicy1", policy => policy.RequireRole("testrole"));
+            });
 
             services.AddSignalR().AddJsonProtocol(options =>
                 {
@@ -53,8 +57,8 @@ namespace TestServer
 
             app.UseRouting();
 
-            //app.UseAuthentication();
-            //app.UseAuthorization();
+            app.UseAuthentication();
+            app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>
             {

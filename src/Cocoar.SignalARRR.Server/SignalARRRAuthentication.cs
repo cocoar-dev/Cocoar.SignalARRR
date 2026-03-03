@@ -13,46 +13,11 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Cocoar.SignalARRR.Server {
     public class SignalARRRAuthentication {
 
-        //private IAuthenticationSchemeProvider? _schemes { get; }
-
         private IServiceProvider _serviceProvider;
 
         public SignalARRRAuthentication(IServiceProvider serviceProvider) {
             _serviceProvider = serviceProvider;
-            //_schemes = _serviceProvider.GetService<IAuthenticationSchemeProvider>();
         }
-
-        //public async Task<HttpContext> Authenticate(ClientContext clientContext, string authorization, string scheme) {
-
-        //    var authenticationService = _serviceProvider.GetRequiredService<IAuthenticationService>();
-        //    var ctx = new DefaultHttpContext();
-        //    ctx.RequestServices = _serviceProvider;
-
-        //    if (String.IsNullOrWhiteSpace(scheme)) {
-        //        var defaultScheme = await _schemes.GetDefaultAuthenticateSchemeAsync();
-        //        scheme = defaultScheme?.Name;
-        //    }
-
-        //    AuthenticateResult authenticateResult;
-
-        //    if (clientContext.UserValidUntil < DateTime.Now) {
-
-        //        if (!authorization.Contains(" ")) {
-        //            authorization = $"Bearer {authorization}";
-        //        }
-        //        ctx.Request.Headers["Authorization"] = authorization;
-
-
-        //        authenticateResult = await authenticationService.AuthenticateAsync(ctx, scheme);
-
-        //    } else {
-        //        var t = new AuthenticationTicket(clientContext.User, clientContext.User.Identity.AuthenticationType);
-        //        authenticateResult = AuthenticateResult.Success(t);
-        //    }
-        //    ctx.User = authenticateResult.Principal;
-        //    clientContext.SetPrincipal(ctx.User);
-        //    return ctx;
-        //}
 
 
 

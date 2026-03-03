@@ -1,10 +1,10 @@
 # Contributing
 
-Thanks for your interest in contributing to Cocoar.Reflectensions!
+Thanks for your interest in contributing to Cocoar.SignalARRR!
 
 ## Getting started
 - Fork the repository and create a feature branch.
-- Use .NET 8 SDK (8.x). You can verify with `dotnet --info`.
+- Use .NET 10 SDK. You can verify with `dotnet --info`.
 - Run the test suite locally before opening a PR.
 
 ## Coding guidelines
@@ -14,8 +14,8 @@ Thanks for your interest in contributing to Cocoar.Reflectensions!
 - Follow existing code style and conventions.
 
 ## Testing
-- Run unit tests under `src/Cocoar.Reflectensions.Tests`.
-- Ensure all 169 tests pass before submitting.
+- Run all tests with `dotnet test` from the `src/` directory.
+- Ensure all tests pass before submitting.
 - Add tests for new features and bug fixes.
 
 ## Commit/PR
@@ -24,4 +24,4 @@ Thanks for your interest in contributing to Cocoar.Reflectensions!
 - Use conventional commit messages (feat:, fix:, docs:, etc.).
 
 ## License
-By contributing, you agree that your contributions will be licensed under the Apache-2.0 License.
+By contributing, you agree that your contributions will be licensed under the MIT License.

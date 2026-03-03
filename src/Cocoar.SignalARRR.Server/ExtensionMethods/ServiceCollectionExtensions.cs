@@ -33,22 +33,6 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             Dictionary<Type, ISignalARRRMethodsCollection> hubMethodsDictionary = new();
             Dictionary<Type, ISignalARRRInterfaceCollection> interfaceDictionary = new();
-            //serverOptions.AssembliesContainingServerMethods
-            //.SelectMany(ass => ass.GetTypes().WhichInheritFromClass(typeof(HARRR))).ToDictionary(type => type,
-            //    hubType => {
-
-            //        var genColl = new SignalARRRMethodsCollection();
-
-            //        var messageMethodsWithName = hubType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Select(m =>
-            //            (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
-
-            //        foreach (var (methodInfo, methodNameAttribute) in messageMethodsWithName) {
-            //            var methodName = methodNameAttribute?.Name ?? methodInfo.Name;
-            //            genColl.AddMethod(methodName, methodInfo);
-            //        }
-
-            //        return (ISignalARRRMethodsCollection)genColl;
-            //    });
 
 
 
@@ -115,14 +99,6 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                         interfaceDictionary[type.BaseType!.GenericTypeArguments[0]] = interfaceCollection;
                     }
 
-                    //var interfaceCollection1 = new SignalARRRInterfaceCollection();
-                    //foreach (var @interface in type.GetInterfaces()) {
-                    //    interfaceCollection1.RegisterInterface(@interface, type);
-                    //}
-
-                    //var n = type.BaseType?.GenericTypeArguments[0].FullName;
-                    //serviceCollection.AddNamedTransient<ISignalARRRInterfaceCollection>(n, _ => interfaceCollection1);
-
                 }
             }
 
@@ -135,11 +111,6 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 var n = key.FullName;
                 serviceCollection.AddKeyedSingleton<ISignalARRRInterfaceCollection>(n, (_, _) => value);
             }
-
-            //foreach (var (key, (collection, serviceType)) in hubMethodsDictionary)
-            //{
-            //    serviceCollection.AddSingleton(serviceType, collection);
-            //}
 
         }
     }

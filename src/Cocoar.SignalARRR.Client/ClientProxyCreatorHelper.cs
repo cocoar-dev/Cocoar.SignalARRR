@@ -27,32 +27,6 @@ namespace Cocoar.SignalARRR.Client {
             return _harrrConnection.InvokeCoreAsync<T>(msg, cancellationToken);
         }
 
-        //public override object Invoke(Type returnType, string methodName, IEnumerable<object> arguments, string[] genericArguments,
-        //    CancellationToken cancellationToken = default) {
-
-        //    var methodInfo = typeof(ClientProxyCreatorHelper).GetMethods()
-        //        .WithName(nameof(Invoke)).First(p => p.HasGenericArgumentsLengthOf(1));
-        //    var generic = methodInfo.MakeGenericMethod(returnType);
-
-        //    var parameters = new object[] {methodName, arguments, genericArguments, cancellationToken};
-        //    var res = generic.Invoke(this, parameters);
-        //    //var res = InvokeHelper.InvokeMethod<object>(this, generic, parameters);
-        //    return res;
-
-        //}
-
-        //public override async Task<object> InvokeAsync(Type returnType, string methodName, IEnumerable<object> arguments, string[] genericArguments,
-        //    CancellationToken cancellationToken = default) {
-        //    var methodInfo = typeof(ClientProxyCreatorHelper).GetMethods()
-        //        .WithName(nameof(InvokeAsync)).First(p => p.HasGenericArgumentsLengthOf(1));
-        //    var generic = methodInfo.MakeGenericMethod(returnType);
-
-        //    var parameters = new object[] {methodName, arguments, genericArguments, cancellationToken};
-        //    //var res = generic.Invoke(this, parameters);
-        //    var res = await InvokeHelper.InvokeMethodAsync(this, generic, parameters);
-        //    return res;
-        //}
-
         public override void Send(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
             var msg = new ClientRequestMessage(methodName, arguments);
             msg.GenericArguments = genericArguments.ToArray();

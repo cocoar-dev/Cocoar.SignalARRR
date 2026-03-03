@@ -13,41 +13,18 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Cocoar.SignalARRR.Server {
     public class ServerProxyCreatorHelper : ProxyCreatorHelper {
         private readonly ClientContext _clientContext;
-        //private readonly ServerPushStreamManager _pushStreamManager;
         private readonly HttpContext? _httpContext;
         private readonly MethodArgumentPreperator _methodArgumentPreperator;
 
         public ServerProxyCreatorHelper(ClientContext clientContext, HttpContext? httpContext) {
             _clientContext = clientContext;
-            //_pushStreamManager = clientContext.ServiceProvider.GetRequiredService<ServerPushStreamManager>();
             _methodArgumentPreperator = new MethodArgumentPreperator(_clientContext);
             _httpContext = httpContext;
         }
 
-        //public override object Invoke(Type returnType, string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-        //    var methodInfo = typeof(ServerProxyCreatorHelper).GetMethods()
-        //        .WithName(nameof(InvokeAsync)).First(p => p.HasGenericArgumentsLengthOf(1));
-        //    var generic = methodInfo.MakeGenericMethod(returnType);
-
-        //    var parameters = new object[] {methodName, arguments, genericArguments, cancellationToken};
-        //    return InvokeHelper.InvokeMethod(this, generic, new List<Type>() {returnType}, parameters);
-        //}
-
         public override T Invoke<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
             return SimpleAsyncHelper.RunSync(() => InvokeAsync<T>(methodName, arguments, genericArguments, cancellationToken));
         }
-
-        //public override Task<object> InvokeAsync(Type returnType, string methodName, IEnumerable<object> arguments,
-        //    string[] genericArguments, CancellationToken cancellationToken = default) {
-
-        //    var methodInfo = typeof(ServerProxyCreatorHelper).GetMethods()
-        //        .WithName(nameof(InvokeAsync)).First(p => p.HasGenericArgumentsLengthOf(1));
-        //    var generic = methodInfo.MakeGenericMethod(returnType);
-
-        //    var parameters = new object[] {methodName, arguments, genericArguments, cancellationToken};
-        //    return InvokeHelper.InvokeMethodAsync(this, generic, new List<Type>() {returnType}, parameters);
-        //}
-
 
         public override async Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
 
@@ -69,12 +46,6 @@ namespace Cocoar.SignalARRR.Server {
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
             var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
-
-            //if(_httpContext != null)
-            //{
-            //    await harrrContext.ProxyClientAsync(_clientContext.Id, msg, _httpContext);
-            //    return default;
-            //}
 
             return await harrrContext.InvokeClientAsync<T>(_clientContext.Id, msg, cancellationToken);
         }

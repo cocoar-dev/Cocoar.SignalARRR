@@ -1,0 +1,32 @@
+# Cocoar.SignalARRR
+
+> Typed bidirectional RPC over ASP.NET Core SignalR
+
+SignalARRR extends SignalR with typed bidirectional RPC. Both server and client call each other's methods through shared interfaces, with compile-time proxy generation, streaming, cancellation propagation, and ASP.NET Core authorization.
+
+## Packages
+
+- Cocoar.SignalARRR.Contracts: [SignalARRRContract] attribute + source generator (reference from shared interface projects)
+- Cocoar.SignalARRR.Server: Server-side hub, ServerMethods, authorization, ClientManager
+- Cocoar.SignalARRR.Client: HARRRConnection, typed proxies, event handlers
+- Cocoar.SignalARRR.DynamicProxy: Opt-in runtime proxy fallback via DispatchProxy
+
+## Key Concepts
+
+- Hub class inherits HARRR (not Hub)
+- Server methods organized in ServerMethods<T> classes (auto-discovered, DI works)
+- Interfaces marked with [SignalARRRContract] get compile-time proxy generation
+- GetTypedMethods<T>() creates typed proxy on both client and server
+- Streaming via IAsyncEnumerable<T>, IObservable<T>, ChannelReader<T>
+- Server-to-client calls via ClientContext.GetTypedMethods<T>() or ClientManager
+- Authorization via [Authorize] on methods, classes, or hub (with inheritance)
+
+## Documentation
+
+- Getting Started: llms-full.txt (section: Getting Started)
+- Server API: llms-full.txt (section: Server API)
+- Client API: llms-full.txt (section: Client API)
+- Streaming: llms-full.txt (section: Streaming)
+- Authorization: llms-full.txt (section: Authorization)
+- Proxy Generation: llms-full.txt (section: Proxy Generation)
+- Migration from v2.x: llms-full.txt (section: Migration)

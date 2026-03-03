@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Target framework changed from `netstandard2.0` to `net10.0`
 - `ImpromptuInterface` removed — replaced by source-generated proxies and opt-in `DispatchProxy` fallback
 - Proxy creation now requires `[SignalARRRContract]` attribute on interfaces (or reference `Cocoar.SignalARRR.DynamicProxy` for runtime fallback)
+- Custom `IAuthenticator` interface removed — use ASP.NET Core authentication handlers and `[Authorize]` policies instead
+- HTTP Proxy pass-through feature removed (deferred to Phase 2)
+- `netstandard2.0` target dropped — all packages now target `net10.0` (except SourceGenerator which targets `netstandard2.0` per Roslyn requirements)
+- Hub-level `[Authorize]` inheritance restored: if the Hub class has `[Authorize]`, ServerMethods classes inherit it automatically (behavior change from v2.x where this was disabled)
 
 ### Added
 - **Source Generator**: Compile-time proxy generation from `[SignalARRRContract]` interfaces — zero reflection, AOT-friendly
@@ -21,11 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ServerStreamManager`**: Channel-based stream correlation for server-initiated client streams
 - **`StreamItemToServer` / `StreamCompleteToServer`** hub methods for client-to-server stream item delivery
 - **`ClientManager` typed extensions**: `GetTypedMethods<T>(connectionId)` for server-to-client RPC from outside hub context
+- **Authorization integration tests**: Tests for authenticated calls, unauthenticated rejection, and hub-level auth inheritance
+- **`TreatWarningsAsErrors`**: Enabled globally via `Directory.Build.props`
 
 ### Removed
 - `ImpromptuInterface` dependency
 - `netstandard2.0` target / polyfill packages (`Microsoft.Bcl.AsyncInterfaces`, `System.Threading.Channels`, etc.)
 - `SignalARRRDynamicProxy.cs` and `StreamingType.cs` from ProxyGenerator (replaced by DispatchProxy package)
+- Non-generic `Invoke(Type returnType, ...)` overloads from `ClientProxyCreatorHelper` and `ServerProxyCreatorHelper` (unused; DynamicProxy dispatches to generic methods)
+- Old `RegisterMethods` client-side registration API (replaced by `RegisterInterface`)
+- Custom `IAuthenticator` interface and `TryAuthenticate`/`SetAuthData` on `ClientContext`
+- Dead commented-out code throughout the codebase
 
 ---
 

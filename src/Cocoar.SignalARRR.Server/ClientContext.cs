@@ -30,8 +30,6 @@ namespace Cocoar.SignalARRR.Server {
         internal IServiceProvider ServiceProvider { get; }
 
         public Uri ConnectedTo { get; }
-        //private string AuthData { get; set; }
-        //private IAuthenticator Authenticator { get; }
 
 
         public ClientContext(HARRR hub, HubCallerContext hubCallerContext) {
@@ -58,37 +56,6 @@ namespace Cocoar.SignalARRR.Server {
                 }
             }
         }
-
-        //internal async Task<bool> TryAuthenticate() {
-
-        //    using var scope = ServiceProvider.CreateScope();
-
-
-        //    var authenticator = scope.ServiceProvider.GetService<IAuthenticator>();
-
-        //    if (authenticator == null) {
-        //        return true;
-        //    }
-
-        //    //var authorizeAttribute = methodInfo.GetCustomAttribute<AuthorizeAttribute>();
-        //    //HttpContext context = new DefaultHttpContext();
-
-
-
-        //    var auth = await authenticator.TryAuthenticate(AuthData);
-        //    if (auth.authenticated) {
-        //        User = auth.principal;
-        //        return true;
-        //    }
-
-        //    User = null;
-        //    return false;
-
-        //}
-
-        //internal void SetAuthData(string authdata) {
-        //    AuthData = authdata;
-        //}
 
         public ClientAttributes Attributes { get; } = new ClientAttributes();
 

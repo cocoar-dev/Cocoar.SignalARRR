@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using SignalARRR.Attributes;
@@ -30,7 +31,7 @@ namespace TestServer {
         }
 
         [MessageName("GibMirDatum")]
-        //[Authorize("TestPolicy1")]
+        [Authorize("TestPolicy1")]
         public string GetDate([FromServices]ConsoleWriter writer) {
             writer.WriteInfo("From ServerMethod");
             _consoleWriter2.WriteInfo("From ServerMethod");
