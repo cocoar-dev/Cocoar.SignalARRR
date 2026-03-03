@@ -1,5 +1,4 @@
 mode: ContinuousDeployment
-next-version: 4.0.0
 
 branches:
   develop:
