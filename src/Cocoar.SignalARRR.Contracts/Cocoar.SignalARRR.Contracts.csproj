@@ -43,13 +43,17 @@
     <GetTargetPathDependsOn>$(GetTargetPathDependsOn);_AddSourceGeneratorToPackage</GetTargetPathDependsOn>
   </PropertyGroup>
 
-  <Target Name="_AddSourceGeneratorToPackage" DependsOnTargets="ResolveProjectReferences">
+  <Target Name="_AddSourceGeneratorToPackage">
+    <PropertyGroup>
+      <_SourceGeneratorDll>$(MSBuildThisFileDirectory)..\Cocoar.SignalARRR.SourceGenerator\bin\$(Configuration)\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll</_SourceGeneratorDll>
+    </PropertyGroup>
+    <Error Text="SourceGenerator DLL not found at $(_SourceGeneratorDll). Build SourceGenerator first."
+           Condition="!Exists('$(_SourceGeneratorDll)')" />
     <ItemGroup>
-      <None Include="$(OutputPath)..\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll"
+      <None Include="$(_SourceGeneratorDll)"
             Pack="true"
             PackagePath="analyzers/dotnet/cs"
-            Visible="false"
-            Condition="Exists('$(OutputPath)..\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll')" />
+            Visible="false" />
     </ItemGroup>
   </Target>
 
