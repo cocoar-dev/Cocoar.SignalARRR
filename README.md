@@ -13,9 +13,12 @@ Both server and client can call each other's methods through shared interfaces, 
 - **CancellationToken propagation** — server can cancel client operations remotely
 - **Authorization** — method-level, class-level, and hub-level `[Authorize]` with automatic inheritance
 - **Server-to-client calls from anywhere** — inject `ClientManager` in controllers, background services, etc.
+- **TypeScript / JavaScript client** — `@cocoar/signalarrr` npm package with full v4 protocol support
 - **Optional runtime proxy fallback** — `DispatchProxy`-based package for plugin/dynamic scenarios
 
 ## Packages
+
+### .NET
 
 | Package | Purpose |
 |---|---|
@@ -23,6 +26,12 @@ Both server and client can call each other's methods through shared interfaces, 
 | `Cocoar.SignalARRR.Server` | Server-side: HARRR hub, ServerMethods, authorization, ClientManager |
 | `Cocoar.SignalARRR.Client` | Client-side: HARRRConnection, typed proxies, event handlers |
 | `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via DispatchProxy |
+
+### JavaScript / TypeScript
+
+| Package | Purpose |
+|---|---|
+| `@cocoar/signalarrr` | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
 
 ## Quick Start
 
@@ -77,7 +86,7 @@ public class ChatMethods : ServerMethods<ChatHub>, IChatHub {
 }
 ```
 
-### 3. Client setup
+### 3. .NET client setup
 
 ```csharp
 var connection = HARRRConnection.Create(builder => {
@@ -96,7 +105,38 @@ await foreach (var msg in chat.StreamMessages(cancellationToken)) {
 }
 ```
 
-### 4. Server-to-client calls
+### 4. TypeScript / JavaScript client setup
+
+```
+npm install @cocoar/signalarrr
+```
+
+```ts
+import { HARRRConnection } from '@cocoar/signalarrr';
+
+const connection = HARRRConnection.create(builder => {
+    builder.withUrl('https://localhost:5001/chathub');
+    builder.withAutomaticReconnect();
+});
+await connection.start();
+
+// Invoke with return value
+const history = await connection.invoke<string[]>('ChatMethods.GetHistory');
+
+// Fire-and-forget
+await connection.send('ChatMethods.SendMessage', 'Alice', 'Hello!');
+
+// Stream
+connection.stream<string>('ChatMethods.StreamMessages').subscribe({
+    next: msg => console.log(msg),
+    complete: () => console.log('done'),
+});
+
+// Handle server-to-client calls
+connection.onServerMethod('GetClientName', () => navigator.userAgent);
+```
+
+### 5. Server-to-client calls
 
 ```csharp
 // Inside ServerMethods — use ClientContext
@@ -117,15 +157,32 @@ public class NotificationService {
 
 ## Framework Support
 
-- **Server**: .NET 10
-- **Client**: .NET 10
+| Target | Version |
+|---|---|
+| .NET (server + client) | .NET 10 |
+| TypeScript / JavaScript | `@microsoft/signalr` v10, Node.js 22 / modern browsers |
 
 ## Building from Source
 
 ```bash
+# .NET
 dotnet build src/Cocoar.SignalARRR.slnx
 dotnet test src/Cocoar.SignalARRR.slnx
+
+# TypeScript
+cd src/Cocoar.SignalARRR.Typescript
+npm install && npm run build
 ```
+
+## Documentation
+
+- [Getting Started](docs/getting-started.md)
+- [Server API](docs/server-api.md)
+- [Client API](docs/client-api.md) — .NET and TypeScript
+- [Streaming](docs/streaming.md)
+- [Authorization](docs/authorization.md)
+- [Proxy Generation](docs/proxy-generation.md)
+- [Migration from v2.x](docs/migration-v4.md)
 
 ## License
 
