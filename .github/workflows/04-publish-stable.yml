@@ -101,6 +101,20 @@ jobs:
           echo "Using release version: $VERSION"
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Build and pack npm package (stable)
+        working-directory: ./src/Cocoar.SignalARRR.Typescript
+        run: |
+          npm install
+          npm version $RELEASE_VERSION --no-git-tag-version
+          npm run build
+          npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts"
+
       - name: Restore dependencies
         run: dotnet restore
         working-directory: ./src
@@ -135,18 +149,8 @@ jobs:
             dotnet nuget push "$p" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
           done
 
-      - name: Setup Node (npm publish)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
       - name: Publish npm package (stable)
         working-directory: ./src/Cocoar.SignalARRR.Typescript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          npm install
-          npm version $RELEASE_VERSION --no-git-tag-version
-          npm run build
-          npm publish
+        run: npm publish
