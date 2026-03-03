@@ -4,6 +4,8 @@
     <WarningsNotAsErrors>NU1507</WarningsNotAsErrors>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>

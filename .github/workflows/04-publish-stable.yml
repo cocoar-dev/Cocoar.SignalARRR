@@ -101,7 +101,7 @@ jobs:
         working-directory: ./src
 
       - name: Pack NuGet packages (stable)
-        run: dotnet pack -c Release --no-restore /p:IncludeSymbols=true /p:SymbolPackageFormat=snupkg -o ../artifacts -p:Version=${{ env.RELEASE_VERSION }}
+        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=${{ env.RELEASE_VERSION }}
         working-directory: ./src
 
       - name: Ensure packages exist

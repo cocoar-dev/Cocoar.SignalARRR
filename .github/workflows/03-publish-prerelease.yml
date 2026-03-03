@@ -105,7 +105,7 @@ jobs:
         working-directory: ./src
 
       - name: Pack NuGet packages (incl. symbols)
-        run: dotnet pack -c Release --no-restore /p:IncludeSymbols=true /p:SymbolPackageFormat=snupkg -o ../artifacts -p:Version=$PACKAGE_VERSION
+        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=$PACKAGE_VERSION
         working-directory: ./src
 
       - name: Ensure packages exist
