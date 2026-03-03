@@ -157,6 +157,65 @@ No code changes — it auto-registers as a fallback factory.
 
 ---
 
+## TypeScript client migration (npm)
+
+### Package renamed
+
+```diff
+- npm install signalarrr
++ npm install @cocoar/signalarrr
+```
+
+Update your imports:
+
+```diff
+- import { HARRRConnection } from 'signalarrr';
++ import { HARRRConnection } from '@cocoar/signalarrr';
+```
+
+### `onServerRequest` → `onServerMethod`
+
+```diff
+- connection.onServerRequest('Ping', (msg) => `Pong: ${msg}`);
++ connection.onServerMethod('Ping', (msg) => `Pong: ${msg}`);
+```
+
+### `send()` now uses `InvokeMessage` (was `SendMessage`)
+
+If you were relying on the wire-level hub method name (e.g., for custom interceptors),
+the client now sends to `InvokeMessage` instead of `SendMessage`. No API change needed.
+
+### `HARRRConnectionOptions.HttpResponse` removed
+
+The HTTP pass-through option has been removed. If you were passing `{ HttpResponse: true }`,
+simply remove it — the option no longer exists.
+
+### New server→client handlers wired automatically
+
+v4 adds two new server→client handlers that are registered automatically:
+
+| Handler | Behaviour |
+|---|---|
+| `InvokeServerMessage` | Server calls a client method fire-and-forget (no response sent back) |
+| `CancelTokenFromServer` | Server cancels an in-flight operation via `AbortSignal` |
+
+No code change needed. If the server sends these messages, they are handled transparently.
+
+### CancellationToken → AbortSignal
+
+When the server passes a `CancellationToken` to a client method, it arrives as an
+`AbortSignal` in the TypeScript handler:
+
+```ts
+connection.onServerMethod('DoWork', async (data: string, signal: AbortSignal) => {
+    while (!signal.aborted) {
+        await processChunk(data);
+    }
+});
+```
+
+---
+
 ## Package changes
 
 | v2.x | v4.0 | Notes |

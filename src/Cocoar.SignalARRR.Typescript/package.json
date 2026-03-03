@@ -14,10 +14,15 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "prepack": "node scripts/copy-assets.cjs",
+    "postinstall": "node scripts/postinstall.cjs"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "skills/",
+    "docs/",
+    "scripts/"
   ],
   "author": "Bernhard Windisch",
   "license": "ISC",

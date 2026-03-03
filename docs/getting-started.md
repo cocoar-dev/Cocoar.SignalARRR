@@ -212,7 +212,81 @@ connection.Reconnected += async (connectionId) => {
 var hubConnection = connection.AsSignalRHubConnection();
 ```
 
-## Step 4: DynamicProxy (optional)
+## Step 4: TypeScript / JavaScript client
+
+Use the `@cocoar/signalarrr` npm package to connect from a browser or Node.js app.
+
+### Install
+
+```
+npm install @cocoar/signalarrr
+```
+
+### Create and start the connection
+
+```ts
+import { HARRRConnection } from '@cocoar/signalarrr';
+import * as signalR from '@microsoft/signalr';
+
+const connection = HARRRConnection.create(builder => {
+    builder.withUrl('https://localhost:5001/chathub');
+    builder.withAutomaticReconnect();
+});
+
+await connection.start();
+```
+
+### Call server methods
+
+```ts
+// Invoke with return value
+const history = await connection.invoke<string[]>('ChatMethods.GetHistory');
+
+// Fire-and-forget
+await connection.send('ChatMethods.SendMessage', 'Alice', 'Hello!');
+
+// Stream
+const stream = connection.stream<string>('ChatMethods.StreamMessages');
+stream.subscribe({
+    next: msg => console.log(msg),
+    error: err => console.error(err),
+    complete: () => console.log('done'),
+});
+```
+
+### Handle server-to-client calls
+
+When the server calls a method on this client, register a handler with `onServerMethod`:
+
+```ts
+connection.onServerMethod('GetClientName', () => {
+    return navigator.userAgent;
+});
+
+connection.onServerMethod('DoWork', async (payload: string, signal: AbortSignal) => {
+    // signal is an AbortSignal if the server passed a CancellationToken
+    while (!signal.aborted) {
+        await new Promise(r => setTimeout(r, 1000));
+        console.log('working...', payload);
+    }
+});
+```
+
+### Connection with authentication
+
+```ts
+const connection = HARRRConnection.create(builder => {
+    builder.withUrl('https://localhost:5001/chathub', {
+        accessTokenFactory: () => getJwtToken(),
+    });
+});
+```
+
+SignalARRR automatically:
+1. Sends the token with each RPC call
+2. Responds to server re-authentication challenges
+
+## Step 5: DynamicProxy (optional)
 
 If you have interfaces that aren't known at compile time (plugin scenarios),
 add the DynamicProxy package:

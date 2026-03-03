@@ -344,6 +344,10 @@ healthchecksdb
 # TypeScript build output
 src/Cocoar.SignalARRR.Typescript/dist/
 
+# TypeScript package — generated asset copies (populated by prepack, sourced from repo root)
+src/Cocoar.SignalARRR.Typescript/skills/
+src/Cocoar.SignalARRR.Typescript/docs/
+
 # Claude Code
 .claude/
 

@@ -217,3 +217,142 @@ SignalARRR automatically:
 1. Sends the token with each RPC call
 2. Responds to server authentication challenges
 3. Supports token refresh when the server requests re-authentication
+
+---
+
+# TypeScript / JavaScript Client API
+
+**Package:** `@cocoar/signalarrr`
+**Requires:** `@microsoft/signalr` ^10
+
+## HARRRConnection
+
+### Creating a connection
+
+```ts
+import { HARRRConnection } from '@cocoar/signalarrr';
+
+// Option A: configure via builder callback (most common)
+const connection = HARRRConnection.create(builder => {
+    builder.withUrl('https://localhost:5001/myhub');
+    builder.withAutomaticReconnect();
+});
+
+// Option B: pass an existing HubConnection
+import * as signalR from '@microsoft/signalr';
+const hub = new signalR.HubConnectionBuilder()
+    .withUrl('https://localhost:5001/myhub')
+    .build();
+const connection = HARRRConnection.create(hub);
+```
+
+### Lifecycle
+
+```ts
+await connection.start();
+await connection.stop();
+```
+
+### Properties
+
+```ts
+connection.baseUrl                       // get/set
+connection.connectionId                  // string | null
+connection.state                         // HubConnectionState
+connection.serverTimeoutInMilliseconds   // get/set
+connection.keepAliveIntervalInMilliseconds // get/set
+```
+
+### Events
+
+```ts
+connection.onClose(err => console.log('closed', err));
+connection.onReconnecting(err => console.log('reconnecting', err));
+connection.onReconnected(id => console.log('reconnected', id));
+```
+
+### Access the underlying HubConnection
+
+```ts
+const hub: signalR.HubConnection = connection.asSignalRHubConnection();
+```
+
+---
+
+## Calling server methods
+
+### `invoke<T>()` — call and await a return value
+
+```ts
+const history = await connection.invoke<string[]>('ChatMethods.GetHistory');
+const result  = await connection.invoke<number>('MathMethods.Add', 3, 4);
+```
+
+### `send()` — fire-and-forget
+
+```ts
+await connection.send('ChatMethods.SendMessage', 'Alice', 'Hello!');
+```
+
+### `stream<T>()` — server-to-client stream
+
+```ts
+const stream = connection.stream<string>('ChatMethods.StreamMessages');
+
+stream.subscribe({
+    next:     msg  => console.log(msg),
+    error:    err  => console.error(err),
+    complete: ()   => console.log('stream complete'),
+});
+```
+
+---
+
+## Handling server-to-client calls
+
+Use `onServerMethod` to register handlers for methods the server calls on this client.
+Returns `this` for chaining.
+
+```ts
+// Synchronous handler — return a value
+connection.onServerMethod('GetClientName', () => navigator.userAgent);
+
+// Async handler — return a Promise
+connection.onServerMethod('FetchData', async (id: string) => {
+    const res = await fetch(`/data/${id}`);
+    return res.json();
+});
+
+// With AbortSignal (server passed a CancellationToken)
+connection.onServerMethod('DoWork', async (payload: string, signal: AbortSignal) => {
+    while (!signal.aborted) {
+        await processChunk(payload, signal);
+    }
+});
+
+// Chaining
+connection
+    .onServerMethod('Ping',        ()        => 'Pong')
+    .onServerMethod('GetStatus',   ()        => ({ ok: true }))
+    .onServerMethod('HandleEvent', (e: Event) => handleEvent(e));
+```
+
+### Handler types
+
+| Server sends | Handler receives | Handler should return |
+|---|---|---|
+| `InvokeServerRequest` | args (+ optional `AbortSignal`) | value — sent back to server |
+| `InvokeServerMessage` | args (+ optional `AbortSignal`) | anything — result discarded |
+| `ChallengeAuthentication` | — | — (handled automatically) |
+| `CancelTokenFromServer` | — | — (handled automatically) |
+
+---
+
+## Raw SignalR event handlers
+
+For low-level use, `on` / `off` pass through directly to the underlying `HubConnection`:
+
+```ts
+connection.on('CustomEvent', (payload) => console.log(payload));
+connection.off('CustomEvent');
+```

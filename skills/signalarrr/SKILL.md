@@ -4,7 +4,8 @@ description: >
   Typed bidirectional RPC over SignalR using Cocoar.SignalARRR.
   Use when working with HARRR hubs, ServerMethods, HARRRConnection,
   [SignalARRRContract] interfaces, streaming (IAsyncEnumerable, IObservable,
-  ChannelReader), server-to-client calls, or SignalARRR authorization.
+  ChannelReader), server-to-client calls, SignalARRR authorization,
+  or the @cocoar/signalarrr TypeScript/JavaScript npm client.
 metadata:
   author: Bernhard Windisch
   version: "4.0"
@@ -21,11 +22,12 @@ ASP.NET Core authorization.
 
 Use this skill when:
 - Setting up a HARRR hub or ServerMethods class
-- Creating or configuring a HARRRConnection (client)
+- Creating or configuring a HARRRConnection (C# or TypeScript client)
 - Defining `[SignalARRRContract]` interfaces for typed RPC
 - Implementing streaming with IAsyncEnumerable, IObservable, or ChannelReader
 - Server needs to call client methods and await responses
 - Configuring authorization on hub methods
+- Using the `@cocoar/signalarrr` npm package in a JavaScript/TypeScript project
 - Troubleshooting SignalARRR connection or invocation issues
 
 ## Package structure
@@ -33,12 +35,13 @@ Use this skill when:
 | Package | Purpose |
 |---|---|
 | `Cocoar.SignalARRR.Server` | Server-side: HARRR hub, ServerMethods, auth, ClientManager |
-| `Cocoar.SignalARRR.Client` | Client-side: HARRRConnection, typed proxies |
+| `Cocoar.SignalARRR.Client` | Client-side .NET: HARRRConnection, typed proxies |
 | `Cocoar.SignalARRR.Contracts` | Shared: `[SignalARRRContract]` attribute + source generator (reference from shared interface projects) |
 | `Cocoar.SignalARRR.Common` | Wire protocol types (referenced automatically) |
 | `Cocoar.SignalARRR.ProxyGenerator` | Proxy factory infrastructure (referenced automatically) |
 | `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via DispatchProxy |
 | `Cocoar.SignalARRR.SourceGenerator` | Roslyn source generator (bundled in Contracts) |
+| `@cocoar/signalarrr` (npm) | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
 
 ## Quick start
 
