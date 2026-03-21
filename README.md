@@ -33,6 +33,13 @@ Both server and client can call each other's methods through shared interfaces, 
 |---|---|
 | `@cocoar/signalarrr` | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
 
+### Swift (iOS / macOS)
+
+| Product | Purpose |
+|---|---|
+| `CocoarSignalARRRMacros` | Full client with `@HubProxy` macro for compile-time proxy generation |
+| `CocoarSignalARRR` | Runtime only (no macro dependency) — `HARRRConnection`, `invoke`, `send`, `stream` |
+
 ## Quick Start
 
 ### 1. Define shared interfaces
@@ -136,7 +143,52 @@ connection.stream<string>('ChatMethods.StreamMessages').subscribe({
 connection.onServerMethod('GetClientName', () => navigator.userAgent);
 ```
 
-### 5. Server-to-client calls
+### 5. Swift client setup (iOS / macOS)
+
+Add the SPM dependency:
+
+```swift
+// Package.swift
+.package(url: "https://github.com/Cocoar/SignalARRR.git", from: "4.1.0")
+
+// Target dependency (with @HubProxy macro):
+.product(name: "CocoarSignalARRRMacros", package: "SignalARRR")
+```
+
+Or in Xcode: File > Add Packages > paste the repository URL.
+
+```swift
+import CocoarSignalARRRClient
+
+// Define a hub protocol
+@HubProxy
+protocol IChatHub {
+    func sendMessage(user: String, message: String) async throws
+    func getHistory() async throws -> [String]
+    func streamMessages() async throws -> AsyncThrowingStream<String, Error>
+}
+
+// Create connection
+let connection = await HARRRConnection.create({ builder in
+    builder.withUrl(url: "https://localhost:5001/chathub")
+        .withAutomaticReconnect()
+}, accessTokenFactory: { "Bearer my-token" })
+
+try await connection.start()
+
+// Use the generated proxy
+let chat = connection.getTypedMethods(IChatHubProxy.self)
+try await chat.sendMessage(user: "Alice", message: "Hello!")
+let history = try await chat.getHistory()
+
+// Stream
+let stream: AsyncThrowingStream<String, Error> = try await chat.streamMessages()
+for try await msg in stream {
+    print(msg)
+}
+```
+
+### 6. Server-to-client calls
 
 ```csharp
 // Inside ServerMethods — use ClientContext
@@ -161,6 +213,7 @@ public class NotificationService {
 |---|---|
 | .NET (server + client) | .NET 10 |
 | TypeScript / JavaScript | `@microsoft/signalr` v10, Node.js 22 / modern browsers |
+| Swift (iOS / macOS) | Swift 5.10+, iOS 14+ / macOS 11+ |
 
 ## Building from Source
 
@@ -172,6 +225,10 @@ dotnet test src/Cocoar.SignalARRR.slnx
 # TypeScript
 cd src/Cocoar.SignalARRR.Typescript
 npm install && npm run build
+
+# Swift
+swift build
+swift test
 ```
 
 ## Documentation

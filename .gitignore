@@ -353,3 +353,8 @@ src/Cocoar.SignalARRR.Typescript/docs/
 
 # Generated agent skills (copied by NuGet buildTransitive targets)
 .github/skills/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved

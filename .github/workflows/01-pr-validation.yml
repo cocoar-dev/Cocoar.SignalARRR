@@ -63,3 +63,43 @@ jobs:
       - name: Validate packaging
         run: dotnet pack -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }}
         working-directory: ./src
+
+  test-swift:
+    name: Test Swift package
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Swift package
+        run: swift build
+
+      - name: Run Swift tests
+        run: swift test
+
+  integration-test:
+    name: Swift ↔ .NET integration tests
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run integration tests
+        run: chmod +x scripts/run-integration-tests.sh && scripts/run-integration-tests.sh
