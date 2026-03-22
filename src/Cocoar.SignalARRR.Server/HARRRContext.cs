@@ -1,4 +1,5 @@
-﻿using System;
+using System;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
@@ -8,17 +9,11 @@ using Microsoft.AspNetCore.SignalR;
 namespace Cocoar.SignalARRR.Server {
     internal class ClientContextDispatcher<T> : IClientContextDispatcher where T : HARRR {
 
-
         private IHubContext<T> HubContext { get; }
-
-
-
 
         public ClientContextDispatcher(IHubContext<T> hubContext) {
             HubContext = hubContext;
         }
-
-
 
         public Task<TResult> InvokeClientAsync<TResult>(string clientId, ServerRequestMessage serverRequestMessage, CancellationToken cancellationToken) {
             return InvokeClientMessageAsync<TResult>(clientId, MethodNames.InvokeServerRequest, serverRequestMessage, cancellationToken);
@@ -29,7 +24,6 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public async Task<string> Challenge(string clientId) {
-
             try {
                 var msg = new ServerRequestMessage(MethodNames.ChallengeAuthentication);
                 var ct = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -38,11 +32,9 @@ namespace Cocoar.SignalARRR.Server {
                 Console.WriteLine(e);
                 throw;
             }
-
         }
 
         public async Task CancelToken(string clientId, Guid id) {
-
             try {
                 var msg = new ServerRequestMessage(MethodNames.CancelTokenFromServer);
                 msg.CancellationGuid = id;
@@ -51,22 +43,15 @@ namespace Cocoar.SignalARRR.Server {
                 Console.WriteLine(e);
                 throw;
             }
-
         }
 
         internal async Task<TResult> InvokeClientMessageAsync<TResult>(string clientId, string methodName, ServerRequestMessage serverRequestMessage, CancellationToken cancellationToken) {
-            // Modern implementation using SignalR Core 3.0+ InvokeCoreAsync
-            // This directly awaits the client's response without manual TaskCompletionSource management
-            return await HubContext.Clients.Client(clientId).InvokeCoreAsync<TResult>(methodName, new[] { serverRequestMessage }, cancellationToken);
+            // Uses SignalR's native client results — the client handler returns the value directly
+            return await HubContext.Clients.Client(clientId).InvokeCoreAsync<TResult>(methodName, new object[] { serverRequestMessage }, cancellationToken);
         }
 
         internal async Task SendClientMessageAsync(string clientId, string methodName, ServerRequestMessage serverRequestMessage, CancellationToken cancellationToken) {
-            // Send message to client without awaiting a response (fire-and-forget)
-            await HubContext.Clients.Client(clientId).SendCoreAsync(methodName, new[] { serverRequestMessage }, cancellationToken);
+            await HubContext.Clients.Client(clientId).SendCoreAsync(methodName, new object[] { serverRequestMessage }, cancellationToken);
         }
-
-
     }
-
-
 }

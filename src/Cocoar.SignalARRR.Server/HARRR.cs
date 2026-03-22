@@ -291,18 +291,16 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
-        // Note: ReplyServerRequest hub method was removed during ASP.NET Core 3.x → .NET 8 migration.
-        // 
-        // In the old implementation (SignalR Core 1.x/2.x), server-to-client RPC required a workaround:
-        //   1. Server sent InvokeServerRequest message to client
-        //   2. Client processed the request
-        //   3. Client called ReplyServerRequest hub method with the result
-        //   4. ServerRequestManager completed the TaskCompletionSource
-        // 
-        // SignalR Core 3.0+ added InvokeCoreAsync, which handles bidirectional RPC natively.
-        // The server can now directly await client responses without HTTP POST workarounds.
-        // See HARRRContext.InvokeClientMessageAsync for the modern implementation using InvokeCoreAsync.
-        // 
-        // Bidirectional RPC remains fully functional via ClientContext.GetTypedClient<T>().
+        /// <summary>
+        /// Called by clients to request an upload URL for sending a Stream to the server.
+        /// The client uploads the stream data via HTTP POST to the returned URL,
+        /// then sends a StreamReference with that URL as a return value or argument.
+        /// </summary>
+        /// <returns>The upload URL where the client should POST the stream data.</returns>
+        public string RequestUploadSlot() {
+            var streamManager = ServiceProvider.GetRequiredService<ServerPushStreamManager>();
+            return streamManager.CreateUploadSlot(ClientContext.ConnectedTo);
+        }
+
     }
 }

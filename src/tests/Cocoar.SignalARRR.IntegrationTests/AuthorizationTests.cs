@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json.Serialization;
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -69,6 +71,16 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         public Task NothingAsync() => Task.CompletedTask;
     }
 
+    // Second ServerMethods class on the same hub — tests multi-class organization
+    [MessageName("AuthExtraMethods")]
+    public class AuthExtraServerMethods : ServerMethods<AuthTestHub> {
+
+        [AllowAnonymous]
+        public string PublicInfo() => "PublicValue";
+
+        public string SecretInfo() => "SecretValue";
+    }
+
     public class AuthTestServerFixture : IDisposable {
         private readonly IHost _host;
         public string ServerUrl { get; }
@@ -103,6 +115,20 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                             app.UseAuthorization();
                             app.UseEndpoints(endpoints => {
                                 endpoints.MapHARRRController<AuthTestHub>("/signalr/authtesthub");
+
+                                // Test trigger: expire a client's auth cache to force challenge on next call
+                                endpoints.MapPost("/__test/expire-auth-cache", async context => {
+                                    var connectionId = context.Request.Query["connectionId"].ToString();
+                                    if (string.IsNullOrWhiteSpace(connectionId)) {
+                                        context.Response.StatusCode = 400;
+                                        await context.Response.WriteAsync("Missing connectionId");
+                                        return;
+                                    }
+                                    var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
+                                    var client = clientManager.GetClientById(connectionId);
+                                    client.UserValidUntil = DateTime.MinValue;
+                                    await context.Response.WriteAsync("Expired");
+                                });
                             });
                         });
                 });
@@ -151,6 +177,14 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             });
         }
 
+        private HARRRConnection CreateConnectionWithTokenProvider(Func<Task<string?>> tokenProvider) {
+            return HARRRConnection.Create(builder => {
+                builder.WithUrl($"{_fixture.ServerUrl}/signalr/authtesthub", options => {
+                    options.AccessTokenProvider = tokenProvider;
+                });
+            });
+        }
+
         [Fact]
         public async Task AuthenticatedCall_WithValidToken_Succeeds() {
             _connection = CreateConnection("Bearer test-token-123");
@@ -181,6 +215,63 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             await Assert.ThrowsAnyAsync<Exception>(async () => {
                 await _connection.StartAsync(TestContext.Current.CancellationToken);
             });
+        }
+
+        [Fact]
+        public async Task TokenChallenge_ExpiredCache_RefreshesToken() {
+            var ct = TestContext.Current.CancellationToken;
+            var callCount = 0;
+
+            // Token provider returns a fresh token on each call
+            _connection = CreateConnectionWithTokenProvider(() => {
+                callCount++;
+                return Task.FromResult<string?>($"token-{callCount}");
+            });
+            await _connection.StartAsync(ct);
+
+            // First call — uses initial token
+            var typedClient = _connection.GetTypedMethods<ITestServerMethods>();
+            var result1 = await typedClient.GetNameAsync();
+            Assert.Equal("AuthMethodNameAsync", result1);
+
+            // Expire the auth cache on the server
+            using var http = new HttpClient();
+            var expireUrl = $"{_fixture.ServerUrl}/__test/expire-auth-cache?connectionId={_connection.ConnectionId}";
+            await http.PostAsync(expireUrl, null, ct);
+
+            // Second call — server detects expired cache, challenges client, gets fresh token
+            var result2 = await typedClient.GetNameAsync();
+            Assert.Equal("AuthMethodNameAsync", result2);
+
+            // Token provider was called at least twice (initial + challenge refresh)
+            Assert.True(callCount >= 2, $"Expected AccessTokenProvider to be called at least 2 times, was called {callCount} times");
+        }
+
+        [Fact]
+        public async Task AllowAnonymous_OnMethod_BypassesHubAuth() {
+            // Connect with a token (hub requires auth) but call an [AllowAnonymous] method
+            _connection = CreateConnectionWithTokenProvider(() => Task.FromResult<string?>("test-token"));
+            await _connection.StartAsync(TestContext.Current.CancellationToken);
+
+            // Call [AllowAnonymous] method on the second ServerMethods class
+            var result = await _connection.InvokeCoreAsync<string>(
+                new Cocoar.SignalARRR.Common.ClientRequestMessage("AuthExtraMethods.PublicInfo"),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal("PublicValue", result);
+        }
+
+        [Fact]
+        public async Task SecondServerMethodsClass_OnSameHub_RequiresAuth() {
+            _connection = CreateConnectionWithTokenProvider(() => Task.FromResult<string?>("test-token-secret"));
+            await _connection.StartAsync(TestContext.Current.CancellationToken);
+
+            // Call method on the second ServerMethods class (authenticated, inherits [Authorize] from hub)
+            var result = await _connection.InvokeCoreAsync<string>(
+                new Cocoar.SignalARRR.Common.ClientRequestMessage("AuthExtraMethods.SecretInfo"),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal("SecretValue", result);
         }
     }
 }

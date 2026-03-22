@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 
@@ -11,6 +11,12 @@ namespace Cocoar.SignalARRR.Server {
         };
 
         public List<Type> PreBuiltClientMethods { get; } = new List<Type>();
+
+        /// <summary>
+        /// Duration for which a client's authentication result is cached after successful validation.
+        /// Default: 3 minutes. Set to TimeSpan.Zero to disable caching (re-authenticate on every call).
+        /// </summary>
+        public TimeSpan AuthCacheDuration { get; set; } = TimeSpan.FromMinutes(3);
 
     }
 
@@ -31,6 +37,15 @@ namespace Cocoar.SignalARRR.Server {
                 _options.PreBuiltClientMethods.Add(typeof(T));
             }
 
+            return this;
+        }
+
+        /// <summary>
+        /// Set the duration for which authentication results are cached per client.
+        /// Default: 3 minutes.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithAuthCacheDuration(TimeSpan duration) {
+            _options.AuthCacheDuration = duration;
             return this;
         }
 

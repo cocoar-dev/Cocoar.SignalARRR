@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -15,30 +15,34 @@ namespace Cocoar.SignalARRR.Client {
             _harrrContext = harrrContext;
         }
 
-
+        /// <summary>
+        /// Resolve as a live Stream (not buffered) — for large files, data is read on demand.
+        /// The caller is responsible for disposing the Stream.
+        /// </summary>
         public async Task<Stream> ProcessStreamArgument() {
-
-            var uri = new Uri(_streamReference.Uri);
-            switch (uri.Scheme.ToLower()) {
-
-                case "http":
-                case "https": {
-                        return await DownloadStream(uri);
-
-                    }
-                default: {
-                        throw new Exception($"StreamReference.Scheme '{uri.Scheme}' is not implemented!");
-                    }
-            }
-        }
-
-
-        private async Task<Stream> DownloadStream(Uri uri) {
+            var uri = ValidateUri();
             var httpClient = new HttpClient();
-            var res = await httpClient.GetAsync(uri);
+            var res = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
             return await res.Content.ReadAsStreamAsync();
-
         }
 
+        /// <summary>
+        /// Resolve as buffered byte array — loads entire content into memory.
+        /// Use for small files or when random access is needed.
+        /// </summary>
+        public async Task<byte[]> ProcessStreamArgumentBuffered() {
+            var uri = ValidateUri();
+            var httpClient = new HttpClient();
+            return await httpClient.GetByteArrayAsync(uri);
+        }
+
+        private Uri ValidateUri() {
+            var uri = new Uri(_streamReference.Uri);
+            var scheme = uri.Scheme.ToLower();
+            if (scheme != "http" && scheme != "https") {
+                throw new NotSupportedException($"StreamReference: unsupported URI scheme '{uri.Scheme}'");
+            }
+            return uri;
+        }
     }
 }

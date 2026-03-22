@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -11,6 +12,7 @@ using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Interfaces;
+using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -295,17 +297,30 @@ namespace Cocoar.SignalARRR.Server {
                     return _serviceProvider.GetRequiredService(p.ParameterType);
                 }
 
-                if (@params.Count < paramsPosition) {
-                    throw new IndexOutOfRangeException();
+                if (paramsPosition >= @params.Count) {
+                    throw new ArgumentException(
+                        $"Parameter '{p.Name}' (position {paramsPosition}): " +
+                        $"not enough arguments provided. Expected at least {paramsPosition + 1}, got {@params.Count}.");
                 }
 
                 var par = @params[paramsPosition];
+                var serializer = _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>();
 
-                if (par != null && p.ParameterType != par.GetType()) {
-                    if (par is JsonElement je) {
-                        par = je.Deserialize(p.ParameterType)!;
-                    } else {
-                        par = par.Reflect().To(p.ParameterType)!;
+                // If the parameter type is Stream, resolve StreamReference via HTTP upload
+                if (typeof(Stream).IsAssignableFrom(p.ParameterType) && par != null) {
+                    var streamRef = serializer.TryConvertTo<StreamReference>(par);
+                    if (streamRef != null && !string.IsNullOrEmpty(streamRef.Uri)) {
+                        var streamManager = _serviceProvider.GetRequiredService<ServerPushStreamManager>();
+                        par = SimpleAsyncHelper.RunSync(() => streamManager.WaitForUpload(streamRef.Uri, cancellation));
+                    }
+                } else if (par != null && p.ParameterType != par.GetType()) {
+                    try {
+                        par = serializer.ConvertTo(par, p.ParameterType)!;
+                    } catch (Exception ex) {
+                        throw new ArgumentException(
+                            $"Parameter '{p.Name}' (position {paramsPosition}): " +
+                            $"failed to deserialize to {p.ParameterType.Name}. " +
+                            $"Received value: {par}", ex);
                     }
                 }
 

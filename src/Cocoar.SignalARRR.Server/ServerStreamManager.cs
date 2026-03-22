@@ -2,10 +2,10 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using Cocoar.Reflectensions.ExtensionMethods;
+using Cocoar.SignalARRR.Common.Serialization;
 
 namespace Cocoar.SignalARRR.Server {
     public class ServerStreamManager {
@@ -34,7 +34,7 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
-        public async IAsyncEnumerable<TResult> ReadStream<TResult>(Guid streamId, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+        public async IAsyncEnumerable<TResult> ReadStream<TResult>(Guid streamId, [EnumeratorCancellation] CancellationToken cancellationToken = default, IProtocolSerializer? serializer = null) {
             if (!_pendingStreams.TryGetValue(streamId, out var channel)) {
                 yield break;
             }
@@ -43,8 +43,8 @@ namespace Cocoar.SignalARRR.Server {
                 await foreach (var item in channel.Reader.ReadAllAsync(cancellationToken)) {
                     if (item is TResult typed) {
                         yield return typed;
-                    } else if (item is JsonElement je) {
-                        yield return je.Deserialize<TResult>()!;
+                    } else if (serializer != null) {
+                        yield return (TResult)serializer.ConvertTo(item, typeof(TResult))!;
                     } else {
                         yield return item.Reflect().To<TResult>()!;
                     }

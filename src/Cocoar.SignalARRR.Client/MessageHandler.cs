@@ -21,39 +21,46 @@ using Microsoft.AspNetCore.SignalR.Client;
 namespace Cocoar.SignalARRR.Client {
     public class MessageHandler {
         private readonly HARRRContext _harrrContext;
+        private readonly Common.Serialization.IProtocolSerializer _serializer;
         private ISignalARRRMethodsCollection MethodsCollection { get; set; } = new SignalARRRMethodsCollection();
 
         private ISignalARRRInterfaceCollection InterfaceCollection { get; set; } = new SignalARRRInterfaceCollection();
 
-        public MessageHandler(HARRRContext harrrContext) {
+        public MessageHandler(HARRRContext harrrContext, Common.Serialization.IProtocolSerializer? serializer = null) {
             _harrrContext = harrrContext;
+            _serializer = serializer ?? new Common.Serialization.JsonProtocolSerializer();
         }
 
-        public async Task ChallengeAuthentication(ServerRequestMessage message) {
-
-            string? payload = null;
-            string? error = null;
-            try {
-                payload = await _harrrContext.AccessTokenProvider();
-            } catch (Exception e) {
-                error = e.GetBaseException().Message;
-            }
-
-
-            await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object?[] { message.Id, payload, error });
-
+        public async Task<string?> ChallengeAuthentication(ServerRequestMessage message) {
+            return await _harrrContext.AccessTokenProvider();
         }
 
-        public async Task InvokeServerRequest(ServerRequestMessage message) {
+        public async Task<object?> InvokeServerRequest(ServerRequestMessage message) {
+            message = PrepareServerRequestMessage(message);
+            var result = await InvokeAsync(message);
 
-            try {
-                message = PrepareServerRequestMessage(message);
-                var payload = await InvokeAsync(message);
-                await SendResponse(message.Id, payload, null!);
-            } catch (Exception e) {
-                await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object?[] { message.Id, null, e.GetBaseException().Message });
+            // If the result is a Stream, upload it to the server and return a StreamReference
+            if (result is Stream stream) {
+                return await UploadStreamAndReturnReference(stream);
             }
 
+            return result;
+        }
+
+        private async Task<StreamReference> UploadStreamAndReturnReference(Stream stream) {
+            var hubConnection = _harrrContext.GetHubConnection();
+
+            // Ask server for an upload URL
+            var uploadUrl = await hubConnection.InvokeCoreAsync<string>("RequestUploadSlot", Array.Empty<object>(), default);
+
+            // Upload the stream via HTTP POST
+            using var httpClient = new HttpClient();
+            using var content = new StreamContent(stream);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            var response = await httpClient.PostAsync(uploadUrl, content);
+            response.EnsureSuccessStatusCode();
+
+            return new StreamReference { Uri = uploadUrl };
         }
 
         public async Task InvokeServerMessage(ServerRequestMessage message) {
@@ -152,23 +159,6 @@ namespace Cocoar.SignalARRR.Client {
 
 
 
-        private async Task SendResponse(Guid id, object payload, string? error) {
-
-            if (_harrrContext.UseHttpResponse) {
-                var url = _harrrContext.GetResponseUri(id, error);
-                var httpClient = new HttpClient();
-
-                if (!string.IsNullOrEmpty(error)) {
-                    await httpClient.PostAsync(url, null);
-                } else {
-                    var jsonPayload = JsonSerializer.Serialize(payload);
-                    await httpClient.PostAsync(url, new StringContent(jsonPayload, Encoding.UTF8, "application/json"));
-                }
-
-            } else {
-                await _harrrContext.GetHubConnection().SendCoreAsync(MethodNames.ReplyServerRequest, new object?[] { id, payload, error });
-            }
-        }
 
         private Task<object> InvokeAsync(ServerRequestMessage serverRequestMessage) {
 
@@ -269,14 +259,11 @@ namespace Cocoar.SignalARRR.Client {
                 }
 
                 if (parameterInfo.ParameterType != par.GetType()) {
-
                     if (par.Reflect().TryTo(parameterInfo.ParameterType, out var pt)) {
                         par = pt;
                     } else {
-                        var json = JsonSerializer.Serialize(par);
-                        par = JsonSerializer.Deserialize(json, parameterInfo.ParameterType);
+                        par = _serializer.ConvertTo(par, parameterInfo.ParameterType);
                     }
-
                 }
 
                 argumentList.Add(par!);
@@ -297,11 +284,11 @@ namespace Cocoar.SignalARRR.Client {
             }
 
             if (type == typeof(Stream)) {
-
-                var json = JsonSerializer.Serialize(argument);
-                var streamReference = JsonSerializer.Deserialize<StreamReference>(json)!;
-                var resolver = new StreamReferenceResolver(streamReference, _harrrContext);
-                return await resolver.ProcessStreamArgument();
+                var streamReference = _serializer.TryConvertTo<StreamReference>(argument);
+                if (streamReference != null && !string.IsNullOrEmpty(streamReference.Uri)) {
+                    var resolver = new StreamReferenceResolver(streamReference, _harrrContext);
+                    return await resolver.ProcessStreamArgument();
+                }
             }
 
             return argument;
@@ -311,9 +298,9 @@ namespace Cocoar.SignalARRR.Client {
 
 
         private ServerRequestMessage PrepareServerRequestMessage(ServerRequestMessage message) {
-            var requestJson = JsonSerializer.Serialize(message);
-            message = JsonSerializer.Deserialize<ServerRequestMessage>(requestJson)!;
-            return message;
+            // Re-deserialize to ensure consistent typing (e.g., JsonElement → typed objects)
+            var converted = _serializer.TryConvertTo<ServerRequestMessage>(message);
+            return converted ?? message;
         }
 
         private static bool IsAsyncEnumerableType(Type type) {
@@ -325,13 +312,7 @@ namespace Cocoar.SignalARRR.Client {
         private CancellationToken? TryGetCancellationTokenFromReference(object argument) {
             if (argument == null) return null;
 
-            CancellationTokenReference? reference = null;
-            try {
-                var json = JsonSerializer.Serialize(argument);
-                reference = JsonSerializer.Deserialize<CancellationTokenReference>(json);
-            } catch {
-                // Not a CancellationTokenReference
-            }
+            var reference = _serializer.TryConvertTo<CancellationTokenReference>(argument);
 
             if (reference == null || reference.Id == Guid.Empty) return null;
 

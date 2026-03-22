@@ -1,173 +1,83 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
-using System.Threading.Tasks;
-using Cocoar.SignalARRR.IntegrationTests.Extensions;
-using Cocoar.SignalARRR.Server.ExtensionMethods;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
     public class SignalARRRServerInstanceFixture : IDisposable {
 
-
-        IHost _host;
-        public string ServerUrl { get; private set; }
+        private Process? _serverProcess;
+        public string ServerUrl { get; private set; } = null!;
 
         public SignalARRRServerInstanceFixture() {
+            // If environment variable is set (unified script or CI), use it directly
+            var envUrl = Environment.GetEnvironmentVariable("SIGNALARRR_TEST_SERVER_URL");
+            if (!string.IsNullOrEmpty(envUrl)) {
+                ServerUrl = envUrl;
+                return;
+            }
 
+            // Otherwise, start IntegrationTestServer as a child process
+            var serverProjectDir = FindServerProjectDir();
+            var urlFile = Path.Combine(Path.GetTempPath(), $"signalarrr-test-{Guid.NewGuid()}.url");
 
-            var hostBuilder = new HostBuilder()
-                .ConfigureWebHost(webBuilder => {
-                    webBuilder
-                        .UseKestrel()
-                        .UseUrls("http://127.0.0.1:0") // Use random available port
-                        .ConfigureServices(services => {
+            _serverProcess = new Process {
+                StartInfo = new ProcessStartInfo {
+                    FileName = "dotnet",
+                    Arguments = $"run --project \"{serverProjectDir}\" -c Release",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                },
+            };
+            _serverProcess.StartInfo.Environment["SERVER_URL_FILE"] = urlFile;
 
-                            services.AddRouting();
+            _serverProcess.Start();
 
-                            services.AddMvc().AddJsonOptions(options => {
-                                options.JsonSerializerOptions.PropertyNamingPolicy = null;
-                                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-                            });
+            // Wait for server to write its URL (up to 120s for first build + start)
+            var deadline = DateTime.UtcNow.AddSeconds(120);
+            while (DateTime.UtcNow < deadline) {
+                if (File.Exists(urlFile)) {
+                    var content = File.ReadAllText(urlFile).Trim();
+                    if (!string.IsNullOrEmpty(content)) {
+                        ServerUrl = content;
+                        try { File.Delete(urlFile); } catch { }
+                        return;
+                    }
+                }
+                if (_serverProcess.HasExited) {
+                    var stderr = _serverProcess.StandardError.ReadToEnd();
+                    throw new InvalidOperationException(
+                        $"IntegrationTestServer exited with code {_serverProcess.ExitCode}:\n{stderr}");
+                }
+                Thread.Sleep(500);
+            }
 
-                            services.AddSignalR().AddJsonProtocol(options => {
-                                options.PayloadSerializerOptions.PropertyNamingPolicy = null;
-                                options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-                                options.PayloadSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-                            });
-                            services.AddSignalARRR(builder => builder
-                                .AddServerMethodsFrom(typeof(TestHub).Assembly)
-                            );
-
-                        })
-                        .Configure(app => {
-
-                            app.UseRouting();
-                            app.UseEndpoints(endpoints => {
-                                endpoints.MapHARRRController<TestHub>("/signalr/testhub");
-
-                                // Minimal API test trigger: server -> client call via HTTP
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-call", async (context, _clientManager) => {
-                                    var request = context.Request;
-                                    var connectionId = request.Query["connectionId"].ToString();
-                                    var method = request.Query["method"].ToString();
-                                    var arg = request.Query["arg"].ToString();
-
-                                    if (string.IsNullOrWhiteSpace(connectionId) || string.IsNullOrWhiteSpace(method)) {
-                                        return Results.BadRequest("Missing connectionId or method");
-                                    }
-
-                                    // Resolve hub context to talk to connected clients
-                                    var hubContext = context.RequestServices.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<TestHub>>();
-
-                                    // Build a SignalARRR server request message targeting client interface methods
-                                    var msg = new Cocoar.SignalARRR.Common.ServerRequestMessage(method, string.IsNullOrEmpty(arg) ? Array.Empty<object>() : new object[] { arg });
-
-                                    // Fire-and-forget: send a server message to the client (no awaited result)
-                                    await hubContext.Clients.Client(connectionId)
-                                        .SendCoreAsync(Cocoar.SignalARRR.Common.Constants.MethodNames.InvokeServerMessage, new object[] { msg }, default);
-
-                                    return "Sent";
-                                });
-
-                                // Minimal API test trigger: server cancels client's CancellationToken
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-cancellation", async (context, clientManager) => {
-                                    var request = context.Request;
-                                    var connectionId = request.Query["connectionId"].ToString();
-                                    var delayMs = int.TryParse(request.Query["delayMs"].ToString(), out var d) ? d : 200;
-
-                                    if (string.IsNullOrWhiteSpace(connectionId)) {
-                                        return Results.BadRequest("Missing connectionId");
-                                    }
-
-                                    var cts = new CancellationTokenSource();
-                                    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
-
-                                    // Start the Wait call and cancel after delay
-                                    var waitTask = typedClient.Wait(30, cts.Token);
-                                    await Task.Delay(delayMs);
-                                    cts.Cancel();
-
-                                    try {
-                                        await waitTask;
-                                        return (object)"completed";
-                                    } catch (Exception) {
-                                        // Expected: cancellation causes InvokeCoreAsync to abort
-                                        return (object)"cancelled";
-                                    }
-                                });
-
-                                // Minimal API test trigger: server requests stream from client
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-stream", async (context, clientManager) => {
-                                    var request = context.Request;
-                                    var connectionId = request.Query["connectionId"].ToString();
-                                    var count = int.TryParse(request.Query["count"].ToString(), out var c) ? c : 5;
-
-                                    if (string.IsNullOrWhiteSpace(connectionId)) {
-                                        return Results.BadRequest("Missing connectionId");
-                                    }
-
-                                    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
-                                    var items = new List<int>();
-                                    await foreach (var item in typedClient.StreamNumbers(count)) {
-                                        items.Add(item);
-                                    }
-
-                                    return (object)items;
-                                });
-
-                                // Minimal API test trigger: server -> client typed call using SignalARRR typed methods
-                                endpoints.MapSignalARRRTest("/__test/trigger-client-typed-call", (context, clientManager) => {
-                                    var request = context.Request;
-                                    var connectionId = request.Query["connectionId"].ToString();
-
-                                    if (string.IsNullOrWhiteSpace(connectionId)) {
-                                        return Results.BadRequest("Missing connectionId");
-                                    }
-
-                                    // Use helper to get typed proxy for the specific client (throws if not found)
-                                    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
-                                    typedClient.Nix();
-
-                                    return "Sent";
-                                });
-                            });
-
-                        });
-
-
-                });
-
-
-            _host = hostBuilder.Start();
-
-            // Get the actual URL that the server is listening on
-            var addresses = _host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
-            ServerUrl = addresses!.Addresses.First();
-
+            try { _serverProcess.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException(
+                $"IntegrationTestServer did not start within 120 seconds. Project: {serverProjectDir}");
         }
 
-        public IHost GetHost() {
-            return _host;
+        private static string FindServerProjectDir() {
+            var dir = AppContext.BaseDirectory;
+            while (dir != null) {
+                var candidate = Path.Combine(dir, "src", "tests", "IntegrationTestServer");
+                if (Directory.Exists(candidate))
+                    return candidate;
+                dir = Path.GetDirectoryName(dir);
+            }
+            throw new DirectoryNotFoundException(
+                "Could not find IntegrationTestServer project. " +
+                $"Searched from: {AppContext.BaseDirectory}");
         }
 
         public void Dispose() {
-            _host?.StopAsync().GetAwaiter().GetResult();
-            _host?.Dispose();
+            if (_serverProcess != null && !_serverProcess.HasExited) {
+                try { _serverProcess.Kill(entireProcessTree: true); } catch { }
+                _serverProcess.Dispose();
+            }
         }
     }
 

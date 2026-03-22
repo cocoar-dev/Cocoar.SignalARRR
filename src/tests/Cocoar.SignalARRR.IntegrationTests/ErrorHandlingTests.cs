@@ -42,5 +42,32 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var result = await _connection.InvokeAsync<string>("GetName", "unexpected parameter", TestContext.Current.CancellationToken);
             Assert.Equal("MyName", result);
         }
+
+        [Fact]
+        public async Task StructuredError_ArgumentException_ParsesCorrectly() {
+            var ct = TestContext.Current.CancellationToken;
+            var ex = await Assert.ThrowsAsync<HubException>(async () => {
+                await _connection.InvokeCoreAsync<string>(
+                    new Cocoar.SignalARRR.Common.ClientRequestMessage("ExtraMethods.ThrowArgumentException", new object[] { "testParam" }), ct);
+            });
+
+            var error = Cocoar.SignalARRR.Common.HARRRError.Parse(ex);
+            Assert.Equal("System.ArgumentException", error.Type);
+            Assert.Contains("Invalid value provided", error.Message);
+        }
+
+        [Fact]
+        public async Task StructuredError_InvalidOperationException_ParsesCorrectly() {
+            var ct = TestContext.Current.CancellationToken;
+            var ex = await Assert.ThrowsAsync<HubException>(async () => {
+                await _connection.InvokeCoreAsync<string>(
+                    new Cocoar.SignalARRR.Common.ClientRequestMessage("ExtraMethods.ThrowInvalidOperation"), ct);
+            });
+
+            var error = Cocoar.SignalARRR.Common.HARRRError.Parse(ex);
+
+            Assert.Equal("System.InvalidOperationException", error.Type);
+            Assert.Equal("This operation is not allowed", error.Message);
+        }
     }
 }

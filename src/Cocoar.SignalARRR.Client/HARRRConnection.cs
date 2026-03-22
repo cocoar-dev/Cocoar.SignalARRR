@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -25,24 +26,24 @@ namespace Cocoar.SignalARRR.Client {
             HubConnection = harrrContext.GetHubConnection();
 
 
-            this.On<ServerRequestMessage>(MethodNames.ChallengeAuthentication, (requestMessage) => {
-                return _harrrContext.MessageHandler.ChallengeAuthentication(requestMessage);
-            });
+            // Native client results — return values are sent back to the server automatically by SignalR
+            HubConnection.On<ServerRequestMessage, string?>(MethodNames.ChallengeAuthentication,
+                (requestMessage) => _harrrContext.MessageHandler.ChallengeAuthentication(requestMessage));
 
+            HubConnection.On<ServerRequestMessage, object?>(MethodNames.InvokeServerRequest,
+                async (requestMessage) => {
+                    OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
+                    return await _harrrContext.MessageHandler.InvokeServerRequest(requestMessage);
+                });
+
+            // Fire-and-forget — no return value
             this.On<ServerRequestMessage>(MethodNames.CancelTokenFromServer, (requestMessage) => _harrrContext.MessageHandler.CancelTokenFromServer(requestMessage));
 
 #pragma warning disable 4014
-            this.On<ServerRequestMessage>(MethodNames.InvokeServerRequest,
-                 (requestMessage) => {
-                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
-                     _harrrContext.MessageHandler.InvokeServerRequest(requestMessage);
-                 });
-
             this.On<ServerRequestMessage>(MethodNames.InvokeServerMessage,
                  (requestMessage) => {
                      OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
                      _harrrContext.MessageHandler.InvokeServerMessage(requestMessage);
-
                  });
 #pragma warning restore 4014
         }
@@ -107,6 +108,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task<TResult> InvokeCoreAsync<TResult>(ClientRequestMessage message, CancellationToken cancellationToken = default) {
+            await PrepareStreamArguments(message);
             message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
             var resultMsg = await HubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
             return resultMsg;
@@ -117,9 +119,10 @@ namespace Cocoar.SignalARRR.Client {
             return resultMsg;
         }
 
-        public Task SendCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
+        public async Task SendCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
+            await PrepareStreamArguments(message);
             message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
-            return HubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
+            await HubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
         }
 
         public Task SendCoreAsync(string methodName, object[] args, CancellationToken cancellationToken = default) {
@@ -149,6 +152,42 @@ namespace Cocoar.SignalARRR.Client {
 
 
 
+
+        /// <summary>
+        /// Uploads any Stream arguments via HTTP and replaces them with StreamReferences.
+        /// Called BEFORE the actual hub method invocation — no nested SignalR calls.
+        /// </summary>
+        private async Task PrepareStreamArguments(ClientRequestMessage message) {
+            if (message.Arguments == null || message.Arguments.Length == 0) return;
+
+            bool hasStream = false;
+            for (int i = 0; i < message.Arguments.Length; i++) {
+                if (message.Arguments[i] is System.IO.Stream) {
+                    hasStream = true;
+                    break;
+                }
+            }
+            if (!hasStream) return;
+
+            var args = message.Arguments.ToList();
+            for (int i = 0; i < args.Count; i++) {
+                if (args[i] is System.IO.Stream stream) {
+                    // Request upload URL
+                    var uploadUrl = await HubConnection.InvokeCoreAsync<string>(
+                        "RequestUploadSlot", System.Array.Empty<object>(), default);
+
+                    // Upload via HTTP POST
+                    using var httpClient = new System.Net.Http.HttpClient();
+                    using var content = new System.Net.Http.StreamContent(stream);
+                    content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                    var response = await httpClient.PostAsync(uploadUrl, content);
+                    response.EnsureSuccessStatusCode();
+
+                    args[i] = new Common.RemoteReferenceTypes.StreamReference { Uri = uploadUrl };
+                }
+            }
+            message.Arguments = args.ToArray();
+        }
 
         public HubConnection AsSignalRHubConnection() {
             return HubConnection;

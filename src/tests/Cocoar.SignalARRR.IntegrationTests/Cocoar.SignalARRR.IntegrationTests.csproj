@@ -8,8 +8,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- FrameworkReference needed for AuthorizationTests (in-process Kestrel with auth) -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">

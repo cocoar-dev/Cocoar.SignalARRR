@@ -8,6 +8,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cocoar.SignalARRR.IntegrationTests" />
+    <InternalsVisibleTo Include="IntegrationTestServer" />
+  </ItemGroup>
+
   <PropertyGroup>
     <Authors>Bernhard Windisch</Authors>
     <Company>-</Company>
@@ -28,6 +33,7 @@
   <ItemGroup>
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
+    <PackageReference Include="MessagePack" />
 
     <PackageReference Include="System.Reactive.Linq" />
   </ItemGroup>
@@ -37,9 +43,7 @@
     <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Contracts\Cocoar.SignalARRR.Contracts.csproj" />
-    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
-                       OutputItemType="Analyzer"
-                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Pack .targets + skills + docs into buildTransitive so consuming projects get them -->

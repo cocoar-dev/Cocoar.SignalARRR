@@ -6,7 +6,6 @@
         public static string StreamMessageFromServer { get; } = "StreamMessage";
 
         public static string InvokeServerRequest { get; } = "InvokeServerRequest";
-        public static string ReplyServerRequest { get; } = "ReplyServerRequest";
 
         public static string ChallengeAuthentication { get; } = "ChallengeAuthentication";
         public static string InvokeServerMessage { get; set; } = "InvokeServerMessage";

@@ -22,7 +22,7 @@ namespace Cocoar.SignalARRR.Server {
         internal Type HARRRType { get; }
         public IPAddress? RemoteIp { get; }
         public ClaimsPrincipal User { get; private set; } = null!;
-        internal DateTime UserValidUntil { get; private set; } = DateTime.Now;
+        internal DateTime UserValidUntil { get; set; } = DateTime.Now;
 
         public DateTime ConnectedAt { get; internal set; }
         public List<DateTime> ReconnectedAt { get; } = new List<DateTime>();
@@ -32,12 +32,24 @@ namespace Cocoar.SignalARRR.Server {
         public Uri ConnectedTo { get; }
 
 
+        private TimeSpan _authCacheDuration;
+
         public ClientContext(HARRR hub, HubCallerContext hubCallerContext) {
             Id = hubCallerContext.ConnectionId;
             var httpContext = hubCallerContext.GetHttpContext()!;
             ServiceProvider = httpContext.RequestServices;
             User = hubCallerContext.User ?? new ClaimsPrincipal();
             HARRRType = hub.GetType();
+
+            // Get configured auth cache duration (default: 3 minutes)
+            _authCacheDuration = ServiceProvider.GetService<SignalARRRServerOptions>()?.AuthCacheDuration
+                ?? TimeSpan.FromMinutes(3);
+
+            // If the user was already authenticated during SignalR negotiate (hub has [Authorize]),
+            // initialize the cache so the first method call doesn't trigger an unnecessary challenge.
+            if (User.Identity?.IsAuthenticated == true) {
+                UserValidUntil = DateTime.Now.Add(_authCacheDuration);
+            }
 
             RemoteIp = httpContext.Connection.RemoteIpAddress;
             var connectedToBuilder = new UriBuilder(httpContext.Request.GetDisplayUrl());
@@ -64,7 +76,7 @@ namespace Cocoar.SignalARRR.Server {
             this.User = claimsPrincipal ?? new ClaimsPrincipal();
 
             if (this.User.Identity?.IsAuthenticated == true) {
-                this.UserValidUntil = DateTime.Now.Add(TimeSpan.FromMinutes(3));
+                this.UserValidUntil = DateTime.Now.Add(_authCacheDuration);
             } else {
                 this.UserValidUntil = DateTime.Now;
             }

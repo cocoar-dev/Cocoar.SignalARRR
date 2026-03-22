@@ -15,6 +15,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepack": "node scripts/copy-assets.cjs",
     "postinstall": "node scripts/postinstall.cjs"
   },
@@ -27,11 +29,13 @@
   "author": "Bernhard Windisch",
   "license": "ISC",
   "dependencies": {
-    "@microsoft/signalr": "^10.0.0"
+    "@microsoft/signalr": "^10.0.0",
+    "@microsoft/signalr-protocol-msgpack": "^10.0.0"
   },
   "devDependencies": {
     "tsup": "^8.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
   },
   "publishConfig": {
     "access": "public"

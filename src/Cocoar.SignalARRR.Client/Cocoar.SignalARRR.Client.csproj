@@ -25,6 +25,7 @@
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
@@ -32,9 +33,7 @@
     <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Contracts\Cocoar.SignalARRR.Contracts.csproj" />
-    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
-                       OutputItemType="Analyzer"
-                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

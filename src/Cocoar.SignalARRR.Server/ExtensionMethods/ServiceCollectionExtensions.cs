@@ -16,6 +16,12 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             SignalARRRServerOptions serverOptions = options?.InvokeAction() ?? new SignalARRRServerOptionsBuilder();
 
             AddSignalARRRMethods(serviceCollection, serverOptions);
+            serviceCollection.AddSingleton(serverOptions);
+            // Protocol serializer handles both JSON and MessagePack values.
+            // JsonProtocolSerializer handles JsonElement natively, and its JSON round-trip
+            // fallback works for MessagePack-deserialized values (plain .NET objects) too.
+            // SignalR supports both protocols simultaneously — different clients can use different protocols.
+            serviceCollection.AddSingleton<Common.Serialization.IProtocolSerializer, Common.Serialization.JsonProtocolSerializer>();
             serviceCollection.AddSingleton<ServerPushStreamManager>();
             serviceCollection.AddSingleton<ServerStreamManager>();
             serviceCollection.AddSingleton<InMemoryHARRRClientManager>();

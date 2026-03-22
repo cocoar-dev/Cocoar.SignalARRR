@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server;
 using Microsoft.AspNetCore.Builder;
@@ -6,14 +6,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cocoar.SignalARRR.IntegrationTests.Extensions {
-    /// <summary>
-    /// Minimal-API helpers for test triggers that need ClientManager and standard response wiring.
-    /// </summary>
+namespace IntegrationTestServer {
     public static class EndpointRouteBuilderTestExtensions {
-        /// <summary>
-        /// Maps a POST endpoint that resolves ClientManager and invokes the provided sync handler.
-        /// </summary>
         public static IEndpointConventionBuilder MapSignalARRRTest(this IEndpointRouteBuilder endpoints, string pattern, Func<HttpContext, ClientManager, object?> handler) {
             return endpoints.MapPost(pattern, async context => {
                 var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
@@ -30,9 +24,6 @@ namespace Cocoar.SignalARRR.IntegrationTests.Extensions {
             });
         }
 
-        /// <summary>
-        /// Maps a POST endpoint that resolves ClientManager and invokes the provided async handler.
-        /// </summary>
         public static IEndpointConventionBuilder MapSignalARRRTest(this IEndpointRouteBuilder endpoints, string pattern, Func<HttpContext, ClientManager, Task<object?>> handler) {
             return endpoints.MapPost(pattern, async context => {
                 var clientManager = context.RequestServices.GetRequiredService<ClientManager>();

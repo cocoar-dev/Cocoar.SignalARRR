@@ -33,7 +33,6 @@ namespace TestClient {
                         log.AddConsole();
                         log.SetMinimumLevel(LogLevel.Error);
                     }),
-                optionsBuilder => optionsBuilder.UseHttpResponse()
                 );
 
 

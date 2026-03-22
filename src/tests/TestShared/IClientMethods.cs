@@ -39,5 +39,7 @@ namespace TestShared {
         string GetById(string id);
 
         IAsyncEnumerable<int> StreamNumbers(int count);
+
+        Stream GetFileStream(string content);
     }
 }

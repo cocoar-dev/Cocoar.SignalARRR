@@ -53,11 +53,31 @@ jobs:
         run: dotnet test -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
         working-directory: ./src
 
+  test-swift:
+    name: Test Swift package
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Build Swift package
+        run: swift build
+
+      - name: Run Swift tests
+        run: swift test
+
   publish:
     # Only process releases from develop branch
     if: github.event.release.target_commitish == 'develop'
     runs-on: ubuntu-latest
-    needs: test-multiplatform
+    needs: [test-multiplatform, test-swift]
     permissions:
       contents: read
     env:
@@ -155,3 +175,62 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish
+
+  deploy-docs:
+    name: Deploy Documentation
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build VitePress
+        working-directory: website
+        run: npx vitepress build
+
+      - name: Extract docs version
+        id: docs-version
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          echo "value=v${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
+
+      - name: Package
+        run: cd website/.vitepress/dist && zip -r $GITHUB_WORKSPACE/docs.zip .
+
+      - name: Upload to Shelf
+        env:
+          KEY: ${{ secrets.SHELF_API_KEY }}
+          URL: ${{ secrets.SHELF_BASE_URL }}
+          VER: ${{ steps.docs-version.outputs.value }}
+        run: |
+          echo "Deploying signalarrr docs $VER to $URL"
+          curl -f -X POST \
+            -H "Authorization: Bearer $KEY" \
+            -H "Content-Type: application/zip" \
+            --data-binary @$GITHUB_WORKSPACE/docs.zip \
+            "${URL}/api/products/signalarrr/versions/${VER}"
+
+      - name: Docs deployment summary
+        run: |
+          echo "### Documentation Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Product:** signalarrr" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.docs-version.outputs.value }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ secrets.SHELF_BASE_URL }}/signalarrr/" >> $GITHUB_STEP_SUMMARY

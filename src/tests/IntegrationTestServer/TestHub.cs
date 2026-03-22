@@ -1,22 +1,16 @@
-﻿using System;
-using System.Reactive.Linq;
+using System;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server;
 using Cocoar.SignalARRR.Tests.SharedModels;
 
-namespace Cocoar.SignalARRR.IntegrationTests {
+namespace IntegrationTestServer {
 
     public partial class TestHub : HARRR, ITestServerMethods {
 
-        private IObservable<int> GetNextInt { get; }
-
         public TestHub(IServiceProvider serviceProvider) : base(serviceProvider) {
-            // Use 10ms interval for fast tests instead of 1 second
-            GetNextInt = Observable.Interval(TimeSpan.FromMilliseconds(10)).Select(t => (int)t).AsObservable();
         }
-
 
         public string GetName() {
             return "MyName";
@@ -35,22 +29,27 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         public void Nothing() {
-
         }
 
         public Task NothingAsync() {
             return Task.CompletedTask;
         }
 
+        public string Echo(string message) {
+            return message;
+        }
+
         public ChannelReader<int> Counter(int count, int delay, CancellationToken cancellationToken) {
             var channel = Channel.CreateUnbounded<int>();
 
-            GetNextInt
-                .Take(count)
-                .Select(i => Observable.FromAsync(async () => await channel.Writer.WriteAsync(i, cancellationToken)))
-                .Concat()
-                .Finally(() => channel.Writer.Complete())
-                .Subscribe(cancellationToken);
+            _ = Task.Run(async () => {
+                for (var i = 0; i < count; i++) {
+                    if (cancellationToken.IsCancellationRequested) break;
+                    await channel.Writer.WriteAsync(i, cancellationToken);
+                    if (delay > 0) await Task.Delay(delay, cancellationToken);
+                }
+                channel.Writer.Complete();
+            }, cancellationToken);
 
             return channel.Reader;
         }

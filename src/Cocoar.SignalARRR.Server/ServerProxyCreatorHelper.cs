@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Common;
+using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
 using Cocoar.SignalARRR.ProxyGenerator;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Microsoft.AspNetCore.Http;
@@ -28,7 +30,6 @@ namespace Cocoar.SignalARRR.Server {
 
         public override async Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
 
-
             var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
@@ -46,6 +47,18 @@ namespace Cocoar.SignalARRR.Server {
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
             var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+
+            // If the return type is Stream, the client sends a StreamReference instead.
+            // We need to invoke as StreamReference and then resolve the upload.
+            if (typeof(T) == typeof(Stream)) {
+                var streamRef = await harrrContext.InvokeClientAsync<StreamReference>(_clientContext.Id, msg, cancellationToken);
+                if (streamRef != null && !string.IsNullOrEmpty(streamRef.Uri)) {
+                    var streamManager = _clientContext.ServiceProvider.GetRequiredService<ServerPushStreamManager>();
+                    var stream = await streamManager.WaitForUpload(streamRef.Uri, cancellationToken);
+                    return (T)(object)stream;
+                }
+                return default!;
+            }
 
             return await harrrContext.InvokeClientAsync<T>(_clientContext.Id, msg, cancellationToken);
         }
@@ -104,7 +117,8 @@ namespace Cocoar.SignalARRR.Server {
             _ = harrrContext.SendClientAsync(_clientContext.Id, msg, cancellationToken)
                 .ContinueWith(_ => serviceProviderScope.Dispose());
 
-            return serverStreamManager.ReadStream<TResult>(streamId, cancellationToken);
+            var serializer = _clientContext.ServiceProvider.GetService<Common.Serialization.IProtocolSerializer>();
+            return serverStreamManager.ReadStream<TResult>(streamId, cancellationToken, serializer);
         }
 
 

@@ -1,13 +1,21 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace Cocoar.SignalARRR.Common {
     public class ClientRequestMessage {
+        [JsonPropertyName("Method")]
         public string Method { get; set; } = string.Empty;
+
+        [JsonPropertyName("Authorization")]
         public string Authorization { get; set; } = string.Empty;
+
+        [JsonPropertyName("Arguments")]
         public object[] Arguments { get; set; } = Array.Empty<object>();
+
+        [JsonPropertyName("GenericArguments")]
         public string[] GenericArguments { get; set; } = Array.Empty<string>();
 
         public ClientRequestMessage() { }

@@ -348,8 +348,21 @@ src/Cocoar.SignalARRR.Typescript/dist/
 src/Cocoar.SignalARRR.Typescript/skills/
 src/Cocoar.SignalARRR.Typescript/docs/
 
+# VitePress documentation
+website/node_modules/
+website/.vitepress/cache/
+website/.vitepress/dist/
+
+# Test server state
+.test-server/
+
 # Claude Code
 .claude/
 
 # Generated agent skills (copied by NuGet buildTransitive targets)
 .github/skills/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
