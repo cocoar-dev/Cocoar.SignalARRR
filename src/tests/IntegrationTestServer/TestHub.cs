@@ -39,6 +39,10 @@ namespace IntegrationTestServer {
             return message;
         }
 
+        public string GetConnectionId() {
+            return Context.ConnectionId;
+        }
+
         public ChannelReader<int> Counter(int count, int delay, CancellationToken cancellationToken) {
             var channel = Channel.CreateUnbounded<int>();
 

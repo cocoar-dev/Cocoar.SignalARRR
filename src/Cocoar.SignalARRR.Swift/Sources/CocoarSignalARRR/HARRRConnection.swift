@@ -1,15 +1,14 @@
 import Foundation
-import SignalRClient
 
-/// SignalARRR client wrapping Microsoft's SignalR `HubConnection`.
+/// SignalARRR client built on a custom `SignalRWebSocketClient`.
 ///
 /// Provides typed bidirectional RPC: `invoke`, `send`, `stream` for client-to-server
 /// calls, and `onServerMethod` for server-to-client calls. Handles the SignalARRR wire
 /// protocol (authentication challenges, server request dispatch, cancellation propagation).
 public final class HARRRConnection: @unchecked Sendable {
-    private let hubConnection: HubConnection
+    private let client: SignalRWebSocketClient
     private let accessTokenFactory: @Sendable () async -> String
-    private let cancellationManager = CancellationManager()
+    let cancellationManager = CancellationManager()
     private let serverRequestHandlers = ServerRequestHandlerStore()
     private let options: HARRRConnectionOptions
 
@@ -17,74 +16,58 @@ public final class HARRRConnection: @unchecked Sendable {
 
     /// The current state of the underlying SignalR connection.
     public var state: HubConnectionState {
-        get async { await hubConnection.state() }
+        get async { client.state() }
     }
 
     // MARK: - Feature 2: ConnectionId
 
     /// The connection ID reported by the server.
-    ///
-    /// `HubConnection` does not expose `connectionId` publicly — it is private on the
-    /// internal `HttpConnection`. This property is `nil` by default. You can set it
-    /// manually after connecting, or access the underlying connection via
-    /// `asSignalRHubConnection()`.
     public private(set) var connectionId: String?
 
     // MARK: - Feature 3: Timeout Configuration
 
-    /// The server timeout interval (in seconds) configured for this connection.
     public let serverTimeoutInterval: TimeInterval
-
-    /// The keep-alive interval (in seconds) configured for this connection.
     public let keepAliveIntervalValue: TimeInterval
+
+    /// The handshake timeout interval (in seconds) configured for this connection.
+    public let handshakeTimeoutValue: TimeInterval
 
     // MARK: - Feature 6: OnServerRequestMessage Callback
 
-    /// Callback fired before dispatching any `InvokeServerRequest` or `InvokeServerMessage`.
-    ///
-    /// Use this to inspect or log incoming server request messages before they are handled.
     public var onServerRequestMessageReceived: (@Sendable (ServerRequestMessage) -> Void)?
 
     // MARK: - Initialization
 
     private init(
-        hubConnection: HubConnection,
+        client: SignalRWebSocketClient,
         accessTokenFactory: @escaping @Sendable () async -> String,
         options: HARRRConnectionOptions,
         serverTimeout: TimeInterval,
-        keepAliveInterval: TimeInterval
+        keepAliveInterval: TimeInterval,
+        handshakeTimeout: TimeInterval
     ) {
-        self.hubConnection = hubConnection
+        self.client = client
         self.accessTokenFactory = accessTokenFactory
         self.options = options
         self.serverTimeoutInterval = serverTimeout
         self.keepAliveIntervalValue = keepAliveInterval
+        self.handshakeTimeoutValue = handshakeTimeout
     }
 
-    /// Register the built-in SignalARRR protocol handlers on the hub connection.
-    ///
-    /// Must be called after init and before start. Separated because `HubConnection`
-    /// is an actor and `on()` requires `await`.
-    private func registerBuiltInHandlers() async {
-        // Native client results — return values are sent back to the server automatically by SignalR
-
+    /// Register the built-in SignalARRR protocol handlers on the client.
+    private func registerBuiltInHandlers() {
         // Authentication challenge — returns token directly
-        await hubConnection.on(MethodNames.challengeAuthentication) { [weak self] (req: ServerRequestMessage) async -> AnyCodable in
-            guard let self else { return AnyCodable(NSNull()) }
+        client.on(MethodNames.challengeAuthentication) { [weak self] args in
+            guard let self else { return nil }
             let token = await self.accessTokenFactory()
-            return AnyCodable(stringLiteral: token)
+            return token
         }
 
         // Server request (expects a reply) — returns result directly
-        await hubConnection.on(MethodNames.invokeServerRequest) { [weak self] (req: ServerRequestMessage) async -> AnyCodable in
-            guard let self else { return AnyCodable(NSNull()) }
+        client.on(MethodNames.invokeServerRequest) { [weak self] args in
+            guard let self else { return nil }
+            let req = try self.decodeServerRequest(from: args)
             self.onServerRequestMessageReceived?(req)
-
-            // Feature 8: If streamId is present, route to stream handling (no return value)
-            if let streamId = req.streamId {
-                await self.handleStreamBackToServer(req: req, streamId: streamId)
-                return AnyCodable(NSNull())
-            }
 
             do {
                 let result = try await self.dispatchServerMethod(req)
@@ -95,32 +78,38 @@ public final class HARRRConnection: @unchecked Sendable {
                     return ref
                 }
 
-                return result
+                return result.value
             } catch {
-                return AnyCodable(NSNull())
+                return nil
             }
         }
 
-        // Server message (fire-and-forget)
-        await hubConnection.on(MethodNames.invokeServerMessage) { [weak self] (req: ServerRequestMessage) async in
-            guard let self else { return }
+        // Server message (fire-and-forget) — also handles streaming (StreamId)
+        client.on(MethodNames.invokeServerMessage) { [weak self] args in
+            guard let self else { return nil }
+            let req = try self.decodeServerRequest(from: args)
             self.onServerRequestMessageReceived?(req)
 
-            // Feature 8: If streamId is present, route to stream handling
+            // Feature 8: If streamId is present, route to stream handling in background.
             if let streamId = req.streamId {
-                await self.handleStreamBackToServer(req: req, streamId: streamId)
-                return
+                Task { [self] in
+                    await self.handleStreamBackToServer(req: req, streamId: streamId)
+                }
+                return nil
             }
 
             _ = try? await self.dispatchServerMethod(req)
+            return nil
         }
 
         // Cancellation from server
-        await hubConnection.on(MethodNames.cancelTokenFromServer) { [weak self] (req: ServerRequestMessage) async in
-            guard let self else { return }
+        client.on(MethodNames.cancelTokenFromServer) { [weak self] args in
+            guard let self else { return nil }
+            let req = try self.decodeServerRequest(from: args)
             if let guid = req.cancellationGuid {
                 await self.cancellationManager.cancel(id: guid)
             }
+            return nil
         }
     }
 
@@ -128,16 +117,13 @@ public final class HARRRConnection: @unchecked Sendable {
 
     private func dispatchServerMethod(_ req: ServerRequestMessage) async throws -> AnyCodable {
         guard let handler = await serverRequestHandlers.handler(for: req.method) else {
-            return AnyCodable(NSNull())
+            return AnyCodable(Optional<String>.none as Any)
         }
 
         let args = try await buildHandlerArgs(req)
         return try await handler(args)
     }
 
-    /// Build the argument array for a server request handler.
-    ///
-    /// Replaces cancellation token references with GUIDs and resolves stream references to `Data`.
     private func buildHandlerArgs(_ req: ServerRequestMessage) async throws -> [Any] {
         var args: [Any] = []
         for anyCodable in (req.arguments ?? []) {
@@ -154,20 +140,15 @@ public final class HARRRConnection: @unchecked Sendable {
         return args
     }
 
-
     // MARK: - Upload (Client → Server File Transfer)
 
-    /// Upload binary data to the server via HTTP and return a StreamReference.
-    /// Used when a handler returns Data — the data is sent via HTTP instead of WebSocket.
-    private func uploadAndReturnReference(_ data: Data) async throws -> AnyCodable {
-        // Request upload URL from server
-        let uploadUrl: String = try await hubConnection.invoke(method: "RequestUploadSlot")
+    private func uploadAndReturnReference(_ data: Data) async throws -> Any {
+        let uploadUrl: String = try await client.invoke(method: "RequestUploadSlot", arguments: [])
 
         guard let url = URL(string: uploadUrl) else {
             throw StreamReferenceError.downloadFailed("Invalid upload URL: \(uploadUrl)")
         }
 
-        // Upload data via HTTP POST
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
@@ -178,162 +159,158 @@ public final class HARRRConnection: @unchecked Sendable {
             throw StreamReferenceError.downloadFailed("Upload failed")
         }
 
-        // Return StreamReference with the upload URL
-        return AnyCodable(["Uri": uploadUrl])
+        return ["Uri": uploadUrl] as [String: Any]
     }
 
     // MARK: - Feature 8: Client-to-Server Streaming
 
-    /// Handle a server request that expects streaming results back.
     private func handleStreamBackToServer(req: ServerRequestMessage, streamId: String) async {
-        // Try stream handler first
         if let streamHandler = await serverRequestHandlers.streamHandler(for: req.method) {
             do {
                 let args = try await buildHandlerArgs(req)
                 let stream = try await streamHandler(args)
                 for try await item in stream {
-                    try? await hubConnection.send(
+                    try? await client.send(
                         method: MethodNames.streamItemToServer,
-                        arguments: streamId, item
+                        arguments: [streamId, item.value]
                     )
                 }
-                // Success completion
-                try? await hubConnection.send(
+                try? await client.send(
                     method: MethodNames.streamCompleteToServer,
-                    arguments: streamId, NSNull()
+                    arguments: [streamId, NSNull()]
                 )
             } catch {
-                // Error completion
-                try? await hubConnection.send(
+                try? await client.send(
                     method: MethodNames.streamCompleteToServer,
-                    arguments: streamId, String(describing: error)
+                    arguments: [streamId, String(describing: error)]
                 )
             }
             return
         }
 
-        // Fall back to regular handler for single-item result
         if let handler = await serverRequestHandlers.handler(for: req.method) {
             do {
                 let args = try await buildHandlerArgs(req)
                 let result = try await handler(args)
-                try? await hubConnection.send(
+                try? await client.send(
                     method: MethodNames.streamItemToServer,
-                    arguments: streamId, result
+                    arguments: [streamId, result.value]
                 )
-                try? await hubConnection.send(
+                try? await client.send(
                     method: MethodNames.streamCompleteToServer,
-                    arguments: streamId, NSNull()
+                    arguments: [streamId, NSNull()]
                 )
             } catch {
-                try? await hubConnection.send(
+                try? await client.send(
                     method: MethodNames.streamCompleteToServer,
-                    arguments: streamId, String(describing: error)
+                    arguments: [streamId, String(describing: error)]
                 )
             }
             return
         }
 
-        // No handler found — send empty completion
-        try? await hubConnection.send(
+        try? await client.send(
             method: MethodNames.streamCompleteToServer,
-            arguments: streamId, NSNull()
+            arguments: [streamId, NSNull()]
         )
     }
 
     // MARK: - Factory Methods
 
-    /// Create a connection using a `HubConnectionBuilder` configuration closure.
+    /// Create a connection with a hub URL.
     public static func create(
-        _ configure: (HubConnectionBuilder) -> Void,
+        url: String,
+        hubProtocol: HubProtocolKind = .json,
         accessTokenFactory: @escaping @Sendable () async -> String = { "" },
         options: HARRRConnectionOptions = HARRRConnectionOptions(),
         serverTimeout: TimeInterval = 30,
-        keepAliveInterval: TimeInterval = 15
+        keepAliveInterval: TimeInterval = 15,
+        handshakeTimeout: TimeInterval = 15,
+        reconnectPolicy: ReconnectPolicy = .default,
+        allowedTransports: [TransportType] = [.webSockets, .serverSentEvents, .longPolling],
+        logLevel: SignalRLogLevel = .info
     ) async -> HARRRConnection {
-        let builder = HubConnectionBuilder()
-        configure(builder)
-        _ = builder.withServerTimeout(serverTimeout: serverTimeout)
-        _ = builder.withKeepAliveInterval(keepAliveInterval: keepAliveInterval)
-        let hubConnection = builder.build()
+        let client = SignalRWebSocketClient(
+            url: url,
+            hubProtocol: hubProtocol,
+            serverTimeout: serverTimeout,
+            keepAliveInterval: keepAliveInterval,
+            handshakeTimeout: handshakeTimeout,
+            reconnectPolicy: reconnectPolicy,
+            allowedTransports: allowedTransports,
+            logLevel: logLevel
+        )
         let connection = HARRRConnection(
-            hubConnection: hubConnection,
+            client: client,
             accessTokenFactory: accessTokenFactory,
             options: options,
             serverTimeout: serverTimeout,
-            keepAliveInterval: keepAliveInterval
+            keepAliveInterval: keepAliveInterval,
+            handshakeTimeout: handshakeTimeout
         )
-        await connection.registerBuiltInHandlers()
+        connection.registerBuiltInHandlers()
         return connection
     }
 
-    /// Create a connection wrapping an existing `HubConnection`.
+    /// Create a connection wrapping an existing `SignalRWebSocketClient`.
     public static func create(
-        hubConnection: HubConnection,
+        client: SignalRWebSocketClient,
         accessTokenFactory: @escaping @Sendable () async -> String = { "" },
         options: HARRRConnectionOptions = HARRRConnectionOptions(),
         serverTimeout: TimeInterval = 30,
-        keepAliveInterval: TimeInterval = 15
+        keepAliveInterval: TimeInterval = 15,
+        handshakeTimeout: TimeInterval = 15
     ) async -> HARRRConnection {
         let connection = HARRRConnection(
-            hubConnection: hubConnection,
+            client: client,
             accessTokenFactory: accessTokenFactory,
             options: options,
             serverTimeout: serverTimeout,
-            keepAliveInterval: keepAliveInterval
+            keepAliveInterval: keepAliveInterval,
+            handshakeTimeout: handshakeTimeout
         )
-        await connection.registerBuiltInHandlers()
+        connection.registerBuiltInHandlers()
         return connection
     }
 
     // MARK: - Lifecycle
 
-    /// Start the underlying SignalR connection.
     public func start() async throws {
-        try await hubConnection.start()
+        try await client.start()
     }
 
-    /// Stop the underlying SignalR connection.
     public func stop() async {
-        await hubConnection.stop()
+        await client.stop()
     }
 
     // MARK: - Client → Server RPC (Feature 4: Generic Arguments)
 
-    /// Invoke a server method and return the result.
-    public func invoke<T>(_ method: String, arguments: Any..., genericArguments: [String] = []) async throws -> T {
+    public func invoke<T: Decodable>(_ method: String, arguments: Any..., genericArguments: [String] = []) async throws -> T {
         let msg = await buildClientRequest(method: method, arguments: arguments, genericArguments: genericArguments)
-        return try await hubConnection.invoke(
+        return try await client.invoke(
             method: MethodNames.invokeMessageResultOnServer,
-            arguments: msg
+            arguments: [msg]
         )
     }
 
-    /// Send a fire-and-forget message to the server.
     public func send(_ method: String, arguments: Any..., genericArguments: [String] = []) async throws {
         let msg = await buildClientRequest(method: method, arguments: arguments, genericArguments: genericArguments)
-        try await hubConnection.send(
+        try await client.send(
             method: MethodNames.sendMessageToServer,
-            arguments: msg
+            arguments: [msg]
         )
     }
 
-    /// Open a server-to-client stream.
-    public func stream<T>(_ method: String, arguments: Any..., genericArguments: [String] = []) async throws -> AsyncThrowingStream<T, Error> {
+    public func stream<T: Decodable>(_ method: String, arguments: Any..., genericArguments: [String] = []) async throws -> AsyncThrowingStream<T, Error> {
         let msg = await buildClientRequest(method: method, arguments: arguments, genericArguments: genericArguments)
-        let result: any StreamResult<T> = try await hubConnection.stream(
+        return try await client.stream(
             method: MethodNames.streamMessageFromServer,
-            arguments: msg
+            arguments: [msg]
         )
-        return result.stream
     }
 
     // MARK: - Server → Client Handlers
 
-    /// Register a handler for server-to-client RPC methods.
-    ///
-    /// The handler receives an array of arguments and should return a result
-    /// (or `AnyCodable(NSNull())` for void methods).
     public func onServerMethod(
         _ name: String,
         handler: @escaping @Sendable ([Any]) async throws -> AnyCodable
@@ -341,10 +318,6 @@ public final class HARRRConnection: @unchecked Sendable {
         await serverRequestHandlers.register(name: name, handler: handler)
     }
 
-    /// Register a streaming handler for server-to-client RPC methods.
-    ///
-    /// When the server sends a request with a `streamId`, the handler is called
-    /// and each item from the returned stream is sent back to the server.
     public func onServerStreamMethod(
         _ name: String,
         handler: @escaping @Sendable ([Any]) async throws -> AsyncThrowingStream<AnyCodable, Error>
@@ -352,116 +325,218 @@ public final class HARRRConnection: @unchecked Sendable {
         await serverRequestHandlers.registerStream(name: name, handler: handler)
     }
 
-    /// Remove a registered server method handler.
     public func removeServerMethod(_ name: String) async {
         await serverRequestHandlers.remove(name: name)
     }
 
     // MARK: - Feature 5: On/Off (Raw SignalR Events)
 
-    /// Register a raw SignalR handler for a method (0 params, void return).
+    // Void return, 0–8 params
+
     public func on(_ methodName: String, handler: @escaping () async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+        client.on(methodName) { _ in await handler(); return nil }
     }
 
-    /// Register a raw SignalR handler for a method (1 param, void return).
-    public func on<T>(_ methodName: String, handler: @escaping (T) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable>(_ methodName: String, handler: @escaping (T1) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            await handler(v1)
+            return nil
+        }
     }
 
-    /// Register a raw SignalR handler for a method (2 params, void return).
-    public func on<T1, T2>(_ methodName: String, handler: @escaping (T1, T2) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable>(_ methodName: String, handler: @escaping (T1, T2) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            await handler(v1, v2)
+            return nil
+        }
     }
 
-    /// Register a raw SignalR handler for a method (3 params, void return).
-    public func on<T1, T2, T3>(_ methodName: String, handler: @escaping (T1, T2, T3) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable>(_ methodName: String, handler: @escaping (T1, T2, T3) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            await handler(v1, v2, v3)
+            return nil
+        }
     }
 
-    /// Register a raw SignalR handler for a method (4 params, void return).
-    public func on<T1, T2, T3, T4>(_ methodName: String, handler: @escaping (T1, T2, T3, T4) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            await handler(v1, v2, v3, v4)
+            return nil
+        }
     }
 
-    /// Register a raw SignalR handler for a method (5 params, void return).
-    public func on<T1, T2, T3, T4, T5>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            await handler(v1, v2, v3, v4, v5)
+            return nil
+        }
     }
 
-    /// Register a raw SignalR handler for a method (6 params, void return).
-    public func on<T1, T2, T3, T4, T5, T6>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable, T6: Decodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            let v6: T6 = try decodeArgument(args, at: 5)
+            await handler(v1, v2, v3, v4, v5, v6)
+            return nil
+        }
     }
 
-    /// Register a raw SignalR handler for a method (7 params, void return).
-    public func on<T1, T2, T3, T4, T5, T6, T7>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable, T6: Decodable, T7: Decodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            let v6: T6 = try decodeArgument(args, at: 5)
+            let v7: T7 = try decodeArgument(args, at: 6)
+            await handler(v1, v2, v3, v4, v5, v6, v7)
+            return nil
+        }
     }
 
-    /// Register a raw SignalR handler for a method (8 params, void return).
-    public func on<T1, T2, T3, T4, T5, T6, T7, T8>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7, T8) async -> Void) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable, T6: Decodable, T7: Decodable, T8: Decodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7, T8) async -> Void) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            let v6: T6 = try decodeArgument(args, at: 5)
+            let v7: T7 = try decodeArgument(args, at: 6)
+            let v8: T8 = try decodeArgument(args, at: 7)
+            await handler(v1, v2, v3, v4, v5, v6, v7, v8)
+            return nil
+        }
     }
 
-    // MARK: On with Result
+    // With Result return, 0–8 params
 
-    /// Register a raw SignalR handler for a method (0 params, with result).
-    public func on<Result>(_ methodName: String, handler: @escaping () async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<Result: Encodable>(_ methodName: String, handler: @escaping () async -> Result) async {
+        client.on(methodName) { _ in
+            let result = await handler()
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (1 param, with result).
-    public func on<T, Result>(_ methodName: String, handler: @escaping (T) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let result = await handler(v1)
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (2 params, with result).
-    public func on<T1, T2, Result>(_ methodName: String, handler: @escaping (T1, T2) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1, T2) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let result = await handler(v1, v2)
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (3 params, with result).
-    public func on<T1, T2, T3, Result>(_ methodName: String, handler: @escaping (T1, T2, T3) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1, T2, T3) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let result = await handler(v1, v2, v3)
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (4 params, with result).
-    public func on<T1, T2, T3, T4, Result>(_ methodName: String, handler: @escaping (T1, T2, T3, T4) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let result = await handler(v1, v2, v3, v4)
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (5 params, with result).
-    public func on<T1, T2, T3, T4, T5, Result>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            let result = await handler(v1, v2, v3, v4, v5)
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (6 params, with result).
-    public func on<T1, T2, T3, T4, T5, T6, Result>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable, T6: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            let v6: T6 = try decodeArgument(args, at: 5)
+            let result = await handler(v1, v2, v3, v4, v5, v6)
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (7 params, with result).
-    public func on<T1, T2, T3, T4, T5, T6, T7, Result>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable, T6: Decodable, T7: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            let v6: T6 = try decodeArgument(args, at: 5)
+            let v7: T7 = try decodeArgument(args, at: 6)
+            let result = await handler(v1, v2, v3, v4, v5, v6, v7)
+            return try encodeResult(result)
+        }
     }
 
-    /// Register a raw SignalR handler for a method (8 params, with result).
-    public func on<T1, T2, T3, T4, T5, T6, T7, T8, Result>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7, T8) async -> Result) async {
-        await hubConnection.on(methodName, handler: handler)
+    public func on<T1: Decodable, T2: Decodable, T3: Decodable, T4: Decodable, T5: Decodable, T6: Decodable, T7: Decodable, T8: Decodable, Result: Encodable>(_ methodName: String, handler: @escaping (T1, T2, T3, T4, T5, T6, T7, T8) async -> Result) async {
+        client.on(methodName) { args in
+            let v1: T1 = try decodeArgument(args, at: 0)
+            let v2: T2 = try decodeArgument(args, at: 1)
+            let v3: T3 = try decodeArgument(args, at: 2)
+            let v4: T4 = try decodeArgument(args, at: 3)
+            let v5: T5 = try decodeArgument(args, at: 4)
+            let v6: T6 = try decodeArgument(args, at: 5)
+            let v7: T7 = try decodeArgument(args, at: 6)
+            let v8: T8 = try decodeArgument(args, at: 7)
+            let result = await handler(v1, v2, v3, v4, v5, v6, v7, v8)
+            return try encodeResult(result)
+        }
     }
 
     /// Remove all raw SignalR handlers for a method.
     public func off(_ methodName: String) async {
-        await hubConnection.off(method: methodName)
+        client.off(methodName)
     }
 
     // MARK: - Feature 7: Interface Registration
 
-    /// Register a dictionary of handlers under a shared prefix.
-    ///
-    /// Each handler is registered as `"prefix|methodName"`, matching the .NET
-    /// `"TypeName|MethodName"` wire format.
     public func registerHandlers(
         prefix: String,
         handlers: [String: @Sendable ([Any]) async throws -> AnyCodable]
@@ -471,9 +546,6 @@ public final class HARRRConnection: @unchecked Sendable {
         }
     }
 
-    /// Register a `ServerInterfaceHandler` implementation.
-    ///
-    /// This is the structured alternative to `registerHandlers(prefix:handlers:)`.
     public func registerInterface(_ handler: ServerInterfaceHandler) async {
         let prefix = type(of: handler).interfaceName
         let handlerMap = handler.handlers()
@@ -484,48 +556,43 @@ public final class HARRRConnection: @unchecked Sendable {
 
     // MARK: - Typed Proxy
 
-    /// Create a typed proxy instance for the given `HubProxyProtocol` type.
-    ///
-    /// Works with classes generated by the `@HubProxy` macro.
     public func getTypedMethods<T: HubProxyProtocol>(_ type: T.Type) -> T {
         T(connection: self)
     }
 
     // MARK: - Connection Events
 
-    /// Register a callback invoked when the connection closes.
     public func onClosed(_ callback: @escaping @Sendable (Error?) async -> Void) async {
-        await hubConnection.onClosed(handler: callback)
+        client.onClosed(callback)
     }
 
-    /// Register a callback invoked when the connection starts reconnecting.
     public func onReconnecting(_ callback: @escaping @Sendable (Error?) async -> Void) async {
-        await hubConnection.onReconnecting(handler: callback)
+        client.onReconnecting(callback)
     }
 
-    /// Register a callback invoked when the connection successfully reconnects.
     public func onReconnected(_ callback: @escaping @Sendable () async -> Void) async {
-        await hubConnection.onReconnected(handler: callback)
+        client.onReconnected(callback)
     }
 
-    // MARK: - Escape Hatch
+    // MARK: - Private Helpers
 
-    /// Access the underlying SignalR `HubConnection` directly.
-    public func asSignalRHubConnection() -> HubConnection {
-        hubConnection
+    /// Decode a `ServerRequestMessage` from raw SignalR invocation arguments.
+    private func decodeServerRequest(from args: [Any]) throws -> ServerRequestMessage {
+        guard !args.isEmpty else {
+            throw SignalRError.invocationFailed("No arguments in server request")
+        }
+        let data = try JSONSerialization.data(withJSONObject: args[0])
+        return try JSONDecoder().decode(ServerRequestMessage.self, from: data)
     }
-
-    // MARK: - Private
 
     private func buildClientRequest(method: String, arguments: [Any], genericArguments: [String] = []) async -> ClientRequestMessage {
         let token = await accessTokenFactory()
 
-        // Prepare arguments — upload Data objects via HTTP and replace with StreamReferences
         var preparedArgs: [AnyCodable] = []
         for arg in arguments {
             if let data = arg as? Data {
                 if let ref = try? await uploadAndReturnReference(data) {
-                    preparedArgs.append(ref)
+                    preparedArgs.append(AnyCodable(ref))
                 } else {
                     preparedArgs.append(AnyCodable(arg))
                 }
@@ -545,21 +612,13 @@ public final class HARRRConnection: @unchecked Sendable {
 
 // MARK: - Server Interface Handler Protocol
 
-/// Protocol for structured server interface registration.
-///
-/// Implement this protocol to provide a named set of server method handlers
-/// that can be registered with `HARRRConnection.registerInterface(_:)`.
 public protocol ServerInterfaceHandler {
-    /// The interface name used as the prefix in the `"TypeName|MethodName"` wire format.
     static var interfaceName: String { get }
-
-    /// Return a dictionary of method name → handler mappings.
     func handlers() -> [String: @Sendable ([Any]) async throws -> AnyCodable]
 }
 
 // MARK: - Server Request Handler Store
 
-/// Actor-isolated storage for server request handlers.
 private actor ServerRequestHandlerStore {
     private var handlers: [String: @Sendable ([Any]) async throws -> AnyCodable] = [:]
     private var streamHandlers: [String: @Sendable ([Any]) async throws -> AsyncThrowingStream<AnyCodable, Error>] = [:]
@@ -583,5 +642,32 @@ private actor ServerRequestHandlerStore {
     func remove(name: String) {
         handlers.removeValue(forKey: name)
         streamHandlers.removeValue(forKey: name)
+    }
+}
+
+// MARK: - Argument Decode / Result Encode Helpers
+
+/// Decode a single argument from a JSONSerialization-parsed array at the given index.
+private func decodeArgument<T: Decodable>(_ args: [Any], at index: Int) throws -> T {
+    guard index < args.count else {
+        throw SignalRError.invocationFailed("Missing argument at index \(index)")
+    }
+    // Wrap in array so JSONSerialization can handle primitives
+    let data = try JSONSerialization.data(withJSONObject: [args[index]])
+    return try JSONDecoder().decode(SingleElementArray<T>.self, from: data).value
+}
+
+/// Encode a result value to a JSON-serializable `Any` for the wire.
+private func encodeResult<R: Encodable>(_ result: R) throws -> Any {
+    let data = try JSONEncoder().encode(result)
+    return try JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed)
+}
+
+/// Helper for decoding a single element from a JSON array.
+private struct SingleElementArray<T: Decodable>: Decodable {
+    let value: T
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        value = try container.decode(T.self)
     }
 }

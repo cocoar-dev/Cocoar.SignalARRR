@@ -11,9 +11,7 @@ class IntegrationTestBase: XCTestCase {
             throw XCTSkip("SIGNALARRR_TEST_SERVER_URL not set — skipping integration tests")
         }
         serverURL = url
-        connection = await HARRRConnection.create({ builder in
-            _ = builder.withUrl(url: "\(url)/signalr/testhub")
-        })
+        connection = await HARRRConnection.create(url: "\(url)/signalr/testhub")
         try await connection.start()
     }
 

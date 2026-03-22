@@ -10,13 +10,12 @@ let package = Package(
         .library(name: "CocoarSignalARRRMacros", targets: ["CocoarSignalARRRClient"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/dotnet/signalr-client-swift.git", from: "1.0.0-preview.1"),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "510.0.0"),
     ],
     targets: [
         .target(
             name: "CocoarSignalARRR",
-            dependencies: [.product(name: "SignalRClient", package: "signalr-client-swift")],
+            dependencies: [],
             path: "src/Cocoar.SignalARRR.Swift/Sources/CocoarSignalARRR"
         ),
         .macro(
