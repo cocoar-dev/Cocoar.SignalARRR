@@ -1,4 +1,4 @@
-name: Release - Stable
+name: CD - Release
 
 on:
   release:
@@ -22,36 +22,36 @@ jobs:
 
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.release.tag_name }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
 
       - name: Build TypeScript client
         working-directory: src/Cocoar.SignalARRR.Typescript
         run: npm install && npm run build
 
       - name: Restore dependencies
+        working-directory: src
         run: dotnet restore
-        working-directory: ./src
 
       - name: Build solution
+        working-directory: src
         run: dotnet build -c Release --no-restore
-        working-directory: ./src
 
       - name: Run tests
+        working-directory: src
         run: dotnet test -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
-        working-directory: ./src
 
   test-swift:
     name: Test Swift package
@@ -62,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.release.tag_name }}
@@ -74,7 +74,7 @@ jobs:
         run: swift test
 
   publish:
-    # Only process releases from develop branch
+    name: Publish Packages
     if: github.event.release.target_commitish == 'develop'
     runs-on: ubuntu-latest
     needs: [test-multiplatform, test-swift]
@@ -89,45 +89,38 @@ jobs:
 
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.release.tag_name }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
       - name: Extract and validate release version
         run: |
           TAG="${{ github.event.release.tag_name }}"
-          echo "Release tag: $TAG"
-
-          # Remove 'v' prefix if present
           if [[ "$TAG" =~ ^v[0-9] ]]; then
             VERSION="${TAG#v}"
           else
-            echo "::error ::Tag must start with 'v' followed by version number (e.g., v1.2.3)"
+            echo "::error ::Tag must start with 'v' (e.g., v1.2.3)"
             exit 1
           fi
-
-          # Validate it's a proper release version (X.Y.Z format, no suffix)
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error ::Invalid release version format. Expected X.Y.Z (e.g., 1.2.3), got: $VERSION"
+            echo "::error ::Invalid version format. Expected X.Y.Z, got: $VERSION"
             exit 1
           fi
-
-          echo "Using release version: $VERSION"
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Build and pack npm package (stable)
+      - name: Build and pack npm package
         working-directory: ./src/Cocoar.SignalARRR.Typescript
         run: |
           npm install
@@ -137,24 +130,24 @@ jobs:
           npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts"
 
       - name: Restore dependencies
+        working-directory: ./src
         run: dotnet restore
-        working-directory: ./src
 
-      - name: Build solution (stable)
-        run: dotnet build -c Release --no-restore -p:Version=${{ env.RELEASE_VERSION }} -p:AssemblyVersion=${{ env.RELEASE_VERSION }} -p:FileVersion=${{ env.RELEASE_VERSION }}
+      - name: Build solution
         working-directory: ./src
+        run: dotnet build -c Release --no-restore -p:Version=$RELEASE_VERSION -p:AssemblyVersion=$RELEASE_VERSION -p:FileVersion=$RELEASE_VERSION
 
-      - name: Pack NuGet packages (stable)
-        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=${{ env.RELEASE_VERSION }}
+      - name: Pack NuGet packages
         working-directory: ./src
+        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=$RELEASE_VERSION
 
       - name: Ensure packages exist
         run: |
           shopt -s nullglob
           files=(../artifacts/*.nupkg ../artifacts/*.snupkg)
-          (( ${#files[@]} )) || { echo "::error ::No packages found in ../artifacts/"; exit 1; }
+          (( ${#files[@]} )) || { echo "::error ::No packages found"; exit 1; }
 
-      - name: Upload artifacts (audit)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: packages-${{ env.RELEASE_VERSION }}
@@ -170,7 +163,7 @@ jobs:
             dotnet nuget push "$p" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
           done
 
-      - name: Publish npm package (stable)
+      - name: Publish npm package
         working-directory: ./src/Cocoar.SignalARRR.Typescript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -185,7 +178,7 @@ jobs:
 
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
 
@@ -225,12 +218,11 @@ jobs:
             -H "Authorization: Bearer $KEY" \
             -H "Content-Type: application/zip" \
             --data-binary @$GITHUB_WORKSPACE/docs.zip \
-            "${URL}/api/products/signalarrr/versions/${VER}"
+            "${URL}/_api/products/signalarrr/versions/${VER}"
 
-      - name: Docs deployment summary
+      - name: Deployment summary
         run: |
           echo "### Documentation Deployed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Product:** signalarrr" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.docs-version.outputs.value }}" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** ${{ secrets.SHELF_BASE_URL }}/signalarrr/" >> $GITHUB_STEP_SUMMARY

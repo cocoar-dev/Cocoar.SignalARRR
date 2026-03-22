@@ -1,11 +1,13 @@
-name: PR Validation
+name: CI - Pull Request
 
 on:
   pull_request:
-    branches: [ develop ]
+    branches: [develop]
     paths:
       - 'src/**'
+      - 'scripts/**'
       - '.github/workflows/**'
+      - 'Package.swift'
 
 jobs:
   test-multiplatform:
@@ -21,19 +23,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
 
       - name: Build TypeScript client
         working-directory: src/Cocoar.SignalARRR.Typescript
@@ -48,24 +50,21 @@ jobs:
         id: gv
         uses: gittools/actions/gitversion/execute@v3
 
-      - name: Log calculated version
-        run: echo "GitVersion calculated version ${{ steps.gv.outputs.SemVer }}"
-
       - name: Restore dependencies
+        working-directory: src
         run: dotnet restore
-        working-directory: ./src
 
       - name: Build solution
+        working-directory: src
         run: dotnet build -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }} -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
-        working-directory: ./src
 
       - name: Run tests
+        working-directory: src
         run: dotnet test -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
-        working-directory: ./src
 
       - name: Validate packaging
+        working-directory: src
         run: dotnet pack -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }}
-        working-directory: ./src
 
   test-swift:
     name: Test Swift package
@@ -76,7 +75,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -95,19 +94,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
 
       - name: Build TypeScript client
         working-directory: src/Cocoar.SignalARRR.Typescript

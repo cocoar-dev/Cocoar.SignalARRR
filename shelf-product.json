@@ -1,6 +1,0 @@
-{
-  "name": "signalarrr",
-  "displayName": "Cocoar.SignalARRR",
-  "description": "Typed bidirectional RPC over ASP.NET Core SignalR",
-  "source": "upload"
-}

@@ -1,4 +1,4 @@
-name: NuGet Prerelease
+name: CD - Prerelease
 
 on:
   workflow_dispatch:
@@ -21,38 +21,37 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}   # branch selected in the UI
+          ref: ${{ github.ref }}
           fetch-depth: 0
           fetch-tags: true
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
 
       - name: Build TypeScript client
         working-directory: src/Cocoar.SignalARRR.Typescript
         run: npm install && npm run build
 
       - name: Restore dependencies
+        working-directory: src
         run: dotnet restore
-        working-directory: ./src
 
       - name: Build solution
+        working-directory: src
         run: dotnet build -c Release --no-restore
-        working-directory: ./src
 
       - name: Run tests
+        working-directory: src
         run: dotnet test -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
-        working-directory: ./src
-
 
   test-swift:
     name: Test Swift package
@@ -63,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -76,6 +75,7 @@ jobs:
         run: swift test
 
   publish-prerelease:
+    name: Publish Prerelease
     runs-on: ubuntu-latest
     needs: [test-multiplatform, test-swift]
     permissions:
@@ -89,16 +89,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}   # same branch as tests
+          ref: ${{ github.ref }}
           fetch-depth: 0
           fetch-tags: true
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: 10.0.x
 
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v3
@@ -110,26 +110,17 @@ jobs:
         uses: gittools/actions/gitversion/execute@v3
 
       - name: Build prerelease version
-        id: prerelease
         run: |
           BASE="${{ steps.gv.outputs.MajorMinorPatch }}-${{ steps.gv.outputs.PreReleaseLabel }}"
           N="${{ steps.gv.outputs.CommitsSinceVersionSource }}"
           VERSION="$BASE.$N"
-
           echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_OUTPUT
-
           echo "Calculated prerelease version: $VERSION"
 
-      - name: Log calculated version
-        run: |
-          echo "GitVersion SemVer (original): ${{ steps.gv.outputs.SemVer }}"
-          echo "Using PACKAGE_VERSION:        $PACKAGE_VERSION"
-
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
 
       - name: Build and pack npm prerelease
@@ -142,16 +133,16 @@ jobs:
           npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts"
 
       - name: Restore dependencies
-        run: dotnet restore
         working-directory: ./src
+        run: dotnet restore
 
       - name: Build solution
+        working-directory: ./src
         run: dotnet build -c Release --no-restore -p:Version=$PACKAGE_VERSION -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
-        working-directory: ./src
 
-      - name: Pack NuGet packages (incl. symbols)
-        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=$PACKAGE_VERSION
+      - name: Pack NuGet packages
         working-directory: ./src
+        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=$PACKAGE_VERSION
 
       - name: Ensure packages exist
         run: |
@@ -159,20 +150,19 @@ jobs:
           files=("$GITHUB_WORKSPACE"/artifacts/*.nupkg "$GITHUB_WORKSPACE"/artifacts/*.snupkg)
           (( ${#files[@]} )) || { echo "::error ::No packages found in artifacts/"; exit 1; }
 
-      - name: Upload artifacts (audit)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: prerelease-packages-${{ env.PACKAGE_VERSION }}
           path: ${{ github.workspace }}/artifacts
           retention-days: 30
 
-      - name: Push prerelease to NuGet.org
+      - name: Push to NuGet.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           shopt -s nullglob
           for p in "$GITHUB_WORKSPACE"/artifacts/*.nupkg "$GITHUB_WORKSPACE"/artifacts/*.snupkg; do
-            echo "Pushing prerelease package: $p"
             dotnet nuget push "$p" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
           done
 
