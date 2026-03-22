@@ -120,15 +120,11 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
     // MARK: - State
 
     public func state() -> HubConnectionState {
-        lock.lock()
-        defer { lock.unlock() }
-        return _state
+        lock.withLock { _state }
     }
 
     private func setState(_ newState: HubConnectionState) {
-        lock.lock()
-        _state = newState
-        lock.unlock()
+        lock.withLock { _state = newState }
     }
 
     // MARK: - Lifecycle
@@ -157,9 +153,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
             serverTransports: serverTransports,
             connectionToken: connectionToken
         )
-        lock.lock()
-        transport = selectedTransport
-        lock.unlock()
+        lock.withLock { transport = selectedTransport }
 
         // 3. Handshake (with timeout)
         let handshakeData = hubProtocol.writeHandshakeRequest()
@@ -188,11 +182,11 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
 
     public func stop() async {
         logger.info("Stopping connection")
-        let wasActive: Bool
-        lock.lock()
-        wasActive = _state != .disconnected
-        _state = .disconnected
-        lock.unlock()
+        let wasActive = lock.withLock {
+            let was = _state != .disconnected
+            _state = .disconnected
+            return was
+        }
 
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -207,10 +201,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         tracker.failAll(error: SignalRError.disconnected)
 
         if wasActive {
-            let callbacks: [@Sendable (Error?) async -> Void]
-            lock.lock()
-            callbacks = closedCallbacks
-            lock.unlock()
+            let callbacks = lock.withLock { closedCallbacks }
             for cb in callbacks { await cb(nil) }
         }
     }
@@ -265,13 +256,15 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         }
 
         return AsyncThrowingStream<T, Error> { [weak self] continuation in
+            // Shadow the var-optional `self` as a `let` before any concurrent boundary.
+            // This is required for Swift 6: a `var` captured by [weak self] cannot be
+            // referenced from @Sendable closures or Tasks.
+            guard let self else { return }
+
             continuation.onTermination = { @Sendable _ in
-                Task { [weak self] in
-                    guard let self else { return }
-                    self.tracker.removeStream(id: id)
-                    if let cancelData = try? self.hubProtocol.writeCancelInvocation(invocationId: id) {
-                        try? await self.sendRaw(cancelData)
-                    }
+                self.tracker.removeStream(id: id)
+                if let cancelData = try? self.hubProtocol.writeCancelInvocation(invocationId: id) {
+                    Task { [weak self] in try? await self?.sendRaw(cancelData) }
                 }
             }
             Task {
@@ -291,35 +284,25 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
     // MARK: - Server → Client Handlers
 
     public func on(_ method: String, handler: @escaping @Sendable ([Any]) async throws -> Any?) {
-        lock.lock()
-        handlers[method] = handler
-        lock.unlock()
+        lock.withLock { handlers[method] = handler }
     }
 
     public func off(_ method: String) {
-        lock.lock()
-        handlers.removeValue(forKey: method)
-        lock.unlock()
+        lock.withLock { handlers[method] = nil }
     }
 
     // MARK: - Connection Events
 
     public func onClosed(_ callback: @escaping @Sendable (Error?) async -> Void) {
-        lock.lock()
-        closedCallbacks.append(callback)
-        lock.unlock()
+        lock.withLock { closedCallbacks.append(callback) }
     }
 
     public func onReconnecting(_ callback: @escaping @Sendable (Error?) async -> Void) {
-        lock.lock()
-        reconnectingCallbacks.append(callback)
-        lock.unlock()
+        lock.withLock { reconnectingCallbacks.append(callback) }
     }
 
     public func onReconnected(_ callback: @escaping @Sendable () async -> Void) {
-        lock.lock()
-        reconnectedCallbacks.append(callback)
-        lock.unlock()
+        lock.withLock { reconnectedCallbacks.append(callback) }
     }
 
     // MARK: - Private: Networking
@@ -440,10 +423,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         switch message {
         case .invocation(let target, let args, let invocationId):
             logger.debug("Received invocation: \(target) (id: \(invocationId ?? "none"))")
-            let handler: (@Sendable ([Any]) async throws -> Any?)?
-            lock.lock()
-            handler = handlers[target]
-            lock.unlock()
+            let handler = lock.withLock { handlers[target] }
 
             if let handler = handler {
                 Task { [weak self] in
@@ -498,16 +478,12 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
             logger.info("Connection closed by server")
         }
 
-        let shouldReconnect: Bool
-        lock.lock()
-        let previousState = _state
-        shouldReconnect = previousState == .connected && !reconnectPolicy.retryDelays.isEmpty
-        if shouldReconnect {
-            _state = .reconnecting
-        } else {
-            _state = .disconnected
+        let (shouldReconnect, previousState) = lock.withLock {
+            let prev = _state
+            let should = prev == .connected && !reconnectPolicy.retryDelays.isEmpty
+            _state = should ? .reconnecting : .disconnected
+            return (should, prev)
         }
-        lock.unlock()
 
         receiveTask?.cancel()
         pingTask?.cancel()
@@ -517,10 +493,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         if shouldReconnect {
             tracker.failAll(error: error ?? SignalRError.disconnected)
 
-            let rcCallbacks: [@Sendable (Error?) async -> Void]
-            lock.lock()
-            rcCallbacks = reconnectingCallbacks
-            lock.unlock()
+            let rcCallbacks = lock.withLock { reconnectingCallbacks }
             for cb in rcCallbacks { await cb(error) }
 
             reconnectTask = Task { [weak self] in
@@ -530,10 +503,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
             tracker.failAll(error: error ?? SignalRError.disconnected)
 
             if previousState == .connected || previousState == .connecting {
-                let callbacks: [@Sendable (Error?) async -> Void]
-                lock.lock()
-                callbacks = closedCallbacks
-                lock.unlock()
+                let callbacks = lock.withLock { closedCallbacks }
                 for cb in callbacks { await cb(error) }
             }
         }
@@ -556,10 +526,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
                 try await connectAndHandshake()
                 logger.info("Reconnected successfully")
 
-                let callbacks: [@Sendable () async -> Void]
-                lock.lock()
-                callbacks = reconnectedCallbacks
-                lock.unlock()
+                let callbacks = lock.withLock { reconnectedCallbacks }
                 for cb in callbacks { await cb() }
                 return
 
@@ -574,10 +541,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         guard !Task.isCancelled else { return }
         setState(.disconnected)
 
-        let callbacks: [@Sendable (Error?) async -> Void]
-        lock.lock()
-        callbacks = closedCallbacks
-        lock.unlock()
+        let callbacks = lock.withLock { closedCallbacks }
         for cb in callbacks { await cb(originalError) }
     }
 }
