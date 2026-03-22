@@ -553,7 +553,9 @@ private func msgpackRU32(_ data: Data, at i: Int) -> UInt32 {
 
 @inline(__always)
 private func msgpackRU64(_ data: Data, at i: Int) -> UInt64 {
-    UInt64(data[i]) << 56 | UInt64(data[i + 1]) << 48 | UInt64(data[i + 2]) << 40 |
-    UInt64(data[i + 3]) << 32 | UInt64(data[i + 4]) << 24 | UInt64(data[i + 5]) << 16 |
-    UInt64(data[i + 6]) << 8 | UInt64(data[i + 7])
+    let hi: UInt64 = UInt64(data[i]) << 56 | UInt64(data[i + 1]) << 48
+                   | UInt64(data[i + 2]) << 40 | UInt64(data[i + 3]) << 32
+    let lo: UInt64 = UInt64(data[i + 4]) << 24 | UInt64(data[i + 5]) << 16
+                   | UInt64(data[i + 6]) << 8  | UInt64(data[i + 7])
+    return hi | lo
 }
