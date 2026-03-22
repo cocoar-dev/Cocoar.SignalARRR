@@ -73,7 +73,7 @@ export class HARRRConnection {
       // If the result is binary data (Blob, ArrayBuffer, Buffer), upload via HTTP
       // and return a StreamReference instead
       if (result instanceof Blob || result instanceof ArrayBuffer ||
-          (typeof Buffer !== 'undefined' && Buffer.isBuffer(result))) {
+          isNodeBuffer(result)) {
         return await this._uploadAndReturnReference(result);
       }
 
@@ -160,12 +160,19 @@ export class HARRRConnection {
     }
   }
 
-  private async _uploadAndReturnReference(data: Blob | ArrayBuffer | Buffer): Promise<{ Uri: string }> {
+  private async _uploadAndReturnReference(data: Blob | ArrayBuffer | Uint8Array | unknown): Promise<{ Uri: string }> {
     // Request an upload URL from the server
     const uploadUrl = await this._hubConnection.invoke<string>('RequestUploadSlot');
 
     // Upload the data via HTTP POST
-    const body = data instanceof Blob ? data : new Blob([data]);
+    let body: BodyInit;
+    if (data instanceof Blob) {
+      body = data;
+    } else if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
+      body = data as BodyInit;
+    } else {
+      body = String(data);
+    }
     await fetch(uploadUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream' },
@@ -180,7 +187,7 @@ export class HARRRConnection {
     let hasStream = false;
     for (const arg of args) {
       if (arg instanceof Blob || arg instanceof ArrayBuffer ||
-          (typeof Buffer !== 'undefined' && Buffer.isBuffer(arg))) {
+          isNodeBuffer(arg)) {
         hasStream = true;
         break;
       }
@@ -190,7 +197,7 @@ export class HARRRConnection {
     const result: unknown[] = [];
     for (const arg of args) {
       if (arg instanceof Blob || arg instanceof ArrayBuffer ||
-          (typeof Buffer !== 'undefined' && Buffer.isBuffer(arg))) {
+          isNodeBuffer(arg)) {
         result.push(await this._uploadAndReturnReference(arg));
       } else {
         result.push(arg);
@@ -296,4 +303,12 @@ export class HARRRConnection {
     const parsed = parseHARRRError(error);
     return { type: parsed.Type, message: parsed.Message };
   }
+}
+
+/** Runtime check for Node.js Buffer without importing @types/node */
+function isNodeBuffer(value: unknown): boolean {
+  return typeof globalThis !== 'undefined' &&
+    typeof (globalThis as Record<string, unknown>)['Buffer'] === 'function' &&
+    typeof ((globalThis as Record<string, unknown>)['Buffer'] as Record<string, unknown>)['isBuffer'] === 'function' &&
+    ((globalThis as Record<string, unknown>)['Buffer'] as { isBuffer: (v: unknown) => boolean }).isBuffer(value);
 }
