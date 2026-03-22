@@ -62,7 +62,16 @@ SignalARRR has three client implementations. This page shows what each client su
 | Async pattern | async/await | Promise | async/await |
 | Cancellation | CancellationToken | AbortSignal | Actor |
 | Serialization | System.Text.Json | JSON | Codable |
-| MessagePack | — | — | — |
+| MessagePack | ✓ | ✓ | ✓ |
+
+## Transport
+
+| | .NET | TS | Swift |
+|-|:----:|:--:|:-----:|
+| WebSockets | ✓ | ✓ | ✓ |
+| Server-Sent Events | ✓ | ✓ | ✓ |
+| Long Polling | ✓ | ✓ | ✓ |
+| Transport fallback | ✓ | ✓ | ✓ |
 
 ## API Comparison
 
@@ -86,10 +95,40 @@ await connection.start();
 ```
 
 ```swift [Swift]
-let connection = await HARRRConnection.create { builder in
-    builder.withUrl(url: "https://server/hub")
-}
+let connection = await HARRRConnection.create(
+    url: "https://server/hub"
+)
 try await connection.start()
+```
+
+:::
+
+### With MessagePack
+
+::: code-group
+
+```csharp [.NET]
+var connection = HARRRConnection.Create(builder =>
+{
+    builder.WithUrl("https://server/hub");
+    builder.AddMessagePackProtocol();
+});
+```
+
+```ts [TypeScript]
+import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack';
+
+const connection = HARRRConnection.create(builder => {
+    builder.withUrl('https://server/hub');
+    builder.withHubProtocol(new MessagePackHubProtocol());
+});
+```
+
+```swift [Swift]
+let connection = await HARRRConnection.create(
+    url: "https://server/hub",
+    hubProtocol: .messagepack
+)
 ```
 
 :::

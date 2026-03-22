@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Swift Client — Complete Rewrite (v4)
+
+The Swift client has been rewritten from scratch. Microsoft's `signalr-client-swift` has been replaced by a native implementation with no external dependencies.
+
+#### Breaking Changes (Swift)
+- `HARRRConnection.create { builder in ... }` replaced by `HARRRConnection.create(url:)` with named parameters
+- `asSignalRHubConnection()` removed — no underlying `HubConnection` exists anymore
+- `invoke<T>` and `stream<T>` now require `T: Decodable` constraint
+
+#### Added (Swift)
+- **Native SignalR client** (`SignalRWebSocketClient`) — replaces `signalr-client-swift`, zero external dependencies
+- **MessagePack protocol** — `hubProtocol: .messagepack` parameter, fully implemented without any library
+- **Multiple transports** — WebSockets, Server-Sent Events, Long Polling with automatic fallback
+- **Automatic reconnection** — configurable `ReconnectPolicy` with custom retry delays
+- **Handshake timeout** — `handshakeTimeout` parameter, defaults to 15s
+- **`UnauthorizedException`** — thrown when the server rejects authentication
+- **`os_log` logging** — `logLevel: SignalRLogLevel` parameter, visible in Xcode and Console.app
+- **`HubProtocolKind`** — public enum `.json` / `.messagepack` for protocol selection
+- **`TransportType`** — public enum `.webSockets` / `.serverSentEvents` / `.longPolling`
+- **Concurrent handler dispatch** — each server→client invocation runs in its own `Task`, fixing the fundamental concurrency bug in `signalr-client-swift` where `CancelTokenFromServer` could be blocked by a running handler
+- **31 integration tests** — including 5 new MessagePack tests covering invoke, guid, send, echo, and streaming
+
+#### Fixed (Swift)
+- `CancelTokenFromServer` now dispatched immediately even while other handlers are running (was blocked by Actor serialization in `signalr-client-swift`)
+- Cancellation tests complete in ~0.2s instead of timing out at 30s
+
 ### Breaking Changes
 - Target framework changed from `netstandard2.0` to `net10.0`
 - `ImpromptuInterface` removed — replaced by source-generated proxies and opt-in `DispatchProxy` fallback

@@ -1,6 +1,6 @@
 # MessagePack Protocol
 
-**Status:** Implemented for .NET + TypeScript. Swift needs macOS testing.
+**Status:** Fully implemented across all clients (.NET, TypeScript, Swift).
 
 ## Overview
 
@@ -51,10 +51,27 @@ const connection = HARRRConnection.create(builder => {
 
 ## Swift Client
 
-**Status:** Open — needs macOS testing. Server already supports MessagePack; Swift support depends on `signalr-client-swift` preview capabilities.
+No external dependencies — MessagePack is implemented natively in the Swift client.
+
+```swift
+let connection = await HARRRConnection.create(
+    url: "https://server/hub",
+    hubProtocol: .messagepack
+)
+```
+
+Or using `SignalRWebSocketClient` directly:
+
+```swift
+let client = SignalRWebSocketClient(
+    url: "https://server/hub",
+    hubProtocol: .messagepack
+)
+```
 
 ## Tests
 
 - 5 .NET MessagePack integration tests (invoke, send, echo, guid, multi-param)
 - 5 TypeScript MessagePack integration tests (same scenarios)
-- All running alongside 50+ JSON tests on the same server
+- 5 Swift MessagePack integration tests (invoke, guid, send, echo, streaming with multiple int params)
+- All running alongside JSON tests on the same server instance
