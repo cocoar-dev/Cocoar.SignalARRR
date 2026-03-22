@@ -20,7 +20,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
             connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
             await connection.StartAsync(ct);
-            await Task.Delay(100, ct); // Ensure connection is fully registered
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 var connectionId = connection.ConnectionId;

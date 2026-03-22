@@ -22,6 +22,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
             connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
             await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 using var http = new HttpClient();
@@ -48,6 +49,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
             connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
             await connection.StartAsync(ct);
+            // Wait for server to register client in ClientManager (OnConnectedAsync)
+            await Task.Delay(500, ct);
 
             try {
                 using var http = new HttpClient();
@@ -72,6 +75,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
             connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
             await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 using var http = new HttpClient();
@@ -93,6 +97,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
             connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
             await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 using var http = new HttpClient();
@@ -117,6 +122,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
             connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
             await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 using var http = new HttpClient();
@@ -143,6 +149,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
             connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
             await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 using var http = new HttpClient();

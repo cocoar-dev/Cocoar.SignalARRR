@@ -161,6 +161,20 @@ app.MapSignalARRRTest("/__test/get-client-attributes", (context, clientManager) 
     return (object)attrs;
 });
 
+// Check if a client is registered in ClientManager (used by tests to wait for registration)
+app.MapGet("/__test/client-exists", (HttpContext context) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId)) return Results.BadRequest("Missing connectionId");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    try {
+        clientManager.GetClientById(connectionId);
+        return Results.Ok(true);
+    } catch {
+        return Results.Ok(false);
+    }
+});
+
 // Server calls client GetFileStream — client returns a Stream via HTTP upload
 app.MapSignalARRRTest("/__test/trigger-client-getfilestream", async (context, clientManager) => {
     var connectionId = context.Request.Query["connectionId"].ToString();
