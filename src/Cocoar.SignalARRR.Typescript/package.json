@@ -23,11 +23,16 @@
   "files": [
     "dist/",
     "skills/",
-    "docs/",
     "scripts/"
   ],
   "author": "Bernhard Windisch",
-  "license": "ISC",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cocoar-dev/Cocoar.SignalARRR.git",
+    "directory": "src/Cocoar.SignalARRR.Typescript"
+  },
+  "homepage": "https://docs.cocoar.dev/signalarrr/",
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
     "@microsoft/signalr-protocol-msgpack": "^10.0.0"

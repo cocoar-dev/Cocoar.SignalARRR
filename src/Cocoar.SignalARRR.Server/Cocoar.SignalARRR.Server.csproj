@@ -18,9 +18,9 @@
     <Company>-</Company>
     <Description>SignalARRR server library — typed bidirectional RPC over SignalR with authorization, streaming, server-to-client calls, and ServerMethods organization.</Description>
     <PackageTags>signalr;rpc;signalarrr;server;realtime;streaming;authorization</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageId>Cocoar.SignalARRR.Server</PackageId>
     <Product>Cocoar.SignalARRR.Server</Product>
@@ -50,7 +50,6 @@
   <ItemGroup>
     <None Include="build/Cocoar.SignalARRR.Server.targets" Pack="true" PackagePath="buildTransitive/Cocoar.SignalARRR.Server.targets" />
     <None Include="../../skills/signalarrr/**/*" Pack="true" PackagePath="buildTransitive/skills/signalarrr/" />
-    <None Include="../../docs/**/*" Pack="true" PackagePath="buildTransitive/docs/" />
   </ItemGroup>
 
 </Project>

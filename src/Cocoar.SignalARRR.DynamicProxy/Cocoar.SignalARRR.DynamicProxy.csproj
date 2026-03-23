@@ -13,9 +13,9 @@
     <Company>-</Company>
     <Description>Dynamic proxy fallback for Cocoar.SignalARRR — uses DispatchProxy for runtime interface proxy generation. Opt-in package for scenarios where compile-time source generation is not available.</Description>
     <PackageTags>signalr;rpc;signalarrr;proxy;dispatchproxy;dynamic</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageId>Cocoar.SignalARRR.DynamicProxy</PackageId>
     <Product>Cocoar.SignalARRR.DynamicProxy</Product>

@@ -1,0 +1,36 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for suggesting an improvement!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve? What use case do you have?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work? Include API examples if possible.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Affected client(s)
+      description: Which client(s) would benefit from this feature?
+      multiple: true
+      options:
+        - .NET
+        - TypeScript
+        - Swift
+        - Server
+        - All

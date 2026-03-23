@@ -13,9 +13,9 @@
     <Company>-</Company>
     <Description>SignalARRR client library — typed bidirectional RPC over SignalR with streaming, cancellation, and source-generated proxies.</Description>
     <PackageTags>signalr;rpc;signalarrr;client;realtime;streaming</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageId>Cocoar.SignalARRR.Client</PackageId>
     <Product>Cocoar.SignalARRR.Client</Product>

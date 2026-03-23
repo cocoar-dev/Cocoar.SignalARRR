@@ -13,9 +13,9 @@
     <Company>-</Company>
     <Description>Contracts, attributes and source generator for SignalARRR proxy generation. Reference this package from any project that defines [SignalARRRContract] interfaces.</Description>
     <PackageTags>signalr;rpc;signalarrr;contracts;sourcegenerator;codegen</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/windischb/SignalARRR</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/windischb/SignalARRR</RepositoryUrl>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageId>Cocoar.SignalARRR.Contracts</PackageId>
     <Product>Cocoar.SignalARRR.Contracts</Product>

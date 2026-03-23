@@ -1,20 +1,15 @@
 # SignalARRR
 
+[![CI](https://github.com/cocoar-dev/Cocoar.SignalARRR/actions/workflows/ci-pr-validation.yml/badge.svg)](https://github.com/cocoar-dev/Cocoar.SignalARRR/actions/workflows/ci-pr-validation.yml)
+[![NuGet](https://img.shields.io/nuget/v/Cocoar.SignalARRR.Server?label=NuGet)](https://www.nuget.org/packages/Cocoar.SignalARRR.Server)
+[![npm](https://img.shields.io/npm/v/@cocoar/signalarrr?label=npm)](https://www.npmjs.com/package/@cocoar/signalarrr)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 Typed bidirectional RPC over ASP.NET Core SignalR.
 
-Both server and client can call each other's methods through shared interfaces, with compile-time proxy generation, streaming, cancellation propagation, and ASP.NET Core authorization.
+Server and client call each other's methods through shared interfaces — with compile-time proxy generation, streaming, cancellation propagation, and ASP.NET Core authorization. Clients available for **.NET**, **TypeScript/JavaScript**, and **Swift**.
 
-## Features
-
-- **Typed bidirectional RPC** — server calls client methods, client calls server methods, both through shared interfaces
-- **Compile-time proxy generation** — Roslyn source generator produces proxies from `[SignalARRRContract]` interfaces (zero reflection)
-- **Organized hub methods** — split hub logic across multiple `ServerMethods<T>` classes with full DI support
-- **Streaming** — `IAsyncEnumerable<T>`, `IObservable<T>`, and `ChannelReader<T>` in both directions
-- **CancellationToken propagation** — server can cancel client operations remotely
-- **Authorization** — method-level, class-level, and hub-level `[Authorize]` with automatic inheritance
-- **Server-to-client calls from anywhere** — inject `ClientManager` in controllers, background services, etc.
-- **TypeScript / JavaScript client** — `@cocoar/signalarrr` npm package with full v4 protocol support
-- **Optional runtime proxy fallback** — `DispatchProxy`-based package for plugin/dynamic scenarios
+> **[Read the full documentation](https://docs.cocoar.dev/signalarrr/)**
 
 ## Packages
 
@@ -22,197 +17,71 @@ Both server and client can call each other's methods through shared interfaces, 
 
 | Package | Purpose |
 |---|---|
-| `Cocoar.SignalARRR.Contracts` | `[SignalARRRContract]` attribute + source generator — reference from shared interface projects |
-| `Cocoar.SignalARRR.Server` | Server-side: HARRR hub, ServerMethods, authorization, ClientManager |
-| `Cocoar.SignalARRR.Client` | Client-side: HARRRConnection, typed proxies, event handlers |
-| `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via DispatchProxy |
+| [`Cocoar.SignalARRR.Contracts`](https://www.nuget.org/packages/Cocoar.SignalARRR.Contracts) | `[SignalARRRContract]` attribute + source generator — reference from shared interface projects |
+| [`Cocoar.SignalARRR.Server`](https://www.nuget.org/packages/Cocoar.SignalARRR.Server) | Server-side: HARRR hub, ServerMethods, authorization, ClientManager |
+| [`Cocoar.SignalARRR.Client`](https://www.nuget.org/packages/Cocoar.SignalARRR.Client) | Client-side: HARRRConnection, typed proxies, event handlers |
+| [`Cocoar.SignalARRR.DynamicProxy`](https://www.nuget.org/packages/Cocoar.SignalARRR.DynamicProxy) | Opt-in runtime proxy fallback via DispatchProxy |
 
-### JavaScript / TypeScript
-
-| Package | Purpose |
-|---|---|
-| `@cocoar/signalarrr` | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
-
-### Swift (iOS / macOS)
-
-| Product | Purpose |
-|---|---|
-| `CocoarSignalARRRMacros` | Full client with `@HubProxy` macro for compile-time proxy generation |
-| `CocoarSignalARRR` | Runtime only (no macro dependency) — `HARRRConnection`, `invoke`, `send`, `stream` |
-
-## Quick Start
-
-### 1. Define shared interfaces
-
-In your shared project, reference `Cocoar.SignalARRR.Contracts`:
-
-```csharp
-[SignalARRRContract]
-public interface IChatHub {
-    Task SendMessage(string user, string message);
-    Task<List<string>> GetHistory();
-    IAsyncEnumerable<string> StreamMessages(CancellationToken ct);
-}
-
-[SignalARRRContract]
-public interface IChatClient {
-    void ReceiveMessage(string user, string message);
-    Task<string> GetClientName();
-}
-```
-
-### 2. Server setup
-
-```csharp
-// Program.cs
-builder.Services.AddSignalR();
-builder.Services.AddSignalARRR(options => options
-    .AddServerMethodsFrom(typeof(Program).Assembly));
-
-app.UseRouting();
-app.MapHARRRController<ChatHub>("/chathub");
-```
-
-```csharp
-// Hub (can be empty — methods go in ServerMethods classes)
-public class ChatHub : HARRR {
-    public ChatHub(IServiceProvider sp) : base(sp) { }
-}
-
-// Server methods (auto-discovered, DI works)
-public class ChatMethods : ServerMethods<ChatHub>, IChatHub {
-    public Task SendMessage(string user, string message) { ... }
-    public Task<List<string>> GetHistory() { ... }
-    public async IAsyncEnumerable<string> StreamMessages(
-        [EnumeratorCancellation] CancellationToken ct) {
-        while (!ct.IsCancellationRequested) {
-            yield return $"msg-{DateTime.Now:ss}";
-            await Task.Delay(1000, ct);
-        }
-    }
-}
-```
-
-### 3. .NET client setup
-
-```csharp
-var connection = HARRRConnection.Create(builder => {
-    builder.WithUrl("https://localhost:5001/chathub");
-});
-await connection.StartAsync();
-
-// Typed calls
-var chat = connection.GetTypedMethods<IChatHub>();
-await chat.SendMessage("Alice", "Hello!");
-var history = await chat.GetHistory();
-
-// Streaming
-await foreach (var msg in chat.StreamMessages(cancellationToken)) {
-    Console.WriteLine(msg);
-}
-```
-
-### 4. TypeScript / JavaScript client setup
+### TypeScript / JavaScript
 
 ```
 npm install @cocoar/signalarrr
 ```
 
-```ts
-import { HARRRConnection } from '@cocoar/signalarrr';
-
-const connection = HARRRConnection.create(builder => {
-    builder.withUrl('https://localhost:5001/chathub');
-    builder.withAutomaticReconnect();
-});
-await connection.start();
-
-// Invoke with return value
-const history = await connection.invoke<string[]>('ChatMethods.GetHistory');
-
-// Fire-and-forget
-await connection.send('ChatMethods.SendMessage', 'Alice', 'Hello!');
-
-// Stream
-connection.stream<string>('ChatMethods.StreamMessages').subscribe({
-    next: msg => console.log(msg),
-    complete: () => console.log('done'),
-});
-
-// Handle server-to-client calls
-connection.onServerMethod('GetClientName', () => navigator.userAgent);
-```
-
-### 5. Swift client setup (iOS / macOS)
-
-Add the SPM dependency:
+### Swift (iOS / macOS)
 
 ```swift
-// Package.swift
-.package(url: "https://github.com/Cocoar/SignalARRR.git", from: "4.1.0")
-
-// Target dependency (with @HubProxy macro):
-.product(name: "CocoarSignalARRRMacros", package: "SignalARRR")
+.package(url: "https://github.com/cocoar-dev/Cocoar.SignalARRR.git", from: "4.0.0")
 ```
 
-Or in Xcode: File > Add Packages > paste the repository URL.
+## Quick Start
 
-```swift
-import CocoarSignalARRRClient
-
-// Define a hub protocol
-@HubProxy
-protocol IChatHub {
-    func sendMessage(user: String, message: String) async throws
-    func getHistory() async throws -> [String]
-    func streamMessages() async throws -> AsyncThrowingStream<String, Error>
-}
-
-// Create connection
-let connection = await HARRRConnection.create({ builder in
-    builder.withUrl(url: "https://localhost:5001/chathub")
-        .withAutomaticReconnect()
-}, accessTokenFactory: { "Bearer my-token" })
-
-try await connection.start()
-
-// Use the generated proxy
-let chat = connection.getTypedMethods(IChatHubProxy.self)
-try await chat.sendMessage(user: "Alice", message: "Hello!")
-let history = try await chat.getHistory()
-
-// Stream
-let stream: AsyncThrowingStream<String, Error> = try await chat.streamMessages()
-for try await msg in stream {
-    print(msg)
-}
-```
-
-### 6. Server-to-client calls
+Define shared interfaces, set up the server, and call methods with full type safety:
 
 ```csharp
-// Inside ServerMethods — use ClientContext
-var client = ClientContext.GetTypedMethods<IChatClient>();
-var name = await client.GetClientName();
-
-// Outside hub context — inject ClientManager
-public class NotificationService {
-    private readonly ClientManager _clients;
-    public NotificationService(ClientManager clients) => _clients = clients;
-
-    public void Notify(string connectionId) {
-        var client = _clients.GetTypedMethods<IChatClient>(connectionId);
-        client.ReceiveMessage("System", "Hello from server!");
-    }
+// Shared interface
+[SignalARRRContract]
+public interface IChatHub {
+    Task SendMessage(string user, string message);
+    Task<List<string>> GetHistory();
 }
+
+// Client usage — one line to get a typed proxy
+var chat = connection.GetTypedMethods<IChatHub>();
+await chat.SendMessage("Alice", "Hello!");
 ```
+
+```typescript
+// TypeScript client
+const history = await connection.invoke<string[]>('ChatMethods.GetHistory');
+```
+
+```swift
+// Swift client — @HubProxy macro generates the proxy
+@HubProxy protocol IChatHub { ... }
+let chat = connection.getTypedMethods(IChatHubProxy.self)
+```
+
+For full setup guides, streaming, authorization, and server-to-client calls, see the **[documentation](https://docs.cocoar.dev/signalarrr/)**.
+
+## Features
+
+- **Typed bidirectional RPC** — server and client call each other through shared interfaces
+- **Compile-time proxy generation** — Roslyn source generator (zero reflection)
+- **Organized hub methods** — split logic across `ServerMethods<T>` classes with full DI
+- **Streaming** — `IAsyncEnumerable<T>`, `IObservable<T>`, `ChannelReader<T>` in both directions
+- **HTTP stream references** — file download/upload through SignalR hub methods
+- **CancellationToken propagation** — server can cancel client operations remotely
+- **Authorization** — method-level, class-level, and hub-level `[Authorize]`
+- **Server-to-client calls from anywhere** — inject `ClientManager` in controllers, background services, etc.
+- **Three clients** — .NET, TypeScript/JavaScript, Swift with feature parity
 
 ## Framework Support
 
 | Target | Version |
 |---|---|
 | .NET (server + client) | .NET 10 |
-| TypeScript / JavaScript | `@microsoft/signalr` v10, Node.js 22 / modern browsers |
+| TypeScript / JavaScript | Node.js 22 / modern browsers |
 | Swift (iOS / macOS) | Swift 5.10+, iOS 14+ / macOS 11+ |
 
 ## Building from Source
@@ -223,32 +92,16 @@ dotnet build src/Cocoar.SignalARRR.slnx
 dotnet test src/Cocoar.SignalARRR.slnx
 
 # TypeScript
-cd src/Cocoar.SignalARRR.Typescript
-npm install && npm run build
+cd src/Cocoar.SignalARRR.Typescript && npm install && npm run build
 
 # Swift
-swift build
-swift test
+swift build && swift test
 ```
-
-## Documentation
-
-- [Getting Started](docs/getting-started.md)
-- [Server API](docs/server-api.md)
-- [Client API](docs/client-api.md) — .NET and TypeScript
-- [Streaming](docs/streaming.md)
-- [Authorization](docs/authorization.md)
-- [Proxy Generation](docs/proxy-generation.md)
-- [Migration from v2.x](docs/migration-v4.md)
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
-
-**Maintainer**: Bernhard Windisch
