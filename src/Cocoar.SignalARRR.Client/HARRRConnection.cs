@@ -39,13 +39,11 @@ namespace Cocoar.SignalARRR.Client {
             // Fire-and-forget — no return value
             this.On<ServerRequestMessage>(MethodNames.CancelTokenFromServer, (requestMessage) => _harrrContext.MessageHandler.CancelTokenFromServer(requestMessage));
 
-#pragma warning disable 4014
             this.On<ServerRequestMessage>(MethodNames.InvokeServerMessage,
-                 (requestMessage) => {
+                 async (requestMessage) => {
                      OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
-                     _harrrContext.MessageHandler.InvokeServerMessage(requestMessage);
+                     await _harrrContext.MessageHandler.InvokeServerMessage(requestMessage);
                  });
-#pragma warning restore 4014
         }
 
 
