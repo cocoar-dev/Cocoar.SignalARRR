@@ -44,6 +44,7 @@ export default withMermaid(
             items: [
               { text: 'Getting Started', link: '/guide/getting-started' },
               { text: 'Why SignalARRR?', link: '/guide/why-signalarrr' },
+              { text: 'vs. gRPC vs. REST', link: '/guide/comparison' },
             ],
           },
           {
