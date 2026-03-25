@@ -22,10 +22,13 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var serverProjectDir = FindServerProjectDir();
             var urlFile = Path.Combine(Path.GetTempPath(), $"signalarrr-test-{Guid.NewGuid()}.url");
 
+            // Detect the current target framework from the runtime to pass to dotnet run
+            var tfm = $"net{Environment.Version.Major}.0";
+
             _serverProcess = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = "dotnet",
-                    Arguments = $"run --project \"{serverProjectDir}\" -c Release",
+                    Arguments = $"run --project \"{serverProjectDir}\" -c Release --framework {tfm}",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,

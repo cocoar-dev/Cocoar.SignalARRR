@@ -11,13 +11,14 @@ on:
 
 jobs:
   test-multiplatform:
-    name: Test on ${{ matrix.os }}
+    name: Test .NET ${{ matrix.dotnet }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        dotnet: ['8.0.x', '9.0.x', '10.0.x']
     permissions:
       contents: read
 
@@ -30,7 +31,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -50,6 +54,16 @@ jobs:
         id: gv
         uses: gittools/actions/gitversion/execute@v4
 
+      - name: Determine target framework
+        id: tfm
+        shell: bash
+        run: |
+          case "${{ matrix.dotnet }}" in
+            8.0.x)  echo "framework=net8.0" >> "$GITHUB_OUTPUT" ;;
+            9.0.x)  echo "framework=net9.0" >> "$GITHUB_OUTPUT" ;;
+            10.0.x) echo "framework=net10.0" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Restore dependencies
         working-directory: src
         run: dotnet restore
@@ -60,9 +74,10 @@ jobs:
 
       - name: Run tests
         working-directory: src
-        run: dotnet test -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
+        run: dotnet test -c Release --no-build --no-restore --verbosity normal --framework ${{ steps.tfm.outputs.framework }} --filter "Type!=Performance"
 
       - name: Validate packaging
+        if: matrix.dotnet == '10.0.x'
         working-directory: src
         run: dotnet pack -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }}
 
@@ -86,9 +101,13 @@ jobs:
         run: swift test
 
   integration-test:
-    name: Cross-platform integration tests
+    name: Integration tests (.NET ${{ matrix.dotnet }})
     runs-on: macos-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dotnet: ['8.0.x', '9.0.x', '10.0.x']
     permissions:
       contents: read
 
@@ -101,7 +120,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -113,4 +135,6 @@ jobs:
         run: npm install && npm run build
 
       - name: Run integration tests (.NET + TypeScript + Swift)
+        env:
+          DOTNET_TARGET_FRAMEWORK: ${{ matrix.dotnet == '8.0.x' && 'net8.0' || matrix.dotnet == '9.0.x' && 'net9.0' || 'net10.0' }}
         run: chmod +x scripts/run-integration-tests.sh && scripts/run-integration-tests.sh

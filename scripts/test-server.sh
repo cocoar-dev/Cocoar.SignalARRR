@@ -67,15 +67,21 @@ is_server_running() {
 }
 
 start_server() {
+    local framework_arg=""
+    if [ -n "${DOTNET_TARGET_FRAMEWORK:-}" ]; then
+        framework_arg="--framework $DOTNET_TARGET_FRAMEWORK"
+        echo "Target framework: $DOTNET_TARGET_FRAMEWORK" >&2
+    fi
+
     echo "Building IntegrationTestServer..." >&2
-    dotnet build "$SERVER_PROJECT" -c Release --verbosity quiet >&2
+    dotnet build "$SERVER_PROJECT" -c Release --verbosity quiet $framework_arg >&2
 
     local server_url_file
     server_url_file="$STATE_DIR/url_discovery"
 
     echo "Starting IntegrationTestServer..." >&2
     SERVER_URL_FILE="$server_url_file" \
-        dotnet run --project "$SERVER_PROJECT" -c Release --no-build \
+        dotnet run --project "$SERVER_PROJECT" -c Release --no-build $framework_arg \
         > "$LOG_FILE" 2>&1 &
     local server_pid=$!
     echo "$server_pid" > "$PID_FILE"

@@ -34,8 +34,13 @@ trap cleanup EXIT
 if [ "$FILTER" = "all" ] || [ "$FILTER" = "dotnet" ]; then
     echo ""
     echo "=== Running .NET Integration Tests ==="
+    FRAMEWORK_ARG=""
+    if [ -n "${DOTNET_TARGET_FRAMEWORK:-}" ]; then
+        FRAMEWORK_ARG="--framework $DOTNET_TARGET_FRAMEWORK"
+        echo "Target framework: $DOTNET_TARGET_FRAMEWORK"
+    fi
     if dotnet test "$REPO_ROOT/src/tests/Cocoar.SignalARRR.IntegrationTests" \
-        -c Release --verbosity quiet --filter "Type!=Performance"; then
+        -c Release --verbosity quiet --filter "Type!=Performance" $FRAMEWORK_ARG; then
         echo ".NET tests: PASSED"
     else
         echo ".NET tests: FAILED"
