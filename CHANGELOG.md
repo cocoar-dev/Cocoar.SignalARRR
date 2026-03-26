@@ -5,6 +5,25 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0]
+
+### Added
+- **Multi-targeting**: All library packages now support `net8.0`, `net9.0`, and `net10.0`
+- **`Cocoar.SignalARRR.Client.FullFramework`**: New client package targeting `netstandard2.0` for .NET Framework 4.6.2+ — typed proxies via `DispatchProxy`, streaming (via `Microsoft.Bcl.AsyncInterfaces` polyfill), server-to-client RPC, cancellation, file transfer, and optional MessagePack support
+- **Framework-conditional package versions**: ASP.NET Core packages automatically resolve to the correct version per target framework (8.0.x / 9.0.x / 10.0.x), preventing transitive `MissingMethodException` on older runtimes
+- **CI matrix testing**: PR validation now tests on .NET 8, 9, and 10 across Ubuntu, Windows, and macOS
+- **Documentation**: "vs. gRPC vs. REST" comparison page, updated client comparison with all four clients, MessagePack install instructions
+
+### Changed
+- **MessagePack is now optional**: `Microsoft.AspNetCore.SignalR.Protocols.MessagePack` is no longer a dependency of `Cocoar.SignalARRR.Client`. Install it separately and call `.AddMessagePackProtocol()` when needed — same as with raw SignalR.
+- **`Cocoar.SignalARRR.Common`** now also targets `netstandard2.0` (with `System.Text.Json` NuGet polyfill)
+
+### Fixed
+- **SignalR 10.0.5 compatibility**: Client-side `InvokeServerMessage` handler now properly awaits async operations instead of fire-and-forget (was causing connection drops on SignalR 10.0.5)
+- **`npm version` in CI**: Added `--allow-same-version` flag to prevent failures when calculated version matches `package.json`
+
+---
+
 ## [4.0.0]
 
 ### Swift Client — Complete Rewrite (v4)

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Cocoar.SignalARRR.Client.FullFramework</AssemblyName>
+    <RootNamespace>Cocoar.SignalARRR.Client.FullFramework</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>annotations</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Bernhard Windisch</Authors>
+    <Company>-</Company>
+    <Description>SignalARRR client for .NET Framework 4.6.2+ — typed bidirectional RPC over SignalR with streaming, authorization, cancellation, and file transfer.</Description>
+    <PackageTags>signalr;rpc;signalarrr;client;netframework;legacy</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageId>Cocoar.SignalARRR.Client.FullFramework</PackageId>
+    <Product>Cocoar.SignalARRR.Client.FullFramework</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+    <PackageReference Include="Cocoar.Reflectensions" />
+    <PackageReference Include="Cocoar.Reflectensions.Invoke" />
+    <PackageReference Include="System.Reflection.DispatchProxy" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
+    <PackageReference Include="System.Threading.Channels" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
+  </ItemGroup>
+
+</Project>

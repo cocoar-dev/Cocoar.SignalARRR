@@ -5,7 +5,25 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.0.0] - Unreleased
+## [4.1.0]
+
+### Added
+- **Multi-targeting**: All library packages now support `net8.0`, `net9.0`, and `net10.0`
+- **`Cocoar.SignalARRR.Client.FullFramework`**: New client package targeting `netstandard2.0` for .NET Framework 4.6.2+ — typed proxies via `DispatchProxy`, streaming (via polyfills), server-to-client RPC, cancellation, file transfer, and optional MessagePack
+- **Framework-conditional package versions**: ASP.NET Core packages resolve to the correct version per target framework, preventing transitive version conflicts
+- **CI matrix testing**: PR validation now tests on .NET 8, 9, and 10 across all platforms
+
+### Changed
+- **MessagePack is now optional**: Install `Microsoft.AspNetCore.SignalR.Protocols.MessagePack` separately and call `.AddMessagePackProtocol()` when needed
+- **`Cocoar.SignalARRR.Common`** now also targets `netstandard2.0`
+
+### Fixed
+- **SignalR 10.0.5 compatibility**: `InvokeServerMessage` handler now properly awaits async operations
+- **`npm version` in CI**: Added `--allow-same-version` flag
+
+---
+
+## [4.0.0]
 
 ### Breaking Changes
 - Target framework changed from `netstandard2.0` to `net10.0`

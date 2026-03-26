@@ -1,0 +1,47 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using Cocoar.Reflectensions.Helper;
+using Cocoar.SignalARRR.Common;
+
+namespace Cocoar.SignalARRR.Client.FullFramework {
+    internal class ClientProxyCreatorHelper : ProxyCreatorHelper {
+        private readonly HARRRConnection _harrrConnection;
+
+        public ClientProxyCreatorHelper(HARRRConnection harrrConnection) {
+            _harrrConnection = harrrConnection;
+        }
+
+        public override T Invoke<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, arguments);
+            msg.GenericArguments = genericArguments.ToArray();
+            return SimpleAsyncHelper.RunSync(() => _harrrConnection.InvokeCoreAsync<T>(msg, cancellationToken));
+        }
+
+        public override Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, arguments);
+            msg.GenericArguments = genericArguments.ToArray();
+            return _harrrConnection.InvokeCoreAsync<T>(msg, cancellationToken);
+        }
+
+        public override void Send(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, arguments);
+            msg.GenericArguments = genericArguments.ToArray();
+            SimpleAsyncHelper.RunSync(() => _harrrConnection.SendCoreAsync(msg, cancellationToken));
+        }
+
+        public override Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, arguments);
+            msg.GenericArguments = genericArguments.ToArray();
+            return _harrrConnection.SendCoreAsync(msg, cancellationToken);
+        }
+
+        public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, arguments);
+            msg.GenericArguments = genericArguments.ToArray();
+            return _harrrConnection.StreamAsyncCore<TResult>(msg, cancellationToken);
+        }
+    }
+}

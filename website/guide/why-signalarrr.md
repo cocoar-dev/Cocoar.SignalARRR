@@ -107,6 +107,31 @@ Separately from file transfer, SignalARRR supports **item streaming** — sendin
 | Client Manager (outside hub) | Manual | Built-in |
 | TypeScript client | Basic | Full protocol support |
 | Swift client (iOS/macOS) | No | Native client with `@HubProxy` macro |
+| .NET Framework 4.x client | Basic (string-based) | Typed RPC via DispatchProxy |
+
+## Bridge between .NET Core and .NET Framework
+
+SignalARRR supports **.NET 8, .NET 9, .NET 10** on server and client — and **.NET Framework 4.6.2+** on the client side. This enables a powerful pattern in enterprise environments: **use a modern .NET server while keeping legacy .NET Framework clients**.
+
+Real-world example: Your server runs on .NET 10 with the latest frontend technology, while legacy clients on .NET Framework 4.8 connect to the same hub. Those legacy clients can load platform-specific DLLs (SCCM, SCSM, COM interop, legacy SDKs) that don't run on .NET Core — but they still get typed bidirectional RPC through SignalARRR.
+
+```
+                 ┌───────────────────────────────┐
+                 │       .NET 10 Server          │
+                 │     Latest ASP.NET Core       │
+                 └───────────────────────────────┘
+                    ▲          ▲          ▲
+                    │          │          │
+          ┌────────┘    Same hub,        └─────────┐
+          │           same typed RPC               │
+          ▼                 ▼                       ▼
+┌──────────────────┐ ┌──────────────────┐ ┌─────────────────────┐
+│  .NET 8 Client   │ │  TypeScript      │ │  .NET Framework 4.8 │
+│  Cross-platform  │ │  Browser UI      │ │  SCCM/SCSM/COM DLLs │
+└──────────────────┘ └──────────────────┘ └─────────────────────┘
+```
+
+The FullFramework client (`Cocoar.SignalARRR.Client.FullFramework`) has near-full feature parity: typed proxies via `DispatchProxy`, streaming, server-to-client RPC, cancellation, file transfer, and MessagePack — all on netstandard2.0.
 
 ## How it works
 

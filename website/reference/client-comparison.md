@@ -1,77 +1,122 @@
 # Client Comparison
 
-SignalARRR has three client implementations. This page shows what each client supports.
+SignalARRR has four client implementations. This page shows what each client supports.
+
+## Platform Support
+
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Target | net8.0 / net9.0 / net10.0 | net462+ (netstandard2.0) | Node 22 / browsers | iOS 14+ / macOS 11+ |
+| Package | `Cocoar.SignalARRR.Client` | `Cocoar.SignalARRR.Client.FullFramework` | `@cocoar/signalarrr` | `CocoarSignalARRR` |
 
 ## RPC
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| Invoke (await result) | ✓ | ✓ | ✓ |
-| Send (fire & forget) | ✓ | ✓ | ✓ |
-| Generic arguments | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Invoke (await result) | ✓ | ✓ | ✓ | ✓ |
+| Send (fire & forget) | ✓ | ✓ | ✓ | ✓ |
+| Generic arguments | ✓ | ✓ | ✓ | ✓ |
 
 ## Item Streaming
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| Server→Client | ✓ | ✓ | ✓ |
-| Client→Server | ✓ | ✓ | ✓ |
-| Stream method handlers | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Server→Client | ✓ | ✓ | ✓ | ✓ |
+| Client→Server | ✓ | ✓ | ✓ | ✓ |
+| Stream method handlers | ✓ | ✓ | ✓ | ✓ |
+
+::: info .NET Framework streaming
+The FullFramework client supports streaming via polyfill packages (`Microsoft.Bcl.AsyncInterfaces` and `System.Threading.Channels`). `IAsyncEnumerable<T>`, `ChannelReader<T>`, and `await foreach` all work on .NET Framework 4.6.2+.
+:::
 
 ## Server-to-Client RPC
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| Method handlers | ✓ | ✓ | ✓ |
-| CancellationToken | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Method handlers | ✓ | ✓ | ✓ | ✓ |
+| Interface registration | ✓ | ✓ | — | ✓ |
+| CancellationToken | ✓ | ✓ | ✓ | ✓ |
 
 ## File Transfer (HTTP Stream References)
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| `Stream` parameters | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Download (`Stream` return) | ✓ | ✓ | ✓ | ✓ |
+| Upload (`Stream` parameter) | ✓ | ✓ | ✓ | ✓ |
 
 ## Authorization
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| Token provider | ✓ | ✓ | ✓ |
-| Auto challenge/refresh | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Token provider | ✓ | ✓ | ✓ | ✓ |
+| Auto challenge/refresh | ✓ | ✓ | ✓ | ✓ |
 
 ## Proxy Generation
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| Compile-time proxies | Source Generator | — | `@HubProxy` Macro |
-| Runtime fallback | DispatchProxy | — | — |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Compile-time proxies | Source Generator | — | — | `@HubProxy` Macro |
+| Runtime proxies | DispatchProxy | DispatchProxy | — | — |
+
+::: info .NET Framework uses DispatchProxy only
+The Roslyn source generator requires projects to reference `Cocoar.SignalARRR.Contracts` which targets net8.0+. On .NET Framework, typed proxies are created at runtime via `DispatchProxy`. The interfaces don't need `[SignalARRRContract]` — any C# interface works.
+:::
 
 ## Connection
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| Auto-reconnect | ✓ | ✓ | ✓ |
-| Connection events | ✓ | ✓ | ✓ |
-| Raw SignalR access | ✓ | ✓ | ✓ |
-| Raw `on/off` overloads | 16 | — | 8 |
-| Interface registration | ✓ | — | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Auto-reconnect | ✓ | ✓ | ✓ | ✓ |
+| Connection events | ✓ | ✓ | ✓ | ✓ |
+| Raw SignalR access | ✓ | ✓ | ✓ | ✓ |
+| Raw `on/off` overloads | 16 | — | — | 8 |
 
 ## Concurrency Model
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| Async pattern | async/await | Promise | async/await |
-| Cancellation | CancellationToken | AbortSignal | Actor |
-| Serialization | System.Text.Json | JSON | Codable |
-| MessagePack | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| Async pattern | async/await | async/await | Promise | async/await |
+| Cancellation | CancellationToken | CancellationToken | AbortSignal | Actor |
+| Serialization | System.Text.Json | System.Text.Json | JSON | Codable |
+| MessagePack | ✓ (optional) | ✓ (optional) | ✓ (optional) | ✓ (built-in) |
+
+::: info MessagePack is optional
+MessagePack support is **not** included by default. Install the protocol package separately and register it on the connection builder:
+
+**.NET / .NET Framework:**
+```bash
+dotnet add package Microsoft.AspNetCore.SignalR.Protocols.MessagePack
+```
+```csharp
+builder.AddMessagePackProtocol();
+```
+
+**TypeScript:**
+```bash
+npm install @microsoft/signalr-protocol-msgpack
+```
+```ts
+builder.withHubProtocol(new MessagePackHubProtocol());
+```
+
+**Server:**
+```csharp
+builder.Services.AddSignalR().AddMessagePackProtocol();
+```
+
+**Swift** has MessagePack built-in — use `hubProtocol: .messagepack` when creating the connection.
+
+SignalARRR auto-detects the active protocol and uses the correct serializer. No additional configuration needed.
+:::
 
 ## Transport
 
-| | .NET | TS | Swift |
-|-|:----:|:--:|:-----:|
-| WebSockets | ✓ | ✓ | ✓ |
-| Server-Sent Events | ✓ | ✓ | ✓ |
-| Long Polling | ✓ | ✓ | ✓ |
-| Transport fallback | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift |
+|-|:----:|:--------------:|:--:|:-----:|
+| WebSockets | ✓ | ✓ | ✓ | ✓ |
+| Server-Sent Events | ✓ | ✓ | ✓ | ✓ |
+| Long Polling | ✓ | ✓ | ✓ | ✓ |
+| Transport fallback | ✓ | ✓ | ✓ | ✓ |
 
 ## API Comparison
 
@@ -80,6 +125,14 @@ SignalARRR has three client implementations. This page shows what each client su
 ::: code-group
 
 ```csharp [.NET]
+var connection = HARRRConnection.Create(builder =>
+{
+    builder.WithUrl("https://server/hub");
+});
+await connection.StartAsync();
+```
+
+```csharp [.NET Framework]
 var connection = HARRRConnection.Create(builder =>
 {
     builder.WithUrl("https://server/hub");
@@ -103,36 +156,6 @@ try await connection.start()
 
 :::
 
-### With MessagePack
-
-::: code-group
-
-```csharp [.NET]
-var connection = HARRRConnection.Create(builder =>
-{
-    builder.WithUrl("https://server/hub");
-    builder.AddMessagePackProtocol();
-});
-```
-
-```ts [TypeScript]
-import { MessagePackHubProtocol } from '@microsoft/signalr-protocol-msgpack';
-
-const connection = HARRRConnection.create(builder => {
-    builder.withUrl('https://server/hub');
-    builder.withHubProtocol(new MessagePackHubProtocol());
-});
-```
-
-```swift [Swift]
-let connection = await HARRRConnection.create(
-    url: "https://server/hub",
-    hubProtocol: .messagepack
-)
-```
-
-:::
-
 ### Typed proxies
 
 ::: code-group
@@ -146,6 +169,18 @@ public interface IChatHub {
 }
 
 // Client: get typed proxy
+var chat = connection.GetTypedMethods<IChatHub>();
+await chat.SendMessage("Alice", "Hello!");
+```
+
+```csharp [.NET Framework — DispatchProxy]
+// Define interface (no attribute needed)
+public interface IChatHub {
+    Task SendMessage(string user, string message);
+    Task<List<string>> GetHistory();
+}
+
+// Client: get typed proxy (runtime-generated via DispatchProxy)
 var chat = connection.GetTypedMethods<IChatHub>();
 await chat.SendMessage("Alice", "Hello!");
 ```
@@ -183,6 +218,18 @@ await foreach (var item in connection.StreamAsyncCore<int>(message, ct))
     Console.WriteLine(item);
 ```
 
+```csharp [.NET Framework]
+// Invoke (await result)
+var result = await connection.InvokeCoreAsync<string>(message, ct);
+
+// Send (fire-and-forget)
+await connection.SendCoreAsync(message, ct);
+
+// Stream (via polyfill packages)
+await foreach (var item in connection.StreamAsyncCore<int>(message, ct))
+    Console.WriteLine(item);
+```
+
 ```ts [TypeScript]
 // Invoke
 const result = await connection.invoke<string>('Method.Name');
@@ -216,21 +263,23 @@ for try await item in try await connection.stream("Method.Name") as AsyncThrowin
 ::: code-group
 
 ```csharp [.NET]
-connection.OnServerRequest<string>("GetClientName", name =>
-{
-    return Environment.MachineName;
-});
+connection.RegisterInterface<IChatClient, ChatClientImpl>(new ChatClientImpl());
+```
+
+```csharp [.NET Framework]
+connection.RegisterInterface<IChatClient, ChatClientImpl>(new ChatClientImpl());
 ```
 
 ```ts [TypeScript]
-connection.onServerMethod('GetClientName', () => {
-    return navigator.userAgent;
+connection.onServerMethod('ReceiveMessage', (user, message) => {
+    console.log(`${user}: ${message}`);
 });
 ```
 
 ```swift [Swift]
-await connection.onServerMethod("GetClientName") { _ in
-    AnyCodable(stringLiteral: UIDevice.current.name)
+await connection.onServerMethod("ReceiveMessage") { args in
+    print("\(args[0]): \(args[1])")
+    return AnyCodable.nil
 }
 ```
 
@@ -241,6 +290,7 @@ await connection.onServerMethod("GetClientName") { _ in
 | Client | Mechanism | Type |
 |--------|-----------|------|
 | .NET | Standard `CancellationToken` | Native |
+| .NET Framework | Standard `CancellationToken` | Native |
 | TypeScript | `AbortSignal` via `CancellationManager` (Map-based) | Web API |
 | Swift | Actor-based `CancellationManager` with continuations | Swift Concurrency |
 
@@ -249,5 +299,6 @@ await connection.onServerMethod("GetClientName") { _ in
 | Client | Package | Install |
 |--------|---------|---------|
 | .NET | `Cocoar.SignalARRR.Client` | `dotnet add package` |
+| .NET Framework | `Cocoar.SignalARRR.Client.FullFramework` | `dotnet add package` |
 | TypeScript | `@cocoar/signalarrr` | `npm install` |
 | Swift | `CocoarSignalARRR` + `CocoarSignalARRRMacros` | Swift Package Manager |

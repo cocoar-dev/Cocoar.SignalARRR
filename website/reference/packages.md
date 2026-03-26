@@ -6,10 +6,11 @@ SignalARRR is distributed as multiple NuGet packages and one npm package. Choose
 
 | Package | Target | Purpose |
 |---------|--------|---------|
-| `Cocoar.SignalARRR.Contracts` | net10.0 | `[SignalARRRContract]` attribute + Roslyn source generator. Reference from shared interface projects. |
-| `Cocoar.SignalARRR.Server` | net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. |
-| `Cocoar.SignalARRR.Client` | net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. |
-| `Cocoar.SignalARRR.DynamicProxy` | net10.0 | Optional runtime proxy fallback via `DispatchProxy`. For plugin/dynamic scenarios. Not AOT-compatible. |
+| `Cocoar.SignalARRR.Contracts` | net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute + Roslyn source generator. Reference from shared interface projects. |
+| `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. |
+| `Cocoar.SignalARRR.Client` | net8.0 / net9.0 / net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. |
+| `Cocoar.SignalARRR.Client.FullFramework` | netstandard2.0 (.NET Framework 4.6.2+) | Client for .NET Framework — typed proxies via `DispatchProxy`, streaming via polyfills. |
+| `Cocoar.SignalARRR.DynamicProxy` | net8.0 / net9.0 / net10.0 | Optional runtime proxy fallback via `DispatchProxy`. For plugin/dynamic scenarios. |
 
 ### Internal packages
 
@@ -73,7 +74,7 @@ targets: [
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="4.*" />
@@ -98,6 +99,20 @@ targets: [
   <ProjectReference Include="..\Shared\Shared.csproj" />
 </ItemGroup>
 ```
+
+### .NET Framework Client (4.6.2+ / 4.8)
+
+For legacy .NET Framework projects (e.g., SCCM/SCSM integration, WinForms, WPF on .NET Framework):
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Cocoar.SignalARRR.Client.FullFramework" Version="4.*" />
+</ItemGroup>
+```
+
+::: info No shared interface project needed
+The FullFramework client uses `DispatchProxy` at runtime. Define the same interface in your .NET Framework project (same namespace and method names) — no `[SignalARRRContract]` attribute needed.
+:::
 
 ### TypeScript Client
 

@@ -14,6 +14,10 @@ dotnet add package Cocoar.SignalARRR.Server
 dotnet add package Cocoar.SignalARRR.Client
 ```
 
+```bash [.NET Framework Client]
+dotnet add package Cocoar.SignalARRR.Client.FullFramework
+```
+
 ```bash [Shared Contracts]
 dotnet add package Cocoar.SignalARRR.Contracts
 ```

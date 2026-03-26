@@ -17,6 +17,8 @@ Choosing a communication framework is one of the first architectural decisions i
 | **Auth mid-connection** | Token challenge/refresh built-in | Per-call metadata | Per-call headers |
 | **Mobile (iOS/Swift)** | Native client with `@HubProxy` macro | grpc-swift | URLSession |
 | **JavaScript/TypeScript** | `@cocoar/signalarrr` npm package | grpc-web (limited) | fetch/axios |
+| **.NET Framework** | Full client (netstandard2.0) | Deprecated `Grpc.Core` only | HttpClient |
+| **.NET support** | net8.0 / net9.0 / net10.0 + .NET Framework 4.6.2+ | .NET Core 3.0+ only (modern client) | Any |
 
 ## When to use what
 
@@ -150,16 +152,26 @@ But persistent connections (WebSockets) are different — the initial token can 
 4. Client provides new token → call continues
 5. No disconnection, no retry, no manual refresh logic
 
-### 7. Three client platforms with feature parity
+### 7. .NET Framework support — bridge legacy and modern
 
-| | .NET | TypeScript | Swift |
-|---|---|---|---|
-| Typed proxies | Source generator | Method name strings | `@HubProxy` macro |
-| Streaming | `IAsyncEnumerable<T>` | `subscribe()` | `AsyncThrowingStream` |
-| Server-to-client RPC | Full typed | `onServerMethod()` | `onServerMethod()` |
-| File transfer | `Stream` parameters | HTTP stream refs | HTTP stream refs |
-| MessagePack | Built-in | Built-in | Built-in (native impl) |
-| Cancellation | `CancellationToken` | `AbortSignal` | Task cancellation |
+gRPC's modern .NET client (`Grpc.Net.Client`) requires **.NET Core 3.0+**. The old `Grpc.Core` package supports .NET Framework but is **deprecated since 2023** and no longer maintained. If you have .NET Framework 4.8 clients, gRPC is effectively a dead end.
+
+SignalARRR provides a **dedicated .NET Framework client** (`Cocoar.SignalARRR.Client.FullFramework`) targeting netstandard2.0 with near-full feature parity: typed proxies, streaming, server-to-client RPC, cancellation, file transfer, and MessagePack.
+
+This enables a pattern that's invaluable in enterprise environments: a **.NET 10 server** with modern frontend technology, connected to **legacy .NET Framework 4.8 clients** that load platform-specific DLLs (SCCM, SCSM, COM interop, legacy SDKs) — all communicating through the same typed RPC interface.
+
+Neither gRPC nor REST can offer this: typed bidirectional RPC between modern and legacy .NET runtimes.
+
+### 8. Four client platforms with feature parity
+
+| | .NET | .NET Framework | TypeScript | Swift |
+|---|---|---|---|---|
+| Typed proxies | Source generator | DispatchProxy | Method name strings | `@HubProxy` macro |
+| Streaming | `IAsyncEnumerable<T>` | `IAsyncEnumerable<T>` (polyfill) | `subscribe()` | `AsyncThrowingStream` |
+| Server-to-client RPC | Full typed | Full typed | `onServerMethod()` | `onServerMethod()` |
+| File transfer | `Stream` parameters | `Stream` parameters | HTTP stream refs | HTTP stream refs |
+| MessagePack | Optional | Optional | Optional | Built-in (native impl) |
+| Cancellation | `CancellationToken` | `CancellationToken` | `AbortSignal` | Task cancellation |
 
 ## When gRPC still wins
 
