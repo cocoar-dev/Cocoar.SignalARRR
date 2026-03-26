@@ -126,7 +126,7 @@ jobs:
 
       - name: Pack NuGet packages (alpha)
         working-directory: src
-        run: dotnet pack -c Release -o ../artifacts -p:Version=${{ steps.gv.outputs.SemVer }}
+        run: dotnet pack Cocoar.SignalARRR.slnx -c Release -o ../artifacts -p:Version=${{ steps.gv.outputs.SemVer }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
