@@ -132,17 +132,12 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
           npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts"
 
-      - name: Restore dependencies
-        working-directory: ./src
-        run: dotnet restore
-
-      - name: Build solution
-        working-directory: ./src
-        run: dotnet build -c Release --no-restore -p:Version=$PACKAGE_VERSION -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
-
       - name: Pack NuGet packages
         working-directory: ./src
-        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=$PACKAGE_VERSION
+        run: dotnet pack -c Release -o ../artifacts -p:Version=$PACKAGE_VERSION
+
+      - name: Pack FullFramework NuGet
+        run: dotnet pack src/Cocoar.SignalARRR.Client.FullFramework/Cocoar.SignalARRR.Client.FullFramework.csproj -c Release -o artifacts -p:Version=$PACKAGE_VERSION
 
       - name: Ensure packages exist
         run: |

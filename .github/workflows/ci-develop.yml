@@ -41,17 +41,9 @@ jobs:
         working-directory: src/Cocoar.SignalARRR.Typescript
         run: npm install && npm run build
 
-      - name: Restore dependencies
+      - name: Build and test
         working-directory: src
-        run: dotnet restore
-
-      - name: Build solution
-        working-directory: src
-        run: dotnet build -c Release --no-restore
-
-      - name: Run tests
-        working-directory: src
-        run: dotnet test -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
+        run: dotnet test -c Release --verbosity normal --framework net10.0 --filter "Type!=Performance"
 
   test-swift:
     name: Test Swift package
@@ -130,17 +122,9 @@ jobs:
         id: gv
         uses: gittools/actions/gitversion/execute@v4
 
-      - name: Restore dependencies
-        working-directory: src
-        run: dotnet restore
-
-      - name: Build solution
-        working-directory: src
-        run: dotnet build -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }} -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
-
       - name: Pack NuGet packages (alpha)
         working-directory: src
-        run: dotnet pack -c Release --no-restore -o ../artifacts -p:Version=${{ steps.gv.outputs.SemVer }}
+        run: dotnet pack -c Release -o ../artifacts -p:Version=${{ steps.gv.outputs.SemVer }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -159,5 +143,45 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: prerelease-${{ steps.gv.outputs.SemVer }}
+          path: artifacts
+          retention-days: 7
+
+  build-fullframework:
+    name: Build & test .NET Framework client
+    runs-on: windows-latest
+    needs: [test-multiplatform]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v4
+        with:
+          versionSpec: '6.x'
+
+      - name: Calculate version
+        id: gv
+        uses: gittools/actions/gitversion/execute@v4
+
+      - name: Test FullFramework client
+        run: dotnet test src/tests/Cocoar.SignalARRR.Client.FullFramework.Tests/Cocoar.SignalARRR.Client.FullFramework.Tests.csproj -c Release --verbosity normal
+
+      - name: Pack FullFramework NuGet
+        run: dotnet pack src/Cocoar.SignalARRR.Client.FullFramework/Cocoar.SignalARRR.Client.FullFramework.csproj -c Release -o artifacts -p:Version=${{ steps.gv.outputs.SemVer }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: prerelease-fullframework-${{ steps.gv.outputs.SemVer }}
           path: artifacts
           retention-days: 7

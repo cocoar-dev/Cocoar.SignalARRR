@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Cocoar.SignalARRR.Client.FullFramework/Cocoar.SignalARRR.Client.FullFramework.csproj" />
+  <Project Path="Cocoar.SignalARRR.Common/Cocoar.SignalARRR.Common.csproj" />
+  <Project Path="tests/Cocoar.SignalARRR.Client.FullFramework.Tests/Cocoar.SignalARRR.Client.FullFramework.Tests.csproj" />
+</Solution>
