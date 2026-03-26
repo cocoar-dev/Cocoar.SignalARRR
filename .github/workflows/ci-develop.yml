@@ -92,6 +92,8 @@ jobs:
         run: npm install && npm run build
 
       - name: Run integration tests (.NET + TypeScript + Swift)
+        env:
+          DOTNET_TARGET_FRAMEWORK: net10.0
         run: chmod +x scripts/run-integration-tests.sh && scripts/run-integration-tests.sh
 
   build-artifacts:

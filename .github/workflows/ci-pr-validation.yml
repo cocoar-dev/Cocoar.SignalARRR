@@ -101,13 +101,9 @@ jobs:
         run: swift test
 
   integration-test:
-    name: Integration tests (.NET ${{ matrix.dotnet }})
+    name: Integration tests (all frameworks)
     runs-on: macos-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        dotnet: ['8.0.x', '9.0.x', '10.0.x']
     permissions:
       contents: read
 
@@ -134,10 +130,20 @@ jobs:
         working-directory: src/Cocoar.SignalARRR.Typescript
         run: npm install && npm run build
 
-      - name: Run integration tests (.NET + TypeScript + Swift)
+      - name: Integration tests (.NET 10)
         env:
-          DOTNET_TARGET_FRAMEWORK: ${{ matrix.dotnet == '8.0.x' && 'net8.0' || matrix.dotnet == '9.0.x' && 'net9.0' || 'net10.0' }}
+          DOTNET_TARGET_FRAMEWORK: net10.0
         run: chmod +x scripts/run-integration-tests.sh && scripts/run-integration-tests.sh
+
+      - name: Integration tests (.NET 9)
+        env:
+          DOTNET_TARGET_FRAMEWORK: net9.0
+        run: scripts/run-integration-tests.sh
+
+      - name: Integration tests (.NET 8)
+        env:
+          DOTNET_TARGET_FRAMEWORK: net8.0
+        run: scripts/run-integration-tests.sh
 
   test-fullframework:
     name: Test .NET Framework 4.8 Client
