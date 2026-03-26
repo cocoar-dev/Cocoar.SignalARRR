@@ -26,7 +26,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             serviceCollection.AddSingleton<ServerStreamManager>();
             serviceCollection.AddSingleton<InMemoryHARRRClientManager>();
             serviceCollection.AddSingleton<IHARRRClientManager>(sp => sp.GetRequiredService<InMemoryHARRRClientManager>());
-            serviceCollection.AddSingleton<ClientManager>(sp => new ClientManager(sp.GetRequiredService<IHARRRClientManager>()));
+            serviceCollection.AddSingleton<ClientManager>(sp => new ClientManager(sp.GetRequiredService<IHARRRClientManager>(), sp));
             serviceCollection.AddTransient(typeof(ClientContextDispatcher<>));
 
             return serviceCollection;

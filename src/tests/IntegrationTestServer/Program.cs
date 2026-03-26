@@ -197,6 +197,86 @@ app.MapSignalARRRTest("/__test/trigger-client-getfilestream", async (context, cl
     return (object)result;
 });
 
+// Join a SignalR group via ClientManager (tracks in both SignalR AND ClientContext.Groups)
+app.MapGet("/__test/join-group", async (HttpContext context) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    var groupName = context.Request.Query["group"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId) || string.IsNullOrWhiteSpace(groupName))
+        return Results.BadRequest("Missing connectionId or group");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    await clientManager.AddToGroupAsync(connectionId, groupName);
+    return Results.Ok(true);
+});
+
+// Typed broadcast to a group via WithHub + WithGroup + SendAsync
+app.MapPost("/__test/broadcast-group-nix", async (HttpContext context) => {
+    var groupName = context.Request.Query["group"].ToString();
+    if (string.IsNullOrWhiteSpace(groupName))
+        return Results.BadRequest("Missing group");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    await clientManager.WithHub<TestHub>().WithGroup(groupName)
+        .SendAsync<TestShared.ITestClientMethods>(c => c.Nix());
+    return Results.Ok("Sent");
+});
+
+// Typed broadcast to all clients on TestHub
+app.MapPost("/__test/broadcast-all-nix", async (HttpContext context) => {
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    await clientManager.WithHub<TestHub>()
+        .SendAsync<TestShared.ITestClientMethods>(c => c.Nix());
+    return Results.Ok("Sent");
+});
+
+// Typed broadcast with attribute filter
+app.MapPost("/__test/broadcast-filtered-nix", async (HttpContext context) => {
+    var tag = context.Request.Query["tag"].ToString();
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var clients = string.IsNullOrWhiteSpace(tag)
+        ? clientManager.WithHub<TestHub>()
+        : clientManager.WithHub<TestHub>().Where(c => c.Attributes.Has("role", tag));
+
+    await clients.SendAsync<TestShared.ITestClientMethods>(c => c.Nix());
+    return Results.Ok("Sent");
+});
+
+// Check client groups (for testing group tracking)
+app.MapGet("/__test/client-groups", (HttpContext context) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId)) return Results.BadRequest("Missing connectionId");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var client = clientManager.GetClientById(connectionId);
+    return Results.Ok(client.Groups);
+});
+
+// Typed InvokeAllAsync — calls GetById on each client, returns all results
+app.MapPost("/__test/invoke-all-getbyid", async (HttpContext context) => {
+    var id = context.Request.Query["id"].ToString();
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+
+    var results = await clientManager.WithHub<TestHub>()
+        .InvokeAllAsync<TestShared.ITestClientMethods, string>(c => c.GetById(id));
+
+    var items = new System.Collections.Generic.List<object>();
+    foreach (var r in results) {
+        items.Add(new { r.ClientId, r.Value });
+    }
+    return Results.Ok(items);
+});
+
+// Typed InvokeOneAsync — calls GetById on clients until one succeeds
+app.MapPost("/__test/invoke-one-getbyid", async (HttpContext context) => {
+    var id = context.Request.Query["id"].ToString();
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+
+    var result = await clientManager.WithHub<TestHub>()
+        .InvokeOneAsync<TestShared.ITestClientMethods, string>(c => c.GetById(id));
+
+    return Results.Ok(new { result.ClientId, result.Value });
+});
+
 await app.StartAsync();
 
 var server = app.Services.GetRequiredService<IServer>();

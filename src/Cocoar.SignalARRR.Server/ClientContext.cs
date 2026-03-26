@@ -71,6 +71,16 @@ namespace Cocoar.SignalARRR.Server {
 
         public ClientAttributes Attributes { get; } = new ClientAttributes();
 
+        private readonly HashSet<string> _groups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// The SignalR groups this client belongs to. Managed via ClientManager.AddToGroupAsync / RemoveFromGroupAsync.
+        /// </summary>
+        public IReadOnlyCollection<string> Groups => _groups;
+
+        internal void AddGroup(string groupName) => _groups.Add(groupName);
+        internal void RemoveGroup(string groupName) => _groups.Remove(groupName);
+
 
         internal void SetPrincipal(ClaimsPrincipal claimsPrincipal) {
             this.User = claimsPrincipal ?? new ClaimsPrincipal();

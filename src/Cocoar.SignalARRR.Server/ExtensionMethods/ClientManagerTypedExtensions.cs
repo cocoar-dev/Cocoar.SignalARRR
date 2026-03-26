@@ -36,7 +36,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             where THub : HARRR {
             if (clientManager == null) throw new ArgumentNullException(nameof(clientManager));
 
-            foreach (var ctx in clientManager.GetHARRRClients<THub>()) {
+            foreach (var ctx in clientManager.WithHub<THub>()) {
                 yield return (ctx, ctx.GetTypedMethods<T>());
             }
         }

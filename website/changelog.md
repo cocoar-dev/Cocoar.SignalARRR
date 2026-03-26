@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Cocoar.SignalARRR.Client.FullFramework`**: New client package targeting `netstandard2.0` for .NET Framework 4.6.2+ — typed proxies via `DispatchProxy`, streaming (via polyfills), server-to-client RPC, cancellation, file transfer, and optional MessagePack
 - **Framework-conditional package versions**: ASP.NET Core packages resolve to the correct version per target framework, preventing transitive version conflicts
 - **CI matrix testing**: PR validation now tests on .NET 8, 9, and 10 across all platforms
+- **Typed broadcasts**: `WithHub<T>().WithGroup().SendAsync<T>()` — chainable LINQ-style API for typed fire-and-forget sends to groups, filtered clients, and all clients. Groups tracked in `ClientContext.Groups` and synced with SignalR.
+- **Typed multi-client invoke**: `InvokeAllAsync<T, TResult>()` (parallel, all results) and `InvokeOneAsync<T, TResult>()` (first responder wins) on `IEnumerable<ClientContext>`
 
 ### Changed
 - **MessagePack is now optional**: Install `Microsoft.AspNetCore.SignalR.Protocols.MessagePack` separately and call `.AddMessagePackProtocol()` when needed

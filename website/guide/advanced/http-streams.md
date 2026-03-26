@@ -159,7 +159,7 @@ A `Stream` can only be read once. Do NOT pass the same `Stream` instance to mult
 To send the same file to multiple clients, open a separate `Stream` for each:
 
 ```csharp
-foreach (var client in clients.GetHARRRClients<AppHub>())
+foreach (var client in clients.WithHub<AppHub>())
 {
     // Each client gets its own FileStream — do NOT reuse the same stream
     using var fileStream = File.OpenRead("/data/movie.mp4");

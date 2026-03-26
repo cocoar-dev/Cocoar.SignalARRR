@@ -70,11 +70,12 @@ app.MapHARRRController<THub>(path, configureOptions);
 
 | Method | Description |
 |--------|-------------|
+| `WithHub<THub>()` | Select hub — primary entry point for queries |
 | `GetClientById(string)` | Get client by connection ID |
-| `GetAllClients()` | All connected clients |
+| `GetAllClients()` | All connected clients (across all hubs) |
 | `GetAllClients(predicate)` | Filter clients |
-| `GetHARRRClients<T>()` | Clients for a specific hub type |
-| `GetHARRRClients<T>(predicate)` | Filter clients for a hub type |
+| `AddToGroupAsync(connectionId, groupName)` | Add client to SignalR group (tracked in `ClientContext.Groups`) |
+| `RemoveFromGroupAsync(connectionId, groupName)` | Remove client from group |
 
 ## Client API (`Cocoar.SignalARRR.Client`)
 

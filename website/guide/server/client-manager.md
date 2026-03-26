@@ -21,75 +21,139 @@ public class NotificationService
 
 ## Query clients
 
-| Method | Description |
-|--------|-------------|
-| `GetClientById(string id)` | Get a single client by connection ID |
-| `GetAllClients()` | All connected clients |
-| `GetAllClients(predicate)` | Filter clients by a predicate |
-| `GetHARRRClients<T>()` | Clients connected to a specific hub type |
-| `GetHARRRClients<T>(predicate)` | Filter clients of a specific hub type |
-
-### Examples
+Start with `WithHub<T>()` to select the hub, then chain filters:
 
 ```csharp
-// Get all clients connected to the ChatHub
-var chatClients = _clients.GetHARRRClients<ChatHub>();
+// Always start with the hub
+_clients.WithHub<AlertHub>()
 
-// Find a specific user
-var adminClients = _clients.GetAllClients(c =>
-    c.User.IsInRole("Admin"));
+// Then chain filters
+_clients.WithHub<AlertHub>().WithGroup("dashboard")
+_clients.WithHub<AlertHub>().WithAttribute("role", "oncall")
+_clients.WithHub<AlertHub>().WithGroup("dashboard").WithAttribute("region", "eu")
 
-// Filter by custom attributes
-var mobileClients = _clients.GetAllClients()
-    .WithAttribute("Platform", "iOS");
+// Standard LINQ works too
+_clients.WithHub<AlertHub>().Where(c => c.User.IsInRole("Admin"))
 ```
 
-## Typed extension methods
+| Method | On | Description |
+|--------|---|-------------|
+| `WithHub<THub>()` | `ClientManager` | Select hub — always start here |
+| `.WithGroup(groupName)` | `IEnumerable<ClientContext>` | Filter by SignalR group |
+| `.WithAttribute(key)` | `IEnumerable<ClientContext>` | Filter by attribute existence |
+| `.WithAttribute(key, value)` | `IEnumerable<ClientContext>` | Filter by attribute key-value match |
+| `.Where(predicate)` | `IEnumerable<ClientContext>` | Standard LINQ |
+| `GetClientById(id)` | `ClientManager` | Single client by connection ID |
 
-Extension methods on `ClientManager` combine client lookup and typed proxy creation in one step:
+## Single-client calls
 
-| Method | Description |
-|--------|-------------|
-| `GetTypedMethods<T>(connectionId)` | Typed proxy for a specific client |
-| `GetAllTypedMethods<T>()` | `(ClientContext, T)` tuples for all clients |
-| `GetTypedMethodsForHub<T, THub>()` | `(ClientContext, T)` tuples scoped to a hub type |
+Single clients support full RPC with return values:
 
 ```csharp
-// Call a single client by ID
-var methods = _clients.GetTypedMethods<IChatClient>(connectionId);
+// By connection ID
+var client = _clients.GetClientById(connectionId);
+var methods = client.GetTypedMethods<IChatClient>();
 methods.ReceiveMessage("System", "Hello!");
+string name = await methods.GetClientName();      // ← with return value
 
-// Broadcast to all clients (typed)
-foreach (var (ctx, methods) in _clients.GetAllTypedMethods<IChatClient>())
-{
-    methods.ReceiveMessage("System", $"Hello {ctx.Id}!");
-}
+// Or: filter down to one, then call with return value
+var primary = _clients.WithHub<AlertHub>()
+    .WithGroup("dashboard")
+    .WithAttribute("role", "primary")
+    .First();
+string status = await primary.GetTypedMethods<IDeviceClient>().GetStatus();
+```
 
-// Broadcast scoped to a specific hub type
-foreach (var (ctx, methods) in _clients.GetTypedMethodsForHub<IChatClient, AppHub>())
-{
-    methods.ReceiveMessage("System", "Hub-scoped broadcast");
+## Multi-client operations
+
+All broadcast and multi-client operations are extension methods on `IEnumerable<ClientContext>`.
+
+::: info Return values are discarded on broadcasts
+When using `SendAsync`, methods with return values still work — the client executes the method — but the return value is discarded since there's no single caller to send it back to. A warning is logged. Use `InvokeAllAsync` if you need return values.
+:::
+
+### SendAsync — fire-and-forget, one SignalR call
+
+Collects ConnectionIds and sends a **single** `Clients.Clients(ids).SendCoreAsync` call.
+
+```csharp
+// Notify all dashboard clients
+await _clients.WithHub<AlertHub>().WithGroup("dashboard")
+    .SendAsync<IAlertClient>(c => c.AlertUpdated(alertId));
+
+// Notify all admins
+await _clients.WithHub<AppHub>().Where(c => c.User.IsInRole("Admin"))
+    .SendAsync<IAlertClient>(c => c.SecurityAlert(details));
+
+// Notify iOS users
+await _clients.WithHub<AppHub>().WithAttribute("Platform", "iOS")
+    .SendAsync<IAppClient>(c => c.PushUpdate(version));
+```
+
+### InvokeAllAsync — call all, collect all results
+
+Invokes on **each** client individually (N calls), awaits all in parallel, returns results per client.
+
+```csharp
+var results = await _clients.WithHub<DeviceHub>()
+    .InvokeAllAsync<IDeviceClient, string>(c => c.GetStatus());
+
+foreach (var r in results) {
+    Console.WriteLine($"Client {r.ClientId}: {r.Value}");
 }
 ```
 
-## Collection extensions on ClientContext
+### InvokeOneAsync — first responder wins
 
-`IEnumerable<ClientContext>` has extension methods for batch invocations:
-
-| Method | Description |
-|--------|-------------|
-| `InvokeAllAsync<T>(method, args, ct)` | Invoke method on all clients, await all results |
-| `InvokeOneAsync<T>(method, args, ct)` | Invoke on clients until one succeeds |
-| `WithAttribute(key)` | Filter by attribute existence |
-| `WithAttribute(key, value)` | Filter by attribute key-value match |
+Calls clients one by one until the **first** succeeds.
 
 ```csharp
-// Ask all clients with a specific attribute and get the first successful response
-var result = await _clients.GetAllClients()
-    .WithAttribute("Tag", "primary")
-    .InvokeOneAsync<string>("GetStatus", Array.Empty<object>(), ct);
+var result = await _clients.WithHub<DeviceHub>()
+    .WithAttribute("role", "primary")
+    .InvokeOneAsync<IDeviceClient, string>(c => c.GetStatus());
 // result.ClientId — which client responded
 // result.Value — the return value
+```
+
+### API summary
+
+| Method | Calls | Returns | Use case |
+|--------|-------|---------|----------|
+| `.SendAsync<T>(action)` | 1 (broadcast) | Nothing | Notifications, events |
+| `.InvokeAllAsync<T, TResult>(func)` | N (parallel) | All results | Status polling, data collection |
+| `.InvokeOneAsync<T, TResult>(func)` | 1–N (sequential) | First success | Failover, load distribution |
+
+#### On `ClientManager` — group management
+
+| Method | Description |
+|--------|-------------|
+| `.AddToGroupAsync(connectionId, groupName)` | Adds client to SignalR group AND tracks in `ClientContext.Groups` |
+| `.RemoveFromGroupAsync(connectionId, groupName)` | Removes from SignalR group AND `ClientContext.Groups` |
+
+## Groups
+
+SignalARRR integrates SignalR groups directly into `ClientManager`. When you add a client to a group, it's tracked in both SignalR (for broadcasting) and `ClientContext.Groups` (for querying).
+
+### Managing groups
+
+```csharp
+// Add a client to a group — syncs both SignalR and ClientContext
+await _clients.AddToGroupAsync(connectionId, "dashboard");
+await _clients.AddToGroupAsync(connectionId, "alerts");
+
+// Remove from group
+await _clients.RemoveFromGroupAsync(connectionId, "dashboard");
+
+// Query groups on a client
+var client = _clients.GetClientById(connectionId);
+var groups = client.Groups;  // → IReadOnlyCollection<string> { "alerts" }
+```
+
+### Broadcasting to a group
+
+```csharp
+await _clients.WithHub<AlertHub>().WithGroup("dashboard")
+    .SendAsync<IAlertClient>(c => c.AlertUpdated(alertId));
 ```
 
 ## Use in controllers
@@ -104,12 +168,18 @@ public class NotificationController : ControllerBase
     public NotificationController(ClientManager clients) => _clients = clients;
 
     [HttpPost("broadcast")]
-    public IActionResult Broadcast([FromBody] string message)
+    public async Task<IActionResult> Broadcast([FromBody] string message)
     {
-        foreach (var (_, methods) in _clients.GetTypedMethodsForHub<IChatClient, AppHub>())
-        {
-            methods.ReceiveMessage("API", message);
-        }
+        await _clients.WithHub<AppHub>()
+            .SendAsync<IChatClient>(c => c.ReceiveMessage("API", message));
+        return Ok();
+    }
+
+    [HttpPost("alert/{group}")]
+    public async Task<IActionResult> AlertGroup(string group, [FromBody] AlertData alert)
+    {
+        await _clients.WithHub<AlertHub>().WithGroup(group)
+            .SendAsync<IAlertClient>(c => c.AlertUpdated(alert.Id));
         return Ok();
     }
 }
@@ -128,10 +198,8 @@ public class HeartbeatService : BackgroundService
     {
         while (!ct.IsCancellationRequested)
         {
-            foreach (var (_, methods) in _clients.GetTypedMethodsForHub<IChatClient, AppHub>())
-            {
-                methods.ReceiveMessage("System", "heartbeat");
-            }
+            await _clients.WithHub<AppHub>()
+                .SendAsync<IChatClient>(c => c.ReceiveMessage("System", "heartbeat"));
             await Task.Delay(30_000, ct);
         }
     }
@@ -150,6 +218,7 @@ Each `ClientContext` provides detailed information about the connected client:
 | `User` | `ClaimsPrincipal` | Authenticated user claims |
 | `ConnectedAt` | `DateTime` | Connection timestamp |
 | `ReconnectedAt` | `List<DateTime>` | Reconnection history |
+| `Groups` | `IReadOnlyCollection<string>` | SignalR groups this client belongs to |
 | `Attributes` | `ClientAttributes` | Custom key-value storage |
 | `ConnectedTo` | `Uri` | Hub URL |
 
