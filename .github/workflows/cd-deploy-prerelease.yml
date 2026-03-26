@@ -43,15 +43,15 @@ jobs:
 
       - name: Restore dependencies
         working-directory: src
-        run: dotnet restore
+        run: dotnet restore Cocoar.SignalARRR.slnx
 
       - name: Build solution
         working-directory: src
-        run: dotnet build -c Release --no-restore
+        run: dotnet build Cocoar.SignalARRR.slnx -c Release --no-restore
 
       - name: Run tests
         working-directory: src
-        run: dotnet test -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
+        run: dotnet test Cocoar.SignalARRR.slnx -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
 
   test-swift:
     name: Test Swift package
@@ -134,7 +134,7 @@ jobs:
 
       - name: Pack NuGet packages
         working-directory: ./src
-        run: dotnet pack -c Release -o ../artifacts -p:Version=$PACKAGE_VERSION
+        run: dotnet pack Cocoar.SignalARRR.slnx -c Release -o ../artifacts -p:Version=$PACKAGE_VERSION
 
       - name: Pack FullFramework NuGet
         run: dotnet pack src/Cocoar.SignalARRR.Client.FullFramework/Cocoar.SignalARRR.Client.FullFramework.csproj -c Release -o artifacts -p:Version=$PACKAGE_VERSION

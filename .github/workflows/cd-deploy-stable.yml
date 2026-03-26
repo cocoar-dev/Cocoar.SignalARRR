@@ -47,7 +47,7 @@ jobs:
 
       - name: Build and test
         working-directory: src
-        run: dotnet test -c Release --verbosity normal --framework net10.0 --filter "Type!=Performance"
+        run: dotnet test Cocoar.SignalARRR.slnx -c Release --verbosity normal --framework net10.0 --filter "Type!=Performance"
 
   test-swift:
     name: Test Swift package
@@ -127,11 +127,11 @@ jobs:
 
       - name: Restore dependencies
         working-directory: ./src
-        run: dotnet restore
+        run: dotnet restore Cocoar.SignalARRR.slnx
 
       - name: Pack NuGet packages
         working-directory: ./src
-        run: dotnet pack -c Release -o ../artifacts -p:Version=$RELEASE_VERSION
+        run: dotnet pack Cocoar.SignalARRR.slnx -c Release -o ../artifacts -p:Version=$RELEASE_VERSION
 
       - name: Ensure packages exist
         run: |

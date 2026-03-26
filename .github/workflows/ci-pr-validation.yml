@@ -66,15 +66,15 @@ jobs:
 
       - name: Restore dependencies
         working-directory: src
-        run: dotnet restore
+        run: dotnet restore Cocoar.SignalARRR.slnx
 
       - name: Build solution
         working-directory: src
-        run: dotnet build -c Release --no-restore --framework ${{ steps.tfm.outputs.framework }} -p:Version=${{ steps.gv.outputs.SemVer }} -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
+        run: dotnet build Cocoar.SignalARRR.slnx -c Release --no-restore --framework ${{ steps.tfm.outputs.framework }} -p:Version=${{ steps.gv.outputs.SemVer }} -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
 
       - name: Run tests
         working-directory: src
-        run: dotnet test -c Release --no-build --no-restore --verbosity normal --framework ${{ steps.tfm.outputs.framework }} --filter "Type!=Performance"
+        run: dotnet test Cocoar.SignalARRR.slnx -c Release --no-build --no-restore --verbosity normal --framework ${{ steps.tfm.outputs.framework }} --filter "Type!=Performance"
 
       - name: Validate packaging
         if: matrix.dotnet == '10.0.x'
