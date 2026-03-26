@@ -67,11 +67,9 @@ is_server_running() {
 }
 
 start_server() {
-    local framework_arg=""
-    if [ -n "${DOTNET_TARGET_FRAMEWORK:-}" ]; then
-        framework_arg="--framework $DOTNET_TARGET_FRAMEWORK"
-        echo "Target framework: $DOTNET_TARGET_FRAMEWORK" >&2
-    fi
+    local tfm="${DOTNET_TARGET_FRAMEWORK:-net10.0}"
+    local framework_arg="--framework $tfm"
+    echo "Target framework: $tfm" >&2
 
     echo "Building IntegrationTestServer..." >&2
     dotnet build "$SERVER_PROJECT" -c Release --verbosity quiet $framework_arg >&2
