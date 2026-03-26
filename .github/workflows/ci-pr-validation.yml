@@ -79,7 +79,7 @@ jobs:
       - name: Validate packaging
         if: matrix.dotnet == '10.0.x'
         working-directory: src
-        run: dotnet pack -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }}
+        run: dotnet pack Cocoar.SignalARRR.slnx -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }}
 
   test-swift:
     name: Test Swift package

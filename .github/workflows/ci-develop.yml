@@ -145,7 +145,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: prerelease-${{ steps.gv.outputs.SemVer }}
-          path: artifacts
+          path: ${{ github.workspace }}/artifacts
           retention-days: 7
 
   build-fullframework:
@@ -185,5 +185,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: prerelease-fullframework-${{ steps.gv.outputs.SemVer }}
-          path: artifacts
+          path: ${{ github.workspace }}/artifacts
           retention-days: 7
