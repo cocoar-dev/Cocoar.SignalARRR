@@ -5,6 +5,17 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.2]
+
+### Fixed
+- **Server-to-Client push crash with null arguments**: `null` arguments for reference type parameters (e.g., `string?`) crashed the client's message dispatcher silently — the root cause of server-to-client push failures when using typed proxies.
+- **Silent error swallowing in client message handler**: Replaced `catch { // ignored }` with `ILogger.LogError()` so developers can diagnose failed server-to-client pushes.
+
+### Added
+- **4 new server-to-client push integration tests**: Cross-assembly tests covering fire-and-forget push, invoke with return value, null parameter handling, and multi-client broadcast.
+
+---
+
 ## [4.2.1]
 
 ### Fixed

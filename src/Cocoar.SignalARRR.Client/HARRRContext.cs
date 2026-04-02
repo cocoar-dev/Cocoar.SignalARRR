@@ -7,6 +7,7 @@ using Cocoar.SignalARRR.Client.ExtensionMethods;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cocoar.SignalARRR.Client {
     public class HARRRContext {
@@ -25,7 +26,8 @@ namespace Cocoar.SignalARRR.Client {
             BaseUrl = GetBaseUrl();
             HubProtocolType = Enum<HubProtocolType>.Find(_serviceProvider.GetRequiredService<IHubProtocol>().GetType().Name);
             AccessTokenProvider = GetHubConnection().GetAccessTokenProvider() ?? (() => Task.FromResult<string>(null!));
-            MessageHandler = new MessageHandler(this);
+            var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<MessageHandler>();
+            MessageHandler = new MessageHandler(this, logger: logger);
         }
 
         private Uri GetBaseUrl() {

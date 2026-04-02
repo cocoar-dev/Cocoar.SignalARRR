@@ -17,18 +17,22 @@ using Cocoar.SignalARRR.Common.Constants;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cocoar.SignalARRR.Client {
     public class MessageHandler {
         private readonly HARRRContext _harrrContext;
         private readonly Common.Serialization.IProtocolSerializer _serializer;
+        private readonly ILogger _logger;
         private ISignalARRRMethodsCollection MethodsCollection { get; set; } = new SignalARRRMethodsCollection();
 
         private ISignalARRRInterfaceCollection InterfaceCollection { get; set; } = new SignalARRRInterfaceCollection();
 
-        public MessageHandler(HARRRContext harrrContext, Common.Serialization.IProtocolSerializer? serializer = null) {
+        public MessageHandler(HARRRContext harrrContext, Common.Serialization.IProtocolSerializer? serializer = null, ILogger? logger = null) {
             _harrrContext = harrrContext;
             _serializer = serializer ?? new Common.Serialization.JsonProtocolSerializer();
+            _logger = logger ?? NullLogger.Instance;
         }
 
         public async Task<string?> ChallengeAuthentication(ServerRequestMessage message) {
@@ -72,8 +76,10 @@ namespace Cocoar.SignalARRR.Client {
                 } else {
                     await InvokeAsync(message);
                 }
-            } catch {
-                // ignored
+            } catch (Exception ex) {
+                // Fire-and-forget methods don't propagate errors to the server,
+                // but log them so developers can diagnose failed server-to-client pushes.
+                _logger.LogError(ex, "Failed to handle server message '{Method}'", message.Method);
             }
         }
 
@@ -276,9 +282,11 @@ namespace Cocoar.SignalARRR.Client {
         private async Task<object?> PrepareArgumentForType(Type type, object argument) {
 
             if (argument == null) {
-                if (type.IsNullableType()) {
+                if (!type.IsValueType || type.IsNullableType()) {
+                    // Reference types (string, classes, etc.) and Nullable<T> accept null
                     return null;
                 } else {
+                    // Non-nullable value types (int, Guid, etc.) get their default value
                     return Activator.CreateInstance(type);
                 }
             }

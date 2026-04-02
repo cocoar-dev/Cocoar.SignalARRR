@@ -277,6 +277,53 @@ app.MapPost("/__test/invoke-one-getbyid", async (HttpContext context) => {
     return Results.Ok(new { result.ClientId, result.Value });
 });
 
+// ── Cross-assembly server-to-client push tests ──
+// Uses ITestServerPushClient from Cocoar.SignalARRR.Tests.SharedModels (separate assembly)
+// to test the real-world shared-contracts pattern.
+
+app.MapSignalARRRTest("/__test/push-notification", (context, clientManager) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    var message = context.Request.Query["message"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId))
+        return Results.BadRequest("Missing connectionId");
+
+    var typedClient = clientManager.GetTypedMethods<Cocoar.SignalARRR.Tests.SharedModels.ITestServerPushClient>(connectionId);
+    typedClient.PushNotification(message);
+    return "Sent";
+});
+
+app.MapSignalARRRTest("/__test/request-client-info", async (context, clientManager) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId))
+        return Results.BadRequest("Missing connectionId");
+
+    var typedClient = clientManager.GetTypedMethods<Cocoar.SignalARRR.Tests.SharedModels.ITestServerPushClient>(connectionId);
+    var info = await typedClient.RequestClientInfo();
+    return info;
+});
+
+app.MapSignalARRRTest("/__test/config-updated", (context, clientManager) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    var configJson = context.Request.Query["configJson"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId))
+        return Results.BadRequest("Missing connectionId");
+
+    // Exact ConfigHub pattern: void ConfigUpdated(string? path, string configJson) with null first arg
+    var typedClient = clientManager.GetTypedMethods<Cocoar.SignalARRR.Tests.SharedModels.ITestServerPushClient>(connectionId);
+    typedClient.ConfigUpdated(null, configJson);
+    return "Sent";
+});
+
+app.MapSignalARRRTest("/__test/push-notification-all", (context, clientManager) => {
+    var message = context.Request.Query["message"].ToString();
+
+    foreach (var client in clientManager.WithHub<TestHub>()) {
+        var typedClient = client.GetTypedMethods<Cocoar.SignalARRR.Tests.SharedModels.ITestServerPushClient>();
+        typedClient.PushNotification(message);
+    }
+    return "Sent to all";
+});
+
 await app.StartAsync();
 
 var server = app.Services.GetRequiredService<IServer>();
