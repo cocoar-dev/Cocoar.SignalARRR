@@ -35,4 +35,12 @@
     <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <!-- Bundle the SourceGenerator so consuming projects get proxy generation automatically -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\Cocoar.SignalARRR.SourceGenerator\bin\$(Configuration)\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+  </ItemGroup>
+
 </Project>

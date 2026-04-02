@@ -5,6 +5,14 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.1]
+
+### Fixed
+- **Source Generator not included in NuGet packages**: The `Cocoar.SignalARRR.SourceGenerator.dll` was never bundled in the NuGet packages due to a broken MSBuild pack target — the generator only worked with local project references, not when consumed via NuGet. Fixed by using static `<None Pack="true">` items instead of a dynamic target.
+- **Source Generator now ships in Server and Client packages**: The generator is bundled in `Cocoar.SignalARRR.Server` and `Cocoar.SignalARRR.Client` (where proxies are actually used), not in `Cocoar.SignalARRR.Contracts` (which is only for attributes). Consumer projects get proxy generation automatically by referencing Server or Client — no extra package reference needed.
+
+---
+
 ## [4.2.0]
 
 ### Added

@@ -5,6 +5,14 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.1]
+
+### Fixed
+- **Source Generator not included in NuGet packages**: The generator DLL was never bundled in NuGet packages — it only worked with local project references. Fixed by shipping it in the Server and Client packages.
+- **Source Generator now ships in Server and Client packages**: Consumer projects get proxy generation automatically by referencing Server or Client — no extra package reference needed. `Contracts` remains attribute-only (no generator).
+
+---
+
 ## [4.2.0]
 
 ### Added

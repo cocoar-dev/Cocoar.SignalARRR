@@ -38,23 +38,7 @@
     <IncludeBuildOutput>true</IncludeBuildOutput>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <!-- Copy the SourceGenerator DLL to the analyzers folder when packing -->
-    <GetTargetPathDependsOn>$(GetTargetPathDependsOn);_AddSourceGeneratorToPackage</GetTargetPathDependsOn>
-  </PropertyGroup>
-
-  <Target Name="_AddSourceGeneratorToPackage">
-    <PropertyGroup>
-      <_SourceGeneratorDll>$(MSBuildThisFileDirectory)..\Cocoar.SignalARRR.SourceGenerator\bin\$(Configuration)\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll</_SourceGeneratorDll>
-    </PropertyGroup>
-    <Error Text="SourceGenerator DLL not found at $(_SourceGeneratorDll). Build SourceGenerator first."
-           Condition="!Exists('$(_SourceGeneratorDll)')" />
-    <ItemGroup>
-      <None Include="$(_SourceGeneratorDll)"
-            Pack="true"
-            PackagePath="analyzers/dotnet/cs"
-            Visible="false" />
-    </ItemGroup>
-  </Target>
+  <!-- SourceGenerator is NOT bundled here — Contracts is for attributes only.
+       The generator ships in the Server and Client packages where proxies are actually needed. -->
 
 </Project>
