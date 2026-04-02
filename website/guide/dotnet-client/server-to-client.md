@@ -4,7 +4,9 @@ The server can call methods on the client and optionally await a response. Regis
 
 ## Typed handlers via interfaces
 
-The cleanest approach is to implement a shared contract interface and register it:
+The cleanest approach: define a shared contract interface, implement it on the client, and register it.
+
+### 1. Define the contract (shared library)
 
 ```csharp
 [SignalARRRContract]
@@ -15,7 +17,52 @@ public interface IChatClient
 }
 ```
 
-The server calls these methods through `ClientContext.GetTypedMethods<IChatClient>()`, and the client handles them through registered handlers.
+### 2. Implement on the client
+
+```csharp
+public class ChatClientHandler : IChatClient
+{
+    public void ReceiveMessage(string user, string message)
+    {
+        Console.WriteLine($"{user}: {message}");
+    }
+
+    public Task<string> GetClientName()
+    {
+        return Task.FromResult(Environment.MachineName);
+    }
+}
+```
+
+### 3. Register before connecting
+
+```csharp
+var connection = HARRRConnection.Create(builder => { ... });
+
+// Register with an instance
+connection.RegisterInterface<IChatClient, ChatClientHandler>(new ChatClientHandler());
+
+// Or let SignalARRR create the instance (parameterless constructor)
+connection.RegisterInterface<IChatClient, ChatClientHandler>();
+
+// Or with a factory (for dependency injection)
+connection.RegisterInterface<IChatClient, ChatClientHandler>(sp => new ChatClientHandler(sp.GetRequiredService<ILogger>()));
+
+await connection.StartAsync();
+```
+
+### 4. Server calls the client
+
+```csharp
+// In a ServerMethods class or anywhere with access to ClientContext
+var client = clientContext.GetTypedMethods<IChatClient>();
+client.ReceiveMessage("System", "Welcome!");           // fire-and-forget
+var name = await client.GetClientName();               // awaits response
+```
+
+::: warning Register before StartAsync
+`RegisterInterface` must be called **before** `StartAsync()`. The server may invoke client methods immediately after connection.
+:::
 
 ## Register ad-hoc handlers
 
