@@ -8,6 +8,7 @@ using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Attributes;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
     public static class ServiceCollectionExtensions {
@@ -28,6 +29,9 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             serviceCollection.AddSingleton<IHARRRClientManager>(sp => sp.GetRequiredService<InMemoryHARRRClientManager>());
             serviceCollection.AddSingleton<ClientManager>(sp => new ClientManager(sp.GetRequiredService<IHARRRClientManager>(), sp));
             serviceCollection.AddTransient(typeof(ClientContextDispatcher<>));
+
+            // Register default transport auth revalidation service (can be overridden by user)
+            serviceCollection.TryAddSingleton<ITransportAuthRevalidationService, DefaultTransportAuthRevalidationService>();
 
             return serviceCollection;
         }

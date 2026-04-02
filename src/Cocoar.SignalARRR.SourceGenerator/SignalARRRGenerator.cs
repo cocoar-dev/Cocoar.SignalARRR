@@ -1,4 +1,5 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using Cocoar.SignalARRR.SourceGenerator.Emitters;
@@ -37,6 +38,46 @@ public class SignalARRRGenerator : IIncrementalGenerator {
                 spc.AddSource("SignalARRRProxyRegistration.g.cs", registrationSource);
             }
         });
+
+        // Referenced assembly discovery — separate pipeline
+        context.RegisterSourceOutput(
+            context.CompilationProvider.Combine(collected),
+            static (spc, pair) => {
+                var (compilation, localInfos) = pair;
+
+                var alreadyGenerated = new HashSet<string>();
+                foreach (var local in localInfos) {
+                    alreadyGenerated.Add(local.FullName);
+                }
+
+                var results = new List<ContractInterfaceInfo>();
+
+                foreach (var reference in compilation.SourceModule.ReferencedAssemblySymbols) {
+                    // Only scan assemblies that reference Cocoar.SignalARRR.Contracts
+                    var referencesContracts = false;
+                    foreach (var module in reference.Modules) {
+                        foreach (var asmRef in module.ReferencedAssemblySymbols) {
+                            if (asmRef.Name == "Cocoar.SignalARRR.Contracts") {
+                                referencesContracts = true;
+                                break;
+                            }
+                        }
+                        if (referencesContracts) break;
+                    }
+
+                    if (!referencesContracts) continue;
+
+                    ScanNamespace(reference.GlobalNamespace, results, alreadyGenerated);
+                }
+
+                if (results.Count == 0) return;
+
+                foreach (var info in results) {
+                    spc.AddSource($"{info.InterfaceName}.Ref.SignalARRRProxy.g.cs", ProxyEmitter.Emit(info));
+                }
+
+                spc.AddSource("SignalARRRProxyRegistration.Ref.g.cs", RegistrationEmitter.EmitReferenced(results));
+            });
     }
 
     private static ContractInterfaceInfo? ExtractInterfaceInfo(
@@ -45,13 +86,18 @@ public class SignalARRRGenerator : IIncrementalGenerator {
         if (context.TargetSymbol is not INamedTypeSymbol interfaceSymbol)
             return null;
 
+        return ExtractFromSymbol(interfaceSymbol, ct);
+    }
+
+    private static ContractInterfaceInfo? ExtractFromSymbol(
+        INamedTypeSymbol interfaceSymbol,
+        CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
 
         var ns = interfaceSymbol.ContainingNamespace.ToDisplayString();
         var interfaceName = interfaceSymbol.Name;
         var fullName = interfaceSymbol.ToDisplayString();
 
-        // Strip leading 'I' for proxy class name
         var proxyClassName = interfaceName.StartsWith("I") && interfaceName.Length > 1 && char.IsUpper(interfaceName[1])
             ? interfaceName.Substring(1) + "Proxy"
             : interfaceName + "Proxy";
@@ -61,11 +107,43 @@ public class SignalARRRGenerator : IIncrementalGenerator {
             .ToArray();
 
         return new ContractInterfaceInfo(
-            ns,
-            interfaceName,
-            fullName,
-            proxyClassName,
+            ns, interfaceName, fullName, proxyClassName,
             new EquatableArray<ContractMethodInfo>(methods));
+    }
+
+    private static void ScanNamespace(
+        INamespaceSymbol ns,
+        List<ContractInterfaceInfo> results,
+        HashSet<string> exclude) {
+
+        foreach (var type in ns.GetTypeMembers()) {
+            if (type.TypeKind == TypeKind.Interface &&
+                type.DeclaredAccessibility == Accessibility.Public &&
+                HasSignalARRRContractAttribute(type)) {
+
+                var fullName = type.ToDisplayString();
+                if (exclude.Contains(fullName)) continue;
+
+                var info = ExtractFromSymbol(type, CancellationToken.None);
+                if (info.HasValue) results.Add(info.Value);
+            }
+        }
+
+        foreach (var childNs in ns.GetNamespaceMembers()) {
+            ScanNamespace(childNs, results, exclude);
+        }
+    }
+
+    private static bool HasSignalARRRContractAttribute(INamedTypeSymbol type) {
+        foreach (var attr in type.GetAttributes()) {
+            var attrClass = attr.AttributeClass;
+            if (attrClass != null &&
+                attrClass.Name == "SignalARRRContractAttribute" &&
+                attrClass.ContainingNamespace.ToDisplayString() == "Cocoar.SignalARRR.Contracts") {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static ContractMethodInfo ExtractMethodInfo(IMethodSymbol method, CancellationToken ct) {

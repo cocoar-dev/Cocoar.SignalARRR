@@ -32,6 +32,9 @@
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Tests.SharedModels\Cocoar.SignalARRR.Tests.SharedModels.csproj" />
     <ProjectReference Include="..\TestShared\TestShared.csproj" />
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                       OutputItemType="Analyzer"
+                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

@@ -25,6 +25,8 @@ var connection = HARRRConnection.Create(hubConnection);
 
 ## Connection with authentication
 
+### Token-based (Bearer, JWT)
+
 Pass a token factory through SignalR's `WithUrl` options:
 
 ```csharp
@@ -38,6 +40,33 @@ var connection = HARRRConnection.Create(builder =>
 ```
 
 The token is sent with every SignalARRR request and automatically refreshed when the server challenges an expired token.
+
+### Certificate-based (mTLS)
+
+For client certificate authentication, configure the certificate on the connection. No `AccessTokenProvider` is needed — SignalARRR auto-detects transport-level auth:
+
+```csharp
+var cert = new X509Certificate2("client.pfx", password);
+
+var connection = HARRRConnection.Create(builder =>
+{
+    builder.WithUrl("https://server:5001/apphub", options =>
+    {
+        options.ClientCertificates = new X509CertificateCollection { cert };
+        options.HttpMessageHandlerFactory = handler =>
+        {
+            if (handler is SocketsHttpHandler socketsHandler)
+            {
+                socketsHandler.SslOptions.ClientCertificates =
+                    new X509CertificateCollection { cert };
+            }
+            return handler;
+        };
+    });
+});
+```
+
+When the auth cache expires, the server re-validates the certificate server-side (checking expiry and optionally CRL/OCSP) without sending a challenge to the client. See [Authorization](/guide/server/authorization) for server-side configuration.
 
 ## Auto-reconnect
 

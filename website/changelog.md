@@ -5,6 +5,24 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0]
+
+### Added
+- **Transport-Level Authentication**: Support for client certificates (mTLS), cookies, and Windows/Negotiate authentication alongside existing token-based auth. The server auto-detects the authentication mode per client and re-validates transport credentials server-side when the auth cache expires — no challenge round-trip needed.
+- **`AuthenticationMode` enum**: `None`, `MessageLevel`, `TransportLevel` — exposed on `ClientContext.AuthMode` for per-client auth mode inspection
+- **`ClientContext.ClientCertificate`**: Stores the client certificate from the TLS handshake for server-side re-validation
+- **`ITransportAuthRevalidationService`**: Pluggable interface for custom transport-auth re-validation logic (e.g., custom CRL endpoints, OCSP stapling, session store checks)
+- **`DefaultTransportAuthRevalidationService`**: Built-in implementation with certificate expiry checks, X509 chain validation (CRL/OCSP), and custom validator callback support
+- **Certificate validation options**: `WithCertificateRevocationCheck(bool)`, `WithCertificateRevocationMode(X509RevocationMode)`, `WithCustomCertificateValidator(Func<X509Certificate2, bool>)` on `SignalARRRServerOptionsBuilder`
+- **Mixed-mode authentication**: A single hub can serve both token-based and certificate-based clients simultaneously
+- **Certificate refresh on reconnect**: `ClientContext` updates transport credentials (cert + principal) when a client reconnects with a new certificate
+- **9 new integration tests** for transport-level auth: cert auth, auto-detection, cache expiry with server-side re-validation, expired cert rejection, AllowAnonymous bypass, and mixed-mode scenarios
+
+### Fixed
+- **Source Generator cross-assembly discovery**: The Source Generator now discovers `[SignalARRRContract]` interfaces in referenced assemblies (not just in the current compilation's source code). This fixes the common scenario where contract interfaces are defined in a shared library and referenced by server/client projects. The generator only scans assemblies that reference `Cocoar.SignalARRR.Contracts`, avoiding unnecessary work.
+
+---
+
 ## [4.1.0]
 
 ### Added

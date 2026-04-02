@@ -23,6 +23,8 @@ namespace Cocoar.SignalARRR.Server {
             }, (s, cl) => {
 
                 cl.ReconnectedAt.Add(DateTime.UtcNow);
+                // Refresh transport-level credentials (cert/principal) from the new connection
+                cl.RefreshTransportCredentials(hubContext);
                 return cl;
 
             });

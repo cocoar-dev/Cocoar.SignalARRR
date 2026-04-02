@@ -1,6 +1,11 @@
 # Authorization
 
-SignalARRR integrates with ASP.NET Core's authorization system. Apply `[Authorize]` at the method, class, or hub level. Tokens are validated continuously, and expired tokens trigger an automatic challenge/refresh flow.
+SignalARRR integrates with ASP.NET Core's authorization system. Apply `[Authorize]` at the method, class, or hub level.
+
+SignalARRR supports two authentication modes:
+
+- **Message-Level** (Bearer, Basic, API Key) — token sent per message, automatic challenge/refresh on expiry
+- **Transport-Level** (client certificates, cookies, Windows/Negotiate) — authenticated at connection time, server-side re-validation on cache expiry
 
 ## Method-level authorization
 
@@ -50,7 +55,9 @@ public class SecureHub : HARRR
 public class SecureMethods : ServerMethods<SecureHub>, ISecureHub { ... }
 ```
 
-## Authentication setup
+## Message-Level Authentication (Tokens)
+
+### Authentication setup
 
 Configure ASP.NET Core authentication as usual. SignalARRR reads the `Authorization` header from client requests:
 
@@ -75,9 +82,9 @@ builder.Services.AddAuthorization(options =>
 });
 ```
 
-## Client-side token provider
+### Client-side token provider
 
-### .NET Client
+#### .NET Client
 
 Provide a token factory when creating the connection:
 
@@ -91,7 +98,7 @@ var connection = HARRRConnection.Create(builder =>
 });
 ```
 
-### TypeScript Client
+#### TypeScript Client
 
 ```ts
 const connection = HARRRConnection.create(builder => {
@@ -101,7 +108,7 @@ const connection = HARRRConnection.create(builder => {
 });
 ```
 
-## Automatic token challenge
+### Automatic token challenge
 
 When a client's token expires during an active connection, SignalARRR doesn't disconnect it. Instead, the next authorized method call triggers a **challenge flow**:
 
@@ -113,9 +120,158 @@ When a client's token expires during an active connection, SignalARRR doesn't di
 
 This happens transparently — no client-side code needed beyond providing a token factory.
 
-::: tip
-Authentication results are cached per client (default: 3 minutes). When a client connects to a hub with `[Authorize]`, the cache is initialized from the SignalR negotiate authentication, so the first method call uses the cached principal without triggering a challenge.
+When `[Authorize]` is used without specifying a scheme (the common case), SignalARRR automatically uses the default authentication scheme configured via `AddAuthentication()`.
+
+## Transport-Level Authentication (Certificates, Cookies, Negotiate)
+
+For scenarios where credentials exist at the transport layer (TLS client certificates, HTTP cookies, Windows/Negotiate), SignalARRR supports **transport-level authentication**. The client authenticates once at connection time, and the server re-validates credentials server-side when the auth cache expires — no challenge round-trip needed.
+
+### How it works
+
+1. Client connects with transport credentials (e.g., client certificate via mTLS)
+2. ASP.NET Core authenticates during SignalR negotiate — `ClientContext.User` is set
+3. SignalARRR **auto-detects** transport-level auth (client cert present, or Negotiate/NTLM/Kerberos auth type)
+4. On cache expiry: server re-validates the stored credentials server-side (no challenge to client)
+5. If re-validation fails (cert expired, revoked, etc.) → request is rejected
+
+### Client certificate authentication
+
+#### Server setup
+
+Configure Kestrel for client certificates and add an authentication handler:
+
+```csharp
+builder.WebHost.UseKestrel(kestrel =>
+{
+    kestrel.Listen(IPAddress.Any, 5001, listenOptions =>
+    {
+        listenOptions.UseHttps(https =>
+        {
+            https.ServerCertificate = serverCert;
+            https.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+        });
+    });
+});
+
+builder.Services.AddAuthentication("Certificate")
+    .AddCertificate(options =>
+    {
+        options.AllowedCertificateTypes = CertificateTypes.All;
+        options.RevocationMode = X509RevocationMode.Online;
+    });
+```
+
+#### .NET Client
+
+Configure the client certificate on the connection — no `AccessTokenProvider` needed:
+
+```csharp
+var cert = new X509Certificate2("client.pfx", password);
+
+var connection = HARRRConnection.Create(builder =>
+{
+    builder.WithUrl("https://server:5001/apphub", options =>
+    {
+        options.ClientCertificates = new X509CertificateCollection { cert };
+        options.HttpMessageHandlerFactory = handler =>
+        {
+            if (handler is SocketsHttpHandler socketsHandler)
+            {
+                socketsHandler.SslOptions.ClientCertificates =
+                    new X509CertificateCollection { cert };
+            }
+            return handler;
+        };
+    });
+});
+```
+
+::: tip No token provider needed
+When using transport-level auth, do **not** set `AccessTokenProvider`. SignalARRR automatically detects that the client uses transport-level credentials and re-validates server-side instead of sending a challenge.
 :::
+
+### Certificate re-validation
+
+When the auth cache expires, the server re-validates the stored client certificate:
+
+- **Expiry check**: `NotBefore` / `NotAfter` dates
+- **Revocation check**: CRL/OCSP (configurable)
+- **Custom validation**: Pluggable callback for custom logic
+
+Configure via `SignalARRRServerOptions`:
+
+```csharp
+builder.Services.AddSignalARRR(options => options
+    .AddServerMethodsFrom(typeof(Program).Assembly)
+    .WithCertificateRevocationCheck(true)                     // default: true
+    .WithCertificateRevocationMode(X509RevocationMode.Online) // default: Online
+    .WithCustomCertificateValidator(cert =>                   // optional
+    {
+        // Custom logic, e.g., check against an internal revocation list
+        return !IsRevoked(cert.Thumbprint);
+    }));
+```
+
+### Custom re-validation service
+
+For full control over transport-auth re-validation, implement `ITransportAuthRevalidationService`:
+
+```csharp
+public class MyRevalidationService : ITransportAuthRevalidationService
+{
+    public async Task<bool> RevalidateAsync(
+        ClientContext clientContext,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientContext.ClientCertificate != null)
+        {
+            // Check your internal revocation database, OCSP responder, etc.
+            return await CheckCertificateStatus(clientContext.ClientCertificate);
+        }
+
+        // Non-cert transport auth (cookies, Negotiate)
+        return clientContext.User.Identity?.IsAuthenticated == true;
+    }
+}
+
+// Register before AddSignalARRR (TryAddSingleton won't override your registration)
+builder.Services.AddSingleton<ITransportAuthRevalidationService, MyRevalidationService>();
+```
+
+### Certificate rotation
+
+To rotate certificates without restarting the application:
+
+1. Update the certificate file on disk
+2. Reconnect the SignalR connection — the new TLS handshake uses the new certificate
+3. Server validates the new certificate on connect
+
+```csharp
+// Client-side cert rotation
+await connection.StopAsync();
+// Certificate file has been updated on disk — reload it
+cert = new X509Certificate2("client.pfx", password);
+await connection.StartAsync(); // new TLS handshake with new cert
+```
+
+### Mixed mode
+
+A single hub can serve both token-based and certificate-based clients simultaneously. SignalARRR detects the authentication mode per client:
+
+```csharp
+[Authorize]
+public class AppHub : HARRR
+{
+    public AppHub(IServiceProvider sp) : base(sp) { }
+}
+```
+
+- Client A connects with `AccessTokenProvider` → message-level auth, challenge on expiry
+- Client B connects with client certificate → transport-level auth, server-side re-validation
+
+## Auth cache
+
+Authentication results are cached per client (default: 3 minutes). When a client connects to a hub with `[Authorize]`, the cache is initialized from the SignalR negotiate authentication, so the first method call uses the cached principal without triggering a challenge or re-validation.
 
 The cache duration is configurable:
 
@@ -125,7 +281,7 @@ builder.Services.AddSignalARRR(options => options
     .WithAuthCacheDuration(TimeSpan.FromMinutes(5)));
 ```
 
-When `[Authorize]` is used without specifying a scheme (the common case), SignalARRR automatically uses the default authentication scheme configured via `AddAuthentication()`.
+The cache duration controls how often credentials are re-checked — for both token-based and transport-level auth.
 
 ## ClientContext user data
 

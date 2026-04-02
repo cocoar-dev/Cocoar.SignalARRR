@@ -4,10 +4,12 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using Cocoar.Reflectensions;
 using Cocoar.SignalARRR.ProxyGenerator;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -23,6 +25,19 @@ namespace Cocoar.SignalARRR.Server {
         public IPAddress? RemoteIp { get; }
         public ClaimsPrincipal User { get; private set; } = null!;
         internal DateTime UserValidUntil { get; set; } = DateTime.Now;
+
+        /// <summary>
+        /// The authentication mode for this client (message-level token vs transport-level credentials).
+        /// Detected automatically at connection time for unambiguous cases (cert, Negotiate);
+        /// resolved lazily on first auth-required call otherwise.
+        /// </summary>
+        public AuthenticationMode AuthMode { get; internal set; } = AuthenticationMode.None;
+
+        /// <summary>
+        /// The client certificate presented during the TLS handshake, if any.
+        /// Used for server-side revalidation when the auth cache expires.
+        /// </summary>
+        public X509Certificate2? ClientCertificate { get; private set; }
 
         public DateTime ConnectedAt { get; internal set; }
         public List<DateTime> ReconnectedAt { get; } = new List<DateTime>();
@@ -50,6 +65,10 @@ namespace Cocoar.SignalARRR.Server {
             if (User.Identity?.IsAuthenticated == true) {
                 UserValidUntil = DateTime.Now.Add(_authCacheDuration);
             }
+
+            // Capture client certificate for transport-level auth revalidation
+            ClientCertificate = httpContext.Connection.ClientCertificate;
+            AuthMode = DetectAuthenticationMode();
 
             RemoteIp = httpContext.Connection.RemoteIpAddress;
             var connectedToBuilder = new UriBuilder(httpContext.Request.GetDisplayUrl());
@@ -90,8 +109,6 @@ namespace Cocoar.SignalARRR.Server {
             } else {
                 this.UserValidUntil = DateTime.Now;
             }
-
-
         }
 
         public async Task<PolicyAuthorizationResult> TryAuthenticate(MethodInfo methodInfo) {
@@ -102,13 +119,81 @@ namespace Cocoar.SignalARRR.Server {
             if (UserValidUntil >= DateTime.Now)
                 return PolicyAuthorizationResult.Success();
 
+            // Transport-level auth: re-validate server-side without challenging the client
+            if (AuthMode == AuthenticationMode.TransportLevel) {
+                return await RevalidateTransportAuth(methodInfo);
+            }
 
+            // Message-level or undetermined: challenge the client for a fresh token
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(HARRRType);
             var harrrContext = (IClientContextDispatcher)ServiceProvider.GetRequiredService(hubContextType);
             var res = await harrrContext.Challenge(Id);
 
+            // If challenge returned empty and AuthMode is still undetermined,
+            // check if this client has transport-level credentials
+            if (string.IsNullOrWhiteSpace(res) && AuthMode == AuthenticationMode.None) {
+                if (ClientCertificate != null || User.Identity?.IsAuthenticated == true) {
+                    AuthMode = AuthenticationMode.TransportLevel;
+                    return await RevalidateTransportAuth(methodInfo);
+                }
+            }
+
+            if (AuthMode == AuthenticationMode.None) {
+                AuthMode = AuthenticationMode.MessageLevel;
+            }
+
             var authentication = new SignalARRRAuthentication(ServiceProvider);
             return await authentication.Authorize(this, res, methodInfo);
+        }
+
+        private async Task<PolicyAuthorizationResult> RevalidateTransportAuth(MethodInfo methodInfo) {
+            var revalidationService = ServiceProvider.GetService<ITransportAuthRevalidationService>()
+                ?? new DefaultTransportAuthRevalidationService(ServiceProvider);
+
+            if (await revalidationService.RevalidateAsync(this)) {
+                // Revalidation succeeded — extend cache
+                UserValidUntil = DateTime.Now.Add(_authCacheDuration);
+
+                // Run policy evaluation with the existing principal
+                var authentication = new SignalARRRAuthentication(ServiceProvider);
+                return await authentication.AuthorizeWithPrincipal(this, methodInfo);
+            }
+
+            // Revalidation failed — credentials are no longer valid
+            return PolicyAuthorizationResult.Forbid();
+        }
+
+        private AuthenticationMode DetectAuthenticationMode() {
+            // Client certificate is unambiguous
+            if (ClientCertificate != null) {
+                return AuthenticationMode.TransportLevel;
+            }
+
+            // Windows/Negotiate auth is unambiguous
+            if (User.Identity?.IsAuthenticated == true) {
+                var authType = User.Identity.AuthenticationType;
+                if (authType is "Negotiate" or "NTLM" or "Kerberos" or "Windows") {
+                    return AuthenticationMode.TransportLevel;
+                }
+            }
+
+            // For cookie auth and bearer-via-negotiate, we cannot distinguish at connect time.
+            // Return None; will be resolved on first auth-required call.
+            return AuthenticationMode.None;
+        }
+
+        /// <summary>
+        /// Refreshes transport-level credentials from a new connection context (e.g., on reconnect).
+        /// </summary>
+        internal void RefreshTransportCredentials(HubCallerContext hubCallerContext) {
+            var httpContext = hubCallerContext.GetHttpContext();
+            if (httpContext != null) {
+                ClientCertificate = httpContext.Connection.ClientCertificate;
+                if (hubCallerContext.User?.Identity?.IsAuthenticated == true) {
+                    SetPrincipal(hubCallerContext.User);
+                }
+                AuthMode = DetectAuthenticationMode();
+            }
         }
 
 
