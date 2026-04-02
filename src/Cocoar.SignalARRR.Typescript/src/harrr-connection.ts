@@ -87,8 +87,8 @@ export class HARRRConnection {
         } else {
           await this._dispatchServerMethod(req);
         }
-      } catch {
-        // ignored — fire-and-forget
+      } catch (err) {
+        console.error(`[SignalARRR] Failed to handle server message '${req.Method}':`, err);
       }
     });
 

@@ -98,7 +98,11 @@ public final class HARRRConnection: @unchecked Sendable {
                 return nil
             }
 
-            _ = try? await self.dispatchServerMethod(req)
+            do {
+                _ = try await self.dispatchServerMethod(req)
+            } catch {
+                print("[SignalARRR] Failed to handle server message '\(req.method)': \(error)")
+            }
             return nil
         }
 

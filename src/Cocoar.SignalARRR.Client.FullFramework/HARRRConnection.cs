@@ -19,6 +19,9 @@ using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cocoar.SignalARRR.Client.FullFramework {
 
@@ -31,6 +34,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         private readonly HubConnection _hubConnection;
         private readonly Func<Task<string>> _accessTokenProvider;
         private readonly Common.Serialization.IProtocolSerializer _serializer;
+        private readonly ILogger _logger;
 
         private readonly ConcurrentDictionary<string, Delegate> _serverRequestHandlers = new ConcurrentDictionary<string, Delegate>();
         private readonly ISignalARRRInterfaceCollection _interfaceCollection = new SignalARRRInterfaceCollection();
@@ -49,6 +53,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             _serializer = hubProtocol?.Name == "messagepack"
                 ? (Common.Serialization.IProtocolSerializer)new Common.Serialization.MessagePackProtocolSerializer()
                 : new Common.Serialization.JsonProtocolSerializer();
+            _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<HARRRConnection>() ?? (ILogger)NullLogger.Instance;
 
             // Native client results — return values are sent back to the server automatically by SignalR
             _hubConnection.On<ServerRequestMessage, string>(MethodNames.ChallengeAuthentication,
@@ -177,8 +182,8 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
                 } else {
                     await InvokeAsync(message);
                 }
-            } catch {
-                // ignored — fire-and-forget handler
+            } catch (Exception ex) {
+                _logger.LogError(ex, "Failed to handle server message '{Method}'", message.Method);
             }
         }
 
@@ -318,9 +323,11 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         private async Task<object> PrepareArgumentForType(Type type, object argument) {
             if (argument == null) {
-                if (type.IsNullableType()) {
+                if (!type.IsValueType || type.IsNullableType()) {
+                    // Reference types (string, classes, etc.) and Nullable<T> accept null
                     return null;
                 }
+                // Non-nullable value types (int, Guid, etc.) get their default value
                 return Activator.CreateInstance(type);
             }
 
