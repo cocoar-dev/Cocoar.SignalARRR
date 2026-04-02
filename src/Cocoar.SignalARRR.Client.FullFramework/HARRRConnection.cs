@@ -21,7 +21,6 @@ using Microsoft.AspNetCore.SignalR.Protocol;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Cocoar.SignalARRR.Client.FullFramework {
 
