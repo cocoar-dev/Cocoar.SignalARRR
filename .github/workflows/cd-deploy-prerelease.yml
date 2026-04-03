@@ -137,7 +137,7 @@ jobs:
         run: dotnet pack Cocoar.SignalARRR.slnx -c Release -o ../artifacts -p:Version=$PACKAGE_VERSION
 
       - name: Pack FullFramework NuGet
-        run: dotnet pack src/Cocoar.SignalARRR.Client.FullFramework/Cocoar.SignalARRR.Client.FullFramework.csproj -c Release -o artifacts -p:Version=$PACKAGE_VERSION
+        run: dotnet pack Cocoar.SignalARRR.Client.FullFramework/Cocoar.SignalARRR.Client.FullFramework.csproj -c Release -o ../artifacts -p:Version=$PACKAGE_VERSION
 
       - name: Ensure packages exist
         run: |
