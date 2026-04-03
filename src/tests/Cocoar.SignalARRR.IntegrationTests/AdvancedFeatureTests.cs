@@ -47,6 +47,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                     options.Headers["#Platform"] = "TestRunner";
                 }));
             await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 // Query the server for this client's attributes
