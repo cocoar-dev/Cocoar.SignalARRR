@@ -6,9 +6,9 @@
 
   <!-- Framework-independent packages -->
   <ItemGroup>
-    <PackageVersion Include="Cocoar.Reflectensions" Version="1.0.0" />
-    <PackageVersion Include="Cocoar.Reflectensions.Invoke" Version="1.0.0" />
-    <PackageVersion Include="Cocoar.Reflectensions.ExpandableObject" Version="1.0.0" />
+    <PackageVersion Include="Cocoar.Reflectensions" Version="1.0.2" />
+    <PackageVersion Include="Cocoar.Reflectensions.Invoke" Version="1.0.2" />
+    <PackageVersion Include="Cocoar.Reflectensions.ExpandableObject" Version="1.0.2" />
     <PackageVersion Include="coverlet.collector" Version="8.0.1" />
     <PackageVersion Include="MessagePack" Version="3.1.4" />
     <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="10.0.5" />

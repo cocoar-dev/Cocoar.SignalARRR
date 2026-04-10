@@ -5,6 +5,13 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.3]
+
+### Fixed
+- **Streaming methods returning interface types threw on invocation**: Updated `Cocoar.Reflectensions` from 1.0.0 to 1.0.2, fixing a type compatibility check that rejected interface return types (e.g. `IAsyncEnumerable<T>`) when cast to `object`. This caused `StreamMessage` to fail with *"Method returns a Type of 'IAsyncEnumerable\`1[System.Object]' which is not implicitly castable to System.Object"*.
+
+---
+
 ## [4.2.2]
 
 ### Fixed
