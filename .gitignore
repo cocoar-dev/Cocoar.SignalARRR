@@ -352,6 +352,7 @@ src/Cocoar.SignalARRR.Typescript/docs/
 website/node_modules/
 website/.vitepress/cache/
 website/.vitepress/dist/
+website/.vitepress/dist-dev/
 
 # Test server state
 .test-server/
