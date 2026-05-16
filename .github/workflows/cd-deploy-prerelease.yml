@@ -51,7 +51,13 @@ jobs:
 
       - name: Run tests
         working-directory: src
-        run: dotnet test Cocoar.SignalARRR.slnx -c Release --no-build --no-restore --verbosity normal --filter "Type!=Performance"
+        run: |
+          $testFilter = 'Type!=Performance'
+          if ('${{ matrix.os }}' -ne 'ubuntu-latest') {
+            $testFilter = '(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)'
+          }
+          dotnet test Cocoar.SignalARRR.slnx -c Release --no-build --no-restore --verbosity normal --filter $testFilter
+        shell: pwsh
 
   test-swift:
     name: Test Swift package

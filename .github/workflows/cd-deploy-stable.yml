@@ -43,7 +43,13 @@ jobs:
 
       - name: Build and test
         working-directory: src
-        run: dotnet test Cocoar.SignalARRR.slnx -c Release --verbosity normal --framework net10.0 --filter "Type!=Performance"
+        run: |
+          $testFilter = 'Type!=Performance'
+          if ('${{ matrix.os }}' -ne 'ubuntu-latest') {
+            $testFilter = '(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)'
+          }
+          dotnet test Cocoar.SignalARRR.slnx -c Release --verbosity normal --framework net10.0 --filter $testFilter
+        shell: pwsh
 
   test-swift:
     name: Test Swift package
@@ -221,9 +227,9 @@ jobs:
         working-directory: website
         run: npm ci
 
-      - name: Build VitePress
+      - name: Build public docs
         working-directory: website
-        run: npx vitepress build
+        run: npm run build
 
       - name: Extract docs version
         id: docs-version
