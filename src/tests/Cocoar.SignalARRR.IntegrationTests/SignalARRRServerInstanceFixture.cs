@@ -20,7 +20,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             }
 
             // Otherwise, start IntegrationTestServer as a child process
-            var serverProjectDir = FindServerProjectDir();
+            var tfm = $"net{Environment.Version.Major}.0";
+            var serverAssemblyPath = IntegrationTestServerPathResolver.GetAssemblyPath(tfm);
             var urlFile = Path.Combine(Path.GetTempPath(), $"signalarrr-test-{Guid.NewGuid()}.url");
             var diagnosticsLogFilePath = Environment.GetEnvironmentVariable("SIGNALARRR_TEST_DIAGNOSTICS_LOG_FILE");
             _diagnosticsLogFilePath = IsDiagnosticsEnabled()
@@ -29,17 +30,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                     : Path.Combine(Path.GetTempPath(), $"signalarrr-diagnostics-{Guid.NewGuid()}.log"))
                 : null;
 
-            // Detect the current target framework from the runtime to pass to dotnet run
-            var tfm = $"net{Environment.Version.Major}.0";
-            var buildStopwatch = Stopwatch.StartNew();
-            IntegrationTestServerBuildCoordinator.EnsureBuilt(serverProjectDir, tfm);
-            buildStopwatch.Stop();
-            WriteDiagnostics($"fixture build-complete tfm={tfm} elapsedMs={buildStopwatch.ElapsedMilliseconds} project={serverProjectDir}");
+            WriteDiagnostics($"fixture using-prebuilt-server tfm={tfm} assembly={serverAssemblyPath}");
 
             _serverProcess = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = "dotnet",
-                    Arguments = $"run --project \"{serverProjectDir}\" -c Debug --framework {tfm} --no-build",
+                    Arguments = $"\"{serverAssemblyPath}\"",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -78,20 +74,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             try { _serverProcess.Kill(entireProcessTree: true); } catch { }
             throw new TimeoutException(
-                $"IntegrationTestServer did not start within 300 seconds. Project: {serverProjectDir}\n{BuildDiagnosticsSummary()}");
-        }
-
-        private static string FindServerProjectDir() {
-            var dir = AppContext.BaseDirectory;
-            while (dir != null) {
-                var candidate = Path.Combine(dir, "src", "tests", "IntegrationTestServer");
-                if (Directory.Exists(candidate))
-                    return candidate;
-                dir = Path.GetDirectoryName(dir);
-            }
-            throw new DirectoryNotFoundException(
-                "Could not find IntegrationTestServer project. " +
-                $"Searched from: {AppContext.BaseDirectory}");
+                $"IntegrationTestServer did not start within 300 seconds. Assembly: {serverAssemblyPath}\n{BuildDiagnosticsSummary()}");
         }
         public void Dispose() {
             if (_serverProcess != null && !_serverProcess.HasExited) {

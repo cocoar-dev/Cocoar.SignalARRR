@@ -29,15 +29,14 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             StartRedisContainer(_redisContainerName, _redisPort);
             WaitForPort(_redisPort);
 
-            var serverProjectDir = FindServerProjectDir();
             var tfm = $"net{Environment.Version.Major}.0";
-            IntegrationTestServerBuildCoordinator.EnsureBuilt(serverProjectDir, tfm);
+            var serverAssemblyPath = IntegrationTestServerPathResolver.GetAssemblyPath(tfm);
 
             var channelPrefix = $"signalarrr-tests-{Guid.NewGuid():N}";
             var connectionString = $"127.0.0.1:{_redisPort},abortConnect=false";
 
-            _server1 = StartServerProcess(serverProjectDir, tfm, connectionString, channelPrefix, "node-1", _heartbeatInterval, _nodeTimeout, out var serverUrl1);
-            _server2 = StartServerProcess(serverProjectDir, tfm, connectionString, channelPrefix, "node-2", _heartbeatInterval, _nodeTimeout, out var serverUrl2);
+            _server1 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, "node-1", _heartbeatInterval, _nodeTimeout, out var serverUrl1);
+            _server2 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, "node-2", _heartbeatInterval, _nodeTimeout, out var serverUrl2);
 
             ServerUrl1 = serverUrl1;
             ServerUrl2 = serverUrl2;
@@ -54,8 +53,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         public void KillServer2() => StopProcess(_server2);
 
         private static Process StartServerProcess(
-            string serverProjectDir,
-            string tfm,
+            string serverAssemblyPath,
             string connectionString,
             string channelPrefix,
             string nodeId,
@@ -67,7 +65,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var process = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = "dotnet",
-                    Arguments = $"run --project \"{serverProjectDir}\" -c Debug --framework {tfm} --no-build",
+                    Arguments = $"\"{serverAssemblyPath}\"",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -114,19 +112,6 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             throw new TimeoutException("IntegrationTestServer did not start within 300 seconds.");
         }
 
-        private static string FindServerProjectDir() {
-            var dir = AppContext.BaseDirectory;
-            while (dir != null) {
-                var candidate = Path.Combine(dir, "src", "tests", "IntegrationTestServer");
-                if (Directory.Exists(candidate)) {
-                    return candidate;
-                }
-
-                dir = Path.GetDirectoryName(dir);
-            }
-
-            throw new DirectoryNotFoundException($"Could not find IntegrationTestServer project. Searched from: {AppContext.BaseDirectory}");
-        }
         private static int GetFreePort() {
             using var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
