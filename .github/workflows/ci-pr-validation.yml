@@ -76,7 +76,7 @@ jobs:
         working-directory: src
         run: |
           TEST_FILTER="Type!=Performance"
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+          if [ "${{ matrix.os }}" != "ubuntu-latest" ]; then
             TEST_FILTER="(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)"
           fi
           dotnet test Cocoar.SignalARRR.slnx -c Release --no-build --no-restore --verbosity normal --framework ${{ steps.tfm.outputs.framework }} --filter "$TEST_FILTER"
