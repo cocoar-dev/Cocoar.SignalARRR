@@ -51,7 +51,7 @@ jobs:
       - name: Build and test
         working-directory: src
         env:
-          SIGNALARRR_TEST_DIAGNOSTICS: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          SIGNALARRR_TEST_DIAGNOSTICS: 'true'
           SIGNALARRR_TEST_DIAGNOSTICS_LOG_FILE: ${{ runner.temp }}/signalarrr-diagnostics-${{ matrix.os }}.log
         run: |
           $testFilter = 'Type!=Performance'
@@ -62,7 +62,7 @@ jobs:
         shell: pwsh
 
       - name: Dump SignalARRR diagnostics
-        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+        if: ${{ always() }}
         shell: pwsh
         env:
           SIGNALARRR_TEST_DIAGNOSTICS_LOG_FILE: ${{ runner.temp }}/signalarrr-diagnostics-${{ matrix.os }}.log
