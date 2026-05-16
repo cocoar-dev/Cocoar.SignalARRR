@@ -24,6 +24,7 @@ namespace Cocoar.SignalARRR.Server {
         internal Type HARRRType { get; }
         public IPAddress? RemoteIp { get; }
         public ClaimsPrincipal User { get; private set; } = null!;
+        public string? UserIdentifier { get; private set; }
         internal DateTime UserValidUntil { get; set; } = DateTime.Now;
 
         /// <summary>
@@ -54,6 +55,7 @@ namespace Cocoar.SignalARRR.Server {
             var httpContext = hubCallerContext.GetHttpContext()!;
             ServiceProvider = httpContext.RequestServices;
             User = hubCallerContext.User ?? new ClaimsPrincipal();
+            UserIdentifier = ResolveUserIdentifier(hubCallerContext.UserIdentifier, User);
             HARRRType = hub.GetType();
 
             // Get configured auth cache duration (default: 3 minutes)
@@ -103,12 +105,22 @@ namespace Cocoar.SignalARRR.Server {
 
         internal void SetPrincipal(ClaimsPrincipal claimsPrincipal) {
             this.User = claimsPrincipal ?? new ClaimsPrincipal();
+            UserIdentifier = ResolveUserIdentifier(UserIdentifier, this.User);
 
             if (this.User.Identity?.IsAuthenticated == true) {
                 this.UserValidUntil = DateTime.Now.Add(_authCacheDuration);
             } else {
                 this.UserValidUntil = DateTime.Now;
             }
+        }
+
+        private static string? ResolveUserIdentifier(string? hubUserIdentifier, ClaimsPrincipal? principal) {
+            if (!string.IsNullOrWhiteSpace(hubUserIdentifier)) {
+                return hubUserIdentifier;
+            }
+
+            return principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? principal?.Identity?.Name;
         }
 
         public async Task<PolicyAuthorizationResult> TryAuthenticate(MethodInfo methodInfo) {

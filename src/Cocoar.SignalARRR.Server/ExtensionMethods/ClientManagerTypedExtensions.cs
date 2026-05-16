@@ -11,10 +11,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             if (clientManager == null) throw new ArgumentNullException(nameof(clientManager));
             if (string.IsNullOrWhiteSpace(connectionId)) throw new ArgumentNullException(nameof(connectionId));
 
-            var ctx = clientManager.GetClientById(connectionId);
-            if (ctx == null) throw new InvalidOperationException($"Client not found: {connectionId}");
-
-            return ctx.GetTypedMethods<T>();
+            return clientManager.CreateTypedMethodsProxy<T>(connectionId);
         }
 
         /// <summary>

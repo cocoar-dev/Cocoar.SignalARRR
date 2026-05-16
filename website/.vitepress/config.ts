@@ -54,6 +54,7 @@ export default withMermaid(
               { text: 'Server Methods', link: '/guide/server/server-methods' },
               { text: 'Authorization', link: '/guide/server/authorization' },
               { text: 'Client Manager', link: '/guide/server/client-manager' },
+              { text: 'Backplane & Clustering', link: '/guide/server/backplane' },
             ],
           },
           {

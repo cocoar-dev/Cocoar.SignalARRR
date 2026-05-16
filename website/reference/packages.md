@@ -91,6 +91,15 @@ targets: [
 </ItemGroup>
 ```
 
+Optional multi-node scale-out:
+
+```csharp
+builder.Services.AddSignalARRRRedisBackplane(options => options
+    .WithConnectionString("localhost:6379,abortConnect=false"));
+```
+
+This backplane is Redis-compatible and works with Redis, Valkey, and Garnet.
+
 ### .NET Client (Console / WPF / etc.)
 
 ```xml

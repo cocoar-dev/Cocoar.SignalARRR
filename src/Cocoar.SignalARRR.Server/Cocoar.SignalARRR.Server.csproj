@@ -35,6 +35,7 @@
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="MessagePack" />
+    <PackageReference Include="StackExchange.Redis" />
 
     <PackageReference Include="System.Reactive.Linq" />
   </ItemGroup>

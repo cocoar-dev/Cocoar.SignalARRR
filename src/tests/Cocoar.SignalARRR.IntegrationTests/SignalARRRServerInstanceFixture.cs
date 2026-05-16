@@ -24,11 +24,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             // Detect the current target framework from the runtime to pass to dotnet run
             var tfm = $"net{Environment.Version.Major}.0";
+            IntegrationTestServerBuildCoordinator.EnsureBuilt(serverProjectDir, tfm);
 
             _serverProcess = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = "dotnet",
-                    Arguments = $"run --project \"{serverProjectDir}\" -c Release --framework {tfm}",
+                    Arguments = $"run --project \"{serverProjectDir}\" -c Debug --framework {tfm} --no-build",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -39,8 +40,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             _serverProcess.Start();
 
-            // Wait for server to write its URL (up to 120s for first build + start)
-            var deadline = DateTime.UtcNow.AddSeconds(120);
+            // Wait for server to write its URL (up to 300s for first build + start)
+            var deadline = DateTime.UtcNow.AddSeconds(300);
             while (DateTime.UtcNow < deadline) {
                 if (File.Exists(urlFile)) {
                     var content = File.ReadAllText(urlFile).Trim();
@@ -60,7 +61,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             try { _serverProcess.Kill(entireProcessTree: true); } catch { }
             throw new TimeoutException(
-                $"IntegrationTestServer did not start within 120 seconds. Project: {serverProjectDir}");
+                $"IntegrationTestServer did not start within 300 seconds. Project: {serverProjectDir}");
         }
 
         private static string FindServerProjectDir() {
@@ -75,7 +76,6 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 "Could not find IntegrationTestServer project. " +
                 $"Searched from: {AppContext.BaseDirectory}");
         }
-
         public void Dispose() {
             if (_serverProcess != null && !_serverProcess.HasExited) {
                 try { _serverProcess.Kill(entireProcessTree: true); } catch { }

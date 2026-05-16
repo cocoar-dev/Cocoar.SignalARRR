@@ -5,6 +5,22 @@ All notable changes to SignalARRR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+---
+
+## [4.3.0]
+### Added
+- **Redis-compatible cluster backplane**: multi-node SignalARRR deployments can now route typed server-to-client traffic through Redis-compatible infrastructure such as Redis, Valkey, or Garnet.
+- **Distributed query support**: cluster-wide broadcast, user targeting, attribute targeting, remote group management, and cross-node `InvokeAllAsync` / `InvokeOneAsync`.
+- **Cluster presence snapshots**: `ClientManager` can now report cluster-wide connections, groups, attributes, and online users.
+- **Crash cleanup + hardening tests**: added active stale-node cleanup and new multi-node tests for reconnect, remote group leave, ordered cross-node push delivery, and crash recovery.
+
+### Documentation
+- Added backplane and cluster semantics documentation for server deployments.
+
+---
+
 ## [4.2.2]
 
 ### Fixed

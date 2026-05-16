@@ -1,9 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Claims;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
 using IntegrationTestServer;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.SignalR;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,8 +21,36 @@ builder.Services.AddSignalR()
         options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     })
     .AddMessagePackProtocol();
+builder.Services.AddSingleton<IUserIdProvider, QueryStringUserIdProvider>();
 
 builder.Services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(TestHub).Assembly));
+
+var backplaneConnectionString = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CONNECTION_STRING");
+if (!string.IsNullOrWhiteSpace(backplaneConnectionString)) {
+    builder.Services.AddSignalARRRRedisBackplane(options => {
+        options.WithConnectionString(backplaneConnectionString);
+
+        var channelPrefix = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CHANNEL_PREFIX");
+        if (!string.IsNullOrWhiteSpace(channelPrefix)) {
+            options.WithChannelPrefix(channelPrefix);
+        }
+
+        var nodeId = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_NODE_ID");
+        if (!string.IsNullOrWhiteSpace(nodeId)) {
+            options.WithNodeId(nodeId);
+        }
+
+        var heartbeatIntervalMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_HEARTBEAT_INTERVAL_MS");
+        if (int.TryParse(heartbeatIntervalMs, out var heartbeatInterval)) {
+            options.WithHeartbeatInterval(TimeSpan.FromMilliseconds(heartbeatInterval));
+        }
+
+        var nodeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_NODE_TIMEOUT_MS");
+        if (int.TryParse(nodeTimeoutMs, out var nodeTimeout)) {
+            options.WithNodeTimeout(TimeSpan.FromMilliseconds(nodeTimeout));
+        }
+    });
+}
 
 var app = builder.Build();
 
@@ -209,6 +239,17 @@ app.MapGet("/__test/join-group", async (HttpContext context) => {
     return Results.Ok(true);
 });
 
+app.MapGet("/__test/leave-group", async (HttpContext context) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    var groupName = context.Request.Query["group"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId) || string.IsNullOrWhiteSpace(groupName))
+        return Results.BadRequest("Missing connectionId or group");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    await clientManager.RemoveFromGroupAsync(connectionId, groupName);
+    return Results.Ok(true);
+});
+
 // Typed broadcast to a group via WithHub + WithGroup + SendAsync
 app.MapPost("/__test/broadcast-group-nix", async (HttpContext context) => {
     var groupName = context.Request.Query["group"].ToString();
@@ -235,7 +276,7 @@ app.MapPost("/__test/broadcast-filtered-nix", async (HttpContext context) => {
     var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
     var clients = string.IsNullOrWhiteSpace(tag)
         ? clientManager.WithHub<TestHub>()
-        : clientManager.WithHub<TestHub>().Where(c => c.Attributes.Has("role", tag));
+        : clientManager.WithHub<TestHub>().WithAttribute("role", tag);
 
     await clients.SendAsync<TestShared.ITestClientMethods>(c => c.Nix());
     return Results.Ok("Sent");
@@ -275,6 +316,110 @@ app.MapPost("/__test/invoke-one-getbyid", async (HttpContext context) => {
         .InvokeOneAsync<TestShared.ITestClientMethods, string>(c => c.GetById(id));
 
     return Results.Ok(new { result.ClientId, result.Value });
+});
+
+app.MapPost("/__test/broadcast-user-nix", async (HttpContext context) => {
+    var userId = context.Request.Query["userId"].ToString();
+    if (string.IsNullOrWhiteSpace(userId))
+        return Results.BadRequest("Missing userId");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    await clientManager.WithHub<TestHub>()
+        .WithUser(userId)
+        .SendAsync<TestShared.ITestClientMethods>(c => c.Nix());
+
+    return Results.Ok("Sent");
+});
+
+app.MapPost("/__test/invoke-user-all-getbyid", async (HttpContext context) => {
+    var userId = context.Request.Query["userId"].ToString();
+    var id = context.Request.Query["id"].ToString();
+    if (string.IsNullOrWhiteSpace(userId))
+        return Results.BadRequest("Missing userId");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var results = await clientManager.WithHub<TestHub>()
+        .WithUser(userId)
+        .InvokeAllAsync<TestShared.ITestClientMethods, string>(c => c.GetById(id));
+
+    var items = new System.Collections.Generic.List<object>();
+    foreach (var r in results) {
+        items.Add(new { r.ClientId, r.Value });
+    }
+
+    return Results.Ok(items);
+});
+
+app.MapPost("/__test/invoke-attribute-all-getbyid", async (HttpContext context) => {
+    var tag = context.Request.Query["tag"].ToString();
+    var id = context.Request.Query["id"].ToString();
+    if (string.IsNullOrWhiteSpace(tag))
+        return Results.BadRequest("Missing tag");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var results = await clientManager.WithHub<TestHub>()
+        .WithAttribute("role", tag)
+        .InvokeAllAsync<TestShared.ITestClientMethods, string>(c => c.GetById(id));
+
+    var items = new System.Collections.Generic.List<object>();
+    foreach (var r in results) {
+        items.Add(new { r.ClientId, r.Value });
+    }
+
+    return Results.Ok(items);
+});
+
+app.MapGet("/__test/presence-all", async (HttpContext context) => {
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var snapshots = await clientManager.GetConnectionsAsync<TestHub>();
+    return Results.Ok(snapshots);
+});
+
+app.MapGet("/__test/presence-user", async (HttpContext context) => {
+    var userId = context.Request.Query["userId"].ToString();
+    if (string.IsNullOrWhiteSpace(userId))
+        return Results.BadRequest("Missing userId");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var snapshots = await clientManager.GetConnectionsByUserAsync<TestHub>(userId);
+    return Results.Ok(snapshots);
+});
+
+app.MapGet("/__test/presence-group", async (HttpContext context) => {
+    var groupName = context.Request.Query["group"].ToString();
+    if (string.IsNullOrWhiteSpace(groupName))
+        return Results.BadRequest("Missing group");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var snapshots = await clientManager.GetConnectionsInGroupAsync<TestHub>(groupName);
+    return Results.Ok(snapshots);
+});
+
+app.MapGet("/__test/presence-attribute", async (HttpContext context) => {
+    var key = context.Request.Query["key"].ToString();
+    var value = context.Request.Query["value"].ToString();
+    if (string.IsNullOrWhiteSpace(key))
+        return Results.BadRequest("Missing key");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var snapshots = await clientManager.GetConnectionsByAttributeAsync<TestHub>(key, string.IsNullOrWhiteSpace(value) ? null : value);
+    return Results.Ok(snapshots);
+});
+
+app.MapGet("/__test/presence-online-users", async (HttpContext context) => {
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var users = await clientManager.GetOnlineUsersAsync<TestHub>();
+    return Results.Ok(users);
+});
+
+app.MapGet("/__test/presence-user-online", async (HttpContext context) => {
+    var userId = context.Request.Query["userId"].ToString();
+    if (string.IsNullOrWhiteSpace(userId))
+        return Results.BadRequest("Missing userId");
+
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    var isOnline = await clientManager.IsUserOnlineAsync<TestHub>(userId);
+    return Results.Ok(isOnline);
 });
 
 // ── Cross-assembly server-to-client push tests ──
@@ -341,3 +486,15 @@ if (!string.IsNullOrEmpty(urlFile)) {
 }
 
 await app.WaitForShutdownAsync();
+
+internal sealed class QueryStringUserIdProvider : IUserIdProvider {
+    public string? GetUserId(HubConnectionContext connection) {
+        var userId = connection.GetHttpContext()?.Request.Query["userId"].ToString();
+        if (!string.IsNullOrWhiteSpace(userId)) {
+            return userId;
+        }
+
+        return connection.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? connection.User?.Identity?.Name;
+    }
+}

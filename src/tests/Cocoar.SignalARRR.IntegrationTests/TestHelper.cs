@@ -1,3 +1,4 @@
+using System;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,8 +14,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             string serverUrl, HARRRConnection connection, CancellationToken ct) {
             using var http = new HttpClient();
             for (int i = 0; i < 50; i++) {
+                var connectionId = Uri.EscapeDataString(connection.ConnectionId ?? string.Empty);
                 var response = await http.GetAsync(
-                    $"{serverUrl}/__test/client-exists?connectionId={connection.ConnectionId}", ct);
+                    $"{serverUrl}/__test/client-exists?connectionId={connectionId}", ct);
                 if (response.IsSuccessStatusCode) {
                     var body = await response.Content.ReadAsStringAsync(ct);
                     if (body.Contains("true")) return;

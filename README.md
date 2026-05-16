@@ -77,6 +77,47 @@ For full setup guides, streaming, authorization, and server-to-client calls, see
 - **Server-to-client calls from anywhere** — inject `ClientManager` in controllers, background services, etc.
 - **Four clients** — .NET, .NET Framework, TypeScript/JavaScript, Swift
 - **Typed broadcasts** — `WithHub<T>().WithGroup().SendAsync<T>()` for groups and filtered clients
+- **Redis-compatible multi-node backplane** — opt-in scale-out with Redis, Valkey, or Garnet
+
+## Redis-compatible backplane
+
+SignalARRR stays pure in-memory by default. If you do **not** configure a backplane, behavior remains single-node and process-local exactly as before.
+
+For multi-node scale-out, opt in with the built-in Redis-compatible backplane:
+
+```csharp
+builder.Services.AddSignalARRR(b =>
+    b.AddServerMethodsFrom(typeof(ChatHub).Assembly));
+
+builder.Services.AddSignalARRRRedisBackplane(options => options
+    .WithConnectionString("localhost:6379,abortConnect=false")
+    .WithChannelPrefix("my-app")
+    .WithNodeId($"{Environment.MachineName}-api-1"));
+```
+
+This works with **Redis**, **Valkey**, and **Garnet** because SignalARRR talks to a Redis-compatible backend via `StackExchange.Redis`.
+
+### What becomes cluster-aware
+
+- `GetTypedMethods<T>(connectionId)` send/invoke across nodes
+- `WithHub<T>().SendAsync(...)` across all nodes
+- `WithGroup(...)`, `WithUser(...)`, and `WithAttribute(...)` across nodes
+- `InvokeAllAsync(...)` and `InvokeOneAsync(...)` across nodes
+- `AddToGroupAsync(...)` / `RemoveFromGroupAsync(...)` for remote connections
+- Presence APIs on `ClientManager`:
+  - `GetConnectionsAsync<THub>()`
+  - `GetConnectionsByUserAsync<THub>(...)`
+  - `GetConnectionsInGroupAsync<THub>(...)`
+  - `GetConnectionsByAttributeAsync<THub>(...)`
+  - `GetOnlineUsersAsync<THub>()`
+  - `IsUserOnlineAsync<THub>(...)`
+
+### Cluster semantics
+
+- **Transient transport**: the backplane distributes live messages; it is not a durable queue or event store.
+- **Eventual convergence**: connection, group, user, and attribute metadata propagate quickly, but not atomically across all nodes. Right after connect/disconnect/group changes there can be a short convergence window.
+- **Crash cleanup**: dead nodes are removed by heartbeat + timeout sweep. Tune `WithHeartbeatInterval(...)` and `WithNodeTimeout(...)` if you want faster stale-node cleanup.
+- **Safe fallback**: without `AddSignalARRRRedisBackplane(...)`, all APIs continue to use the old in-memory single-node path.
 
 ## Framework Support
 

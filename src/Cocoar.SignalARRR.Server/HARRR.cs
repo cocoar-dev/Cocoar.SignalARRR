@@ -76,6 +76,8 @@ namespace Cocoar.SignalARRR.Server {
         public override async Task OnConnectedAsync() {
             try {
                 var client = ClientManager.Register(this, Context);
+                var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
+                await connectionRegistry.RegisterConnectionAsync(client).ConfigureAwait(false);
 
                 await base.OnConnectedAsync().ConfigureAwait(false);
 
@@ -106,6 +108,8 @@ namespace Cocoar.SignalARRR.Server {
         public override async Task OnDisconnectedAsync(Exception? exception) {
             try {
                 var client = ClientManager.UnRegister(Context.ConnectionId);
+                var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
+                await connectionRegistry.UnregisterConnectionAsync(Context.ConnectionId).ConfigureAwait(false);
 
                 await base.OnDisconnectedAsync(exception).ConfigureAwait(false);
 

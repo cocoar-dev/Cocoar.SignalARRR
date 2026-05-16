@@ -123,6 +123,21 @@ var result = await _clients.WithHub<DeviceHub>()
 | `.InvokeAllAsync<T, TResult>(func)` | N (parallel) | All results | Status polling, data collection |
 | `.InvokeOneAsync<T, TResult>(func)` | 1–N (sequential) | First success | Failover, load distribution |
 
+## Presence snapshots
+
+`ClientManager` can also return connection and user presence snapshots:
+
+```csharp
+var allConnections = await _clients.GetConnectionsAsync<AlertHub>();
+var aliceConnections = await _clients.GetConnectionsByUserAsync<AlertHub>("alice");
+var dashboardConnections = await _clients.GetConnectionsInGroupAsync<AlertHub>("dashboard");
+var primaryNodes = await _clients.GetConnectionsByAttributeAsync<AlertHub>("role", "primary");
+var onlineUsers = await _clients.GetOnlineUsersAsync<AlertHub>();
+var isAliceOnline = await _clients.IsUserOnlineAsync<AlertHub>("alice");
+```
+
+When no backplane is configured, these APIs return data from the current node only. With the Redis-compatible backplane enabled, they return cluster-wide snapshots.
+
 #### On `ClientManager` — group management
 
 | Method | Description |
@@ -240,4 +255,5 @@ bool isIOS = client.Attributes.Has("Platform", "iOS");
 
 - [Server Methods](/guide/server/server-methods) — server-to-client calls inside the hub
 - [Authorization](/guide/server/authorization) — filter clients by authentication state
+- [Backplane & Clustering](/guide/server/backplane) — enable multi-node routing and presence
 - [Connection Setup (.NET)](/guide/dotnet-client/connection-setup) — configure the .NET client

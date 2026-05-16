@@ -11,6 +11,11 @@ This page lists the public API surface of SignalARRR across all packages.
 services.AddSignalARRR(options => options
     .AddServerMethodsFrom(assembly));
 
+services.AddSignalARRRRedisBackplane(options => options
+    .WithConnectionString("localhost:6379,abortConnect=false")
+    .WithChannelPrefix("my-app")
+    .WithNodeId("node-1"));
+
 // IEndpointRouteBuilder extension
 app.MapHARRRController<THub>(path);
 app.MapHARRRController<THub>(path, configureOptions);
@@ -76,6 +81,30 @@ app.MapHARRRController<THub>(path, configureOptions);
 | `GetAllClients(predicate)` | Filter clients |
 | `AddToGroupAsync(connectionId, groupName)` | Add client to SignalR group (tracked in `ClientContext.Groups`) |
 | `RemoveFromGroupAsync(connectionId, groupName)` | Remove client from group |
+| `GetConnectionsAsync<THub>()` | Connection snapshots for the selected hub |
+| `GetConnectionsByUserAsync<THub>(string)` | Connection snapshots for one user |
+| `GetConnectionsInGroupAsync<THub>(string)` | Connection snapshots for one group |
+| `GetConnectionsByAttributeAsync<THub>(string, string?)` | Connection snapshots matching an attribute |
+| `GetOnlineUsersAsync<THub>()` | User presence snapshots for the hub |
+| `IsUserOnlineAsync<THub>(string)` | Check whether a user is online |
+
+### SignalARRRRedisBackplaneOptionsBuilder
+
+| Method | Description |
+|--------|-------------|
+| `WithConnectionString(string)` | Configure the Redis-compatible backend connection |
+| `WithChannelPrefix(string)` | Prefix all backplane keys/channels for app isolation |
+| `WithNodeId(string)` | Set a stable logical node identifier |
+| `WithInvokeTimeout(TimeSpan)` | Timeout for cross-node invoke aggregation |
+| `WithHeartbeatInterval(TimeSpan)` | Heartbeat interval for dead-node detection |
+| `WithNodeTimeout(TimeSpan)` | Time after which a node is considered stale |
+
+### Presence models
+
+| Type | Purpose |
+|------|---------|
+| `SignalARRRConnectionSnapshot` | Connection ID, node ID, user ID, groups, and attributes |
+| `SignalARRRUserPresenceSnapshot` | User ID plus aggregated connection IDs and node IDs |
 
 ## Client API (`Cocoar.SignalARRR.Client`)
 
