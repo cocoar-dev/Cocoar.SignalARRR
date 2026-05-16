@@ -4,8 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vitepress dev --host --port 5175",
-    "build": "vitepress build",
-    "preview": "vitepress preview"
+    "dev:public": "vitepress dev --config .vitepress/config.public.ts --host --port 5175",
+    "build": "vitepress build --config .vitepress/config.public.ts && node scripts/strip-dev-notes.mjs .vitepress/dist",
+    "build:dev": "vitepress build --outDir .vitepress/dist-dev",
+    "preview": "vitepress preview --config .vitepress/config.public.ts"
   },
   "devDependencies": {
     "mermaid": "^11.13.0",
