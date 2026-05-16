@@ -7,6 +7,29 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.SignalR;
 
+var diagnosticsLogFilePath = Environment.GetEnvironmentVariable("SIGNALARRR_DIAGNOSTICS_LOG_FILE");
+void WriteDiagnostics(string message) {
+    if (string.IsNullOrWhiteSpace(diagnosticsLogFilePath)) {
+        return;
+    }
+
+    var directory = Path.GetDirectoryName(diagnosticsLogFilePath);
+    if (!string.IsNullOrWhiteSpace(directory)) {
+        Directory.CreateDirectory(directory);
+    }
+
+    for (int attempt = 0; attempt < 3; attempt++) {
+        try {
+            File.AppendAllText(
+                diagnosticsLogFilePath,
+                $"{DateTime.UtcNow:O} [IntegrationTestServer] {message}{Environment.NewLine}");
+            break;
+        } catch (IOException) when (attempt < 2) {
+            Thread.Sleep(10);
+        }
+    }
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -53,6 +76,8 @@ if (!string.IsNullOrWhiteSpace(backplaneConnectionString)) {
 }
 
 var app = builder.Build();
+app.Lifetime.ApplicationStarted.Register(() => WriteDiagnostics("application-started"));
+app.Lifetime.ApplicationStopping.Register(() => WriteDiagnostics("application-stopping"));
 
 app.MapHARRRController<TestHub>("/signalr/testhub");
 
@@ -483,6 +508,7 @@ Console.Out.Flush();
 var urlFile = Environment.GetEnvironmentVariable("SERVER_URL_FILE");
 if (!string.IsNullOrEmpty(urlFile)) {
     await File.WriteAllTextAsync(urlFile, serverUrl);
+    WriteDiagnostics($"server-url-published url={serverUrl}");
 }
 
 await app.WaitForShutdownAsync();

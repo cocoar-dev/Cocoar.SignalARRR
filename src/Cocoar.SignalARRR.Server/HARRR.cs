@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -75,11 +76,32 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>A task that represents the asynchronous operation.</returns>
         public override async Task OnConnectedAsync() {
             try {
-                var client = ClientManager.Register(this, Context);
-                var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
-                await connectionRegistry.RegisterConnectionAsync(client).ConfigureAwait(false);
+                var totalStopwatch = Stopwatch.StartNew();
 
+                var registerStopwatch = Stopwatch.StartNew();
+                var client = ClientManager.Register(this, Context);
+                registerStopwatch.Stop();
+
+                var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
+                var registryType = connectionRegistry.GetType().Name;
+                SignalARRRDiagnostics.Write(
+                    "ConnectionLifecycle",
+                    $"OnConnectedAsync register-local hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={registerStopwatch.ElapsedMilliseconds} registry={registryType}");
+
+                var registryStopwatch = Stopwatch.StartNew();
+                await connectionRegistry.RegisterConnectionAsync(client).ConfigureAwait(false);
+                registryStopwatch.Stop();
+                SignalARRRDiagnostics.Write(
+                    "ConnectionLifecycle",
+                    $"OnConnectedAsync register-registry hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={registryStopwatch.ElapsedMilliseconds} registry={registryType}");
+
+                var baseStopwatch = Stopwatch.StartNew();
                 await base.OnConnectedAsync().ConfigureAwait(false);
+                baseStopwatch.Stop();
+                totalStopwatch.Stop();
+                SignalARRRDiagnostics.Write(
+                    "ConnectionLifecycle",
+                    $"OnConnectedAsync completed hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={totalStopwatch.ElapsedMilliseconds} baseElapsedMs={baseStopwatch.ElapsedMilliseconds} registry={registryType}");
 
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -107,11 +129,32 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>A task that represents the asynchronous operation.</returns>
         public override async Task OnDisconnectedAsync(Exception? exception) {
             try {
-                var client = ClientManager.UnRegister(Context.ConnectionId);
-                var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
-                await connectionRegistry.UnregisterConnectionAsync(Context.ConnectionId).ConfigureAwait(false);
+                var totalStopwatch = Stopwatch.StartNew();
 
+                var unregisterStopwatch = Stopwatch.StartNew();
+                var client = ClientManager.UnRegister(Context.ConnectionId);
+                unregisterStopwatch.Stop();
+
+                var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
+                var registryType = connectionRegistry.GetType().Name;
+                SignalARRRDiagnostics.Write(
+                    "ConnectionLifecycle",
+                    $"OnDisconnectedAsync unregister-local hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={unregisterStopwatch.ElapsedMilliseconds} registry={registryType}");
+
+                var registryStopwatch = Stopwatch.StartNew();
+                await connectionRegistry.UnregisterConnectionAsync(Context.ConnectionId).ConfigureAwait(false);
+                registryStopwatch.Stop();
+                SignalARRRDiagnostics.Write(
+                    "ConnectionLifecycle",
+                    $"OnDisconnectedAsync unregister-registry hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={registryStopwatch.ElapsedMilliseconds} registry={registryType}");
+
+                var baseStopwatch = Stopwatch.StartNew();
                 await base.OnDisconnectedAsync(exception).ConfigureAwait(false);
+                baseStopwatch.Stop();
+                totalStopwatch.Stop();
+                SignalARRRDiagnostics.Write(
+                    "ConnectionLifecycle",
+                    $"OnDisconnectedAsync completed hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={totalStopwatch.ElapsedMilliseconds} baseElapsedMs={baseStopwatch.ElapsedMilliseconds} registry={registryType} exception={(exception == null ? "none" : exception.GetType().Name)}");
 
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     if (exception != null) {

@@ -50,6 +50,9 @@ jobs:
 
       - name: Build and test
         working-directory: src
+        env:
+          SIGNALARRR_TEST_DIAGNOSTICS: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          SIGNALARRR_TEST_DIAGNOSTICS_LOG_FILE: ${{ runner.temp }}/signalarrr-diagnostics-${{ matrix.os }}.log
         run: |
           $testFilter = 'Type!=Performance'
           if ('${{ matrix.os }}' -ne 'ubuntu-latest') {
@@ -57,6 +60,20 @@ jobs:
           }
           dotnet test Cocoar.SignalARRR.slnx -c Release --verbosity normal --framework net10.0 --filter $testFilter
         shell: pwsh
+
+      - name: Dump SignalARRR diagnostics
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+        shell: pwsh
+        env:
+          SIGNALARRR_TEST_DIAGNOSTICS_LOG_FILE: ${{ runner.temp }}/signalarrr-diagnostics-${{ matrix.os }}.log
+        run: |
+          if (Test-Path $env:SIGNALARRR_TEST_DIAGNOSTICS_LOG_FILE) {
+            Write-Host '=== SignalARRR diagnostics ==='
+            Get-Content $env:SIGNALARRR_TEST_DIAGNOSTICS_LOG_FILE
+            Write-Host '=== End SignalARRR diagnostics ==='
+          } else {
+            Write-Host 'No SignalARRR diagnostics log found.'
+          }
 
   test-swift:
     name: Test Swift package
