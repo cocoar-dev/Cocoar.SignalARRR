@@ -243,8 +243,8 @@ namespace Cocoar.SignalARRR.Server {
         /// Used internally by SignalARRR protocol for async void methods.
         /// </summary>
         /// <param name="clientMessage">The client request message containing method name and arguments.</param>
-        /// <returns>A completed task.</returns>
-        public Task SendMessage(ClientRequestMessage clientMessage) {
+        /// <returns>A task that completes when the target method has run. The client does not await a result.</returns>
+        public async Task SendMessage(ClientRequestMessage clientMessage) {
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -255,20 +255,13 @@ namespace Cocoar.SignalARRR.Server {
 
                 var messageHandler = new MessageHandler(this, ClientContext, MethodsCollection, ServiceProvider, InterfaceCollection);
 
-                // Fire and forget - don't await
-                _ = Task.Run(async () => {
-                    try {
-                        await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
-                    } catch (Exception ex) {
-                        Logger.LogError(
-                            ex,
-                            "Error in fire-and-forget message '{Method}' from ConnectionId: {ConnectionId}",
-                            clientMessage.Method,
-                            Context.ConnectionId);
-                    }
-                });
-
-                return Task.CompletedTask;
+                // Await within the hub invocation so the Hub instance (and its Context/Clients/Groups,
+                // which MessageHandler injects into the server method) stays alive for the duration of
+                // the call. The previous Task.Run fire-and-forget ran after SignalR had already disposed
+                // the Hub, so any Context/Groups access (e.g. group joins) silently failed.
+                // The client-side `send` is already non-blocking at the SignalR layer (no invocationId),
+                // so awaiting here is transparent to the caller — it just doesn't return a result.
+                await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
 
             } catch (Exception ex) {
                 Logger.LogError(

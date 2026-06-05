@@ -79,7 +79,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
     private let handshakeTimeout: TimeInterval
     private let reconnectPolicy: ReconnectPolicy
     private let allowedTransports: [TransportType]
-    private let logger: SignalRLogger
+    let logger: SignalRLogger
     private let lock = NSLock()
     private let hubProtocol: any SignalRHubProtocol
     private let hubProtocolKind: HubProtocolKind
@@ -309,11 +309,27 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
 
     /// Negotiate with the server. Returns (connectionToken, availableTransportNames).
     private func negotiate() async throws -> (String, [String]) {
-        guard let negotiateUrl = URL(string: url + "/negotiate?negotiateVersion=1") else {
+        // Build the negotiate URL via URLComponents so an existing query string on the hub URL
+        // (e.g. ".../hub/sync?user=x") is preserved and "/negotiate" is inserted into the *path*,
+        // not concatenated after the query. Plain string concatenation produced a broken URL
+        // (".../hub/sync?user=x/negotiate?...") and the server replied HTTP 400.
+        guard var components = URLComponents(string: url) else {
+            throw SignalRError.negotiationFailed("Invalid URL: \(url)")
+        }
+        components.path += "/negotiate"
+        var queryItems = components.queryItems ?? []
+        queryItems.append(URLQueryItem(name: "negotiateVersion", value: "1"))
+        components.queryItems = queryItems
+        guard let negotiateUrl = components.url else {
             throw SignalRError.negotiationFailed("Invalid URL: \(url)")
         }
         var request = URLRequest(url: negotiateUrl)
         request.httpMethod = "POST"
+        // Fast-fail instead of hanging on the OS-level connect timeout (~30s). This surfaces
+        // unreachable endpoints quickly — notably `localhost` resolving to IPv6 (::1) against an
+        // IPv4-only server, where there is no Happy-Eyeballs fallback for the WebSocket upgrade.
+        // Prefer an explicit `127.0.0.1` host over `localhost` when the server binds IPv4-only.
+        request.timeoutInterval = handshakeTimeout
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {

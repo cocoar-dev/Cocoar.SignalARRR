@@ -230,14 +230,18 @@ enum TransportFactory {
 
     /// Build the transport URL from the base hub URL and connection token.
     static func transportURL(base: String, connectionToken: String, type: TransportType) -> URL? {
-        var urlString = base
+        // Build via URLComponents so an existing query string on the hub URL is preserved and the
+        // `id` connection token is appended as a proper query item (string concatenation produced
+        // ".../hub?user=x?id=..." for a hub URL that already carried a query). URLComponents also
+        // percent-encodes the token value for us.
+        guard var components = URLComponents(string: base) else { return nil }
         if type == .webSockets {
-            if urlString.hasPrefix("http://") { urlString = "ws://" + urlString.dropFirst(7) }
-            else if urlString.hasPrefix("https://") { urlString = "wss://" + urlString.dropFirst(8) }
+            if components.scheme == "http" { components.scheme = "ws" }
+            else if components.scheme == "https" { components.scheme = "wss" }
         }
-        let encoded = connectionToken.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-            ?? connectionToken
-        urlString += "?id=\(encoded)"
-        return URL(string: urlString)
+        var queryItems = components.queryItems ?? []
+        queryItems.append(URLQueryItem(name: "id", value: connectionToken))
+        components.queryItems = queryItems
+        return components.url
     }
 }

@@ -80,6 +80,7 @@ public final class HARRRConnection: @unchecked Sendable {
 
                 return result.value
             } catch {
+                self.client.logger.error("Failed to handle server request '\(req.method)': \(error)")
                 return nil
             }
         }
@@ -101,7 +102,7 @@ public final class HARRRConnection: @unchecked Sendable {
             do {
                 _ = try await self.dispatchServerMethod(req)
             } catch {
-                print("[SignalARRR] Failed to handle server message '\(req.method)': \(error)")
+                self.client.logger.error("Failed to handle server message '\(req.method)': \(error)")
             }
             return nil
         }
@@ -121,6 +122,13 @@ public final class HARRRConnection: @unchecked Sendable {
 
     private func dispatchServerMethod(_ req: ServerRequestMessage) async throws -> AnyCodable {
         guard let handler = await serverRequestHandlers.handler(for: req.method) else {
+            // Mirror the .NET client, which logs when a server→client call can't be dispatched
+            // instead of failing silently. The most common cause is registering the contract with
+            // `on(...)` (raw SignalR events) instead of `onServerMethod(...)` (SignalARRR contracts).
+            client.logger.warning(
+                "No server-method handler registered for '\(req.method)'. " +
+                "Register it with onServerMethod(\"\(req.method)\") { ... } — note that on(...) only " +
+                "handles raw SignalR events, not SignalARRR server→client contracts.")
             return AnyCodable(Optional<String>.none as Any)
         }
 
@@ -213,6 +221,10 @@ public final class HARRRConnection: @unchecked Sendable {
             return
         }
 
+        // No stream or regular handler registered for this server→client stream request.
+        client.logger.warning(
+            "No server-method handler registered for streaming request '\(req.method)'. " +
+            "Register it with onServerStreamMethod(\"\(req.method)\") { ... } or onServerMethod(...).")
         try? await client.send(
             method: MethodNames.streamCompleteToServer,
             arguments: [streamId, NSNull()]
@@ -315,6 +327,14 @@ public final class HARRRConnection: @unchecked Sendable {
 
     // MARK: - Server → Client Handlers
 
+    /// Registers a handler for a **SignalARRR server→client contract** — i.e. a method the server
+    /// pushes via `ClientManager.WithHub<T>()...SendAsync<IClient>(c => c.Method(...))`.
+    ///
+    /// Use this (not ``on(_:handler:)``) for any contract-style name such as
+    /// `"MyApp.IClient|Changed"`. Those calls arrive wrapped in a SignalARRR envelope
+    /// (`InvokeServerMessage`/`InvokeServerRequest`); the real contract name lives *inside* the
+    /// envelope, so a raw `on(...)` registration for the same string never fires.
+    /// This is the Swift equivalent of the .NET client's `OnServerRequest`.
     public func onServerMethod(
         _ name: String,
         handler: @escaping @Sendable ([Any]) async throws -> AnyCodable
@@ -334,6 +354,11 @@ public final class HARRRConnection: @unchecked Sendable {
     }
 
     // MARK: - Feature 5: On/Off (Raw SignalR Events)
+
+    // These register handlers for **raw SignalR hub method names** sent with a plain
+    // `Clients.X.SendAsync("methodName", ...)`. They do NOT receive SignalARRR server→client
+    // contracts (e.g. "MyApp.IClient|Changed") — use ``onServerMethod(_:handler:)`` for those.
+    // The equivalent split exists in the .NET client (`On` vs `OnServerRequest`).
 
     // Void return, 0–8 params
 

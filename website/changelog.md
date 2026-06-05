@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.3.1]
+
+### Fixed
+- **Fire-and-forget `send` server methods silently did nothing (e.g. group joins)**: `HARRR.SendMessage` ran the target method in a detached `Task.Run` *after* SignalR had already disposed the `Hub`, so any access to the hub-injected `Context`/`Clients`/`Groups` (such as `Groups.AddToGroupAsync`) silently failed and the method body never took effect. The method is now awaited within the hub invocation, keeping the `Hub` alive for its duration. Affects every client — the typed proxy routes any `void`/`Task`-returning server method through this `send` path, so this was hit without explicitly choosing `send`.
+- **(Swift) Negotiate/WebSocket URL broke when the hub URL carried a query string**: both the negotiate URL and the WebSocket transport URL were built by string concatenation, producing a broken URL like `.../hub/sync?user=x?id=...` (HTTP 400 on negotiate). Rebuilt with `URLComponents` so existing query parameters are preserved and `/negotiate` is inserted into the path.
+- **(Swift) Connection hung ~30s against `localhost`/IPv6**: when `localhost` resolved to IPv6 (`::1`) against an IPv4-only server there was no Happy-Eyeballs fallback for the WebSocket upgrade. Negotiate now fast-fails on a configurable timeout instead of waiting on the OS connect timeout, and the `127.0.0.1` workaround is documented.
+
+### Changed
+- **(Swift) Undispatched server→client calls now log instead of failing silently**: mirrors the .NET client. When a server→client call arrives for which no handler is registered, the client logs a warning pointing to `onServerMethod(...)` — the most common cause is registering a SignalARRR contract with `on(...)` (which only handles raw SignalR events). The `on(...)` vs `onServerMethod(...)` distinction is now documented on both APIs.
+
+### Added
+- **Regression tests**: a .NET integration test proving a `send`-routed server method joins a group against a live `Hub` (fails on the old fire-and-forget behaviour), and Swift unit tests covering query-string-safe transport URL construction.
+
+---
+
 ## [4.3.0]
 ### Added
 - **Redis-compatible cluster backplane**: multi-node SignalARRR deployments can now route typed server-to-client traffic through Redis-compatible infrastructure such as Redis, Valkey, or Garnet.

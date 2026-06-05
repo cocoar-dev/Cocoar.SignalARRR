@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server;
 using Cocoar.SignalARRR.Tests.SharedModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace IntegrationTestServer {
 
@@ -33,6 +34,21 @@ namespace IntegrationTestServer {
 
         public Task NothingAsync() {
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Regression guard for the fire-and-forget <c>SendMessage</c> bug. Because this method
+        /// returns <see cref="Task"/> (no result), the client invokes it via <c>send</c>, which the
+        /// server routes through <c>HARRR.SendMessage</c>. The body reads the hub-injected
+        /// <see cref="HARRR.Context"/> and registers the caller in a ClientManager group that
+        /// <c>WithGroup(...)</c> broadcasts target. The previous <c>Task.Run</c> fire-and-forget ran
+        /// only after SignalR had disposed the Hub, so the <c>Context</c> access threw and the
+        /// group-join silently never happened — making subsequent group broadcasts miss this client.
+        /// </summary>
+        public async Task SubscribeViaSend(string group) {
+            var connectionId = Context.ConnectionId;
+            var clientManager = ServiceProvider.GetRequiredService<ClientManager>();
+            await clientManager.AddToGroupAsync(connectionId, group);
         }
 
         public string Echo(string message) {

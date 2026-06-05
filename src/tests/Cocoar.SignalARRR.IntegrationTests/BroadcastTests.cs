@@ -161,6 +161,50 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 $"Responding client {clientId} is not one of our connections");
         }
 
+        [Fact]
+        public async Task SendAsync_ServerMethodJoinsGroup_GroupBroadcastReachesClient() {
+            // Regression for the fire-and-forget SendMessage bug: a `send`-routed server method that
+            // joins a group used to run after the Hub was disposed, so the join silently failed and
+            // later group broadcasts never reached the client. With the fix (await within the hub
+            // invocation) the join takes effect and the broadcast is delivered.
+            var ct = TestContext.Current.CancellationToken;
+            using var http = new HttpClient();
+            var group = "send-join-" + Guid.NewGuid().ToString("N");
+
+            // connection1 joins the group via a fire-and-forget `send` (Task-returning server method).
+            await _connection1.SendAsync("SubscribeViaSend", group, ct);
+
+            // Wait until the server has actually processed the join (proves the send-routed method ran
+            // against a live Hub). Pre-fix this never happened, so this poll would time out.
+            await WaitForGroupMembership(_fixture.ServerUrl, _connection1.ConnectionId!, group, ct);
+
+            // Broadcast to the group; only members receive Nix.
+            var response = await http.PostAsync($"{_fixture.ServerUrl}/__test/broadcast-group-nix?group={group}", null, ct);
+            response.EnsureSuccessStatusCode();
+
+            await Task.Delay(500, ct);
+
+            Assert.True(_nixCallCount1 >= 1, $"Connection1 joined '{group}' via send; expected Nix but got {_nixCallCount1}");
+            Assert.Equal(0, _nixCallCount2);
+        }
+
+        private static async Task WaitForGroupMembership(
+            string serverUrl, string connectionId, string group, CancellationToken ct) {
+            using var http = new HttpClient();
+            for (int i = 0; i < 50; i++) {
+                var response = await http.GetAsync(
+                    $"{serverUrl}/__test/client-groups?connectionId={Uri.EscapeDataString(connectionId)}", ct);
+                if (response.IsSuccessStatusCode) {
+                    var body = await response.Content.ReadAsStringAsync(ct);
+                    if (body.Contains(group)) return;
+                }
+                await Task.Delay(100, ct);
+            }
+            throw new TimeoutException(
+                $"Connection {connectionId} did not join group '{group}' within 5 seconds — " +
+                "the send-routed server method did not run against a live Hub.");
+        }
+
         private class NixCounter : TestShared.ITestClientMethods {
             private readonly Action _onNix;
             public NixCounter(Action onNix) => _onNix = onNix;
