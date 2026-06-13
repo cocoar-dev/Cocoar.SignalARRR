@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.3.2]
+
+### Security
+- **MessagePack downgraded from 3.1.4 to 2.5.301** to patch [CVE-2026-48109 / GHSA-hv8m-jj95-wg3x](https://github.com/advisories/GHSA-hv8m-jj95-wg3x) (high-severity LZ4 decompression out-of-bounds read / DoS), which was failing the build via NuGet audit. 2.5.x is the MessagePack line that `Microsoft.AspNetCore.SignalR.Protocols.MessagePack` runs on (through .NET 10), so consumers using the SignalR MessagePack hub protocol are no longer forced onto a cross-major MessagePack version. No functional change — only basic serialization APIs are used.
+
+---
+
 ## [4.3.1]
 
 ### Fixed
