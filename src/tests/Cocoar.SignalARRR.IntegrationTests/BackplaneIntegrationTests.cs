@@ -117,6 +117,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connection1, ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl2, connection2, ct);
 
+            // Broadcast is issued on node 1 and has to reach connection2 on node 2.
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl1, connection2, ct);
+
             try {
                 using var http = new HttpClient();
                 var response = await http.PostAsync($"{_fixture.ServerUrl1}/__test/broadcast-all-nix", null, ct);
@@ -182,6 +185,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connection1, ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl2, connection2, ct);
 
+            // The invoke is issued on node 1 and has to reach connection2 on node 2.
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl1, connection2, ct);
+
             try {
                 using var http = new HttpClient();
                 var response = await http.PostAsync($"{_fixture.ServerUrl1}/__test/invoke-all-getbyid?id=cluster", null, ct);
@@ -211,6 +217,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             connection.RegisterInterface<TestShared.ITestClientMethods, BackplaneNixCounter>(handler);
             await connection.StartAsync(ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connection, ct);
+
+            // The invoke is issued on node 2, which has no local clients, so it can only succeed
+            // once node 2 sees this node-1 connection in the distributed registry.
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl2, connection, ct);
 
             try {
                 using var http = new HttpClient();
@@ -249,6 +259,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connectionAlice1, ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl2, connectionAlice2, ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl2, connectionBob, ct);
+
+            // Targeting happens on node 1 and has to reach connections on node 2. Bob is waited for
+            // as well: the assertion that he receives nothing is only meaningful once node 1 could
+            // have targeted him.
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl1, connectionAlice2, ct);
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl1, connectionBob, ct);
 
             try {
                 using var http = new HttpClient();
@@ -302,6 +318,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connectionAdmin1, ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl2, connectionAdmin2, ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl2, connectionViewer, ct);
+
+            // Targeting below happens on node 1 and has to reach connections on node 2.
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl1, connectionAdmin2, ct);
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl1, connectionViewer, ct);
 
             try {
                 using var http = new HttpClient();
@@ -673,6 +693,26 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             throw new TimeoutException($"Client '{connectionId}' was not removed from group '{groupName}' in time.");
         }
+
+        /// <summary>
+        /// Wait until <paramref name="observerUrl"/> can see <paramref name="connection"/> in the
+        /// distributed registry, i.e. until it could target that connection across nodes.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="TestHelper.WaitForClientRegistration"/> is not enough before a cross-node
+        /// operation: /__test/client-exists asks the in-memory ClientManager of the node it is sent
+        /// to, and a connection is registered locally *before* it is written to the distributed
+        /// registry. So the owning node answers "yes, I know this client" while other nodes still
+        /// cannot see it — measured at around 100 ms under test load.
+        /// <para>
+        /// That window is enough to lose a message permanently, because a broadcast is a one-shot:
+        /// whoever is invisible at the moment it is sent never receives it, and waiting for the
+        /// message afterwards cannot recover it. Cross-node tests must therefore wait for
+        /// convergence *before* acting.
+        /// </para>
+        /// </remarks>
+        private static Task WaitForCrossNodeVisibility(string observerUrl, HARRRConnection connection, CancellationToken cancellationToken) =>
+            WaitForPresenceContainsConnection($"{observerUrl}/__test/presence-all", connection.ConnectionId!, cancellationToken);
 
         private static async Task WaitForPresenceArrayLength(string url, int expectedLength, CancellationToken cancellationToken) {
             using var http = new HttpClient();
