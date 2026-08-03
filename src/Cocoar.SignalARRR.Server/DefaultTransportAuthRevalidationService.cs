@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,8 +21,15 @@ namespace Cocoar.SignalARRR.Server {
                 return ValidateCertificateAsync(clientContext.ClientCertificate);
             }
 
-            // Non-cert transport auth (cookies, Negotiate): check principal is still authenticated
-            return Task.FromResult(clientContext.User.Identity?.IsAuthenticated == true);
+            // Only credentials bound to the connection may be revalidated against the cached
+            // principal. For anything else -- a bearer token in particular -- "the principal says it
+            // is authenticated" is tautological: it was authenticated once, and asking it again can
+            // never say otherwise, so the credential's own lifetime would never be enforced.
+            if (!clientContext.HasTransportLevelCredentials()) {
+                return Task.FromResult(false);
+            }
+
+            return Task.FromResult(!TransportCredentialPolicy.IsExpired(clientContext.User));
         }
 
         private Task<bool> ValidateCertificateAsync(X509Certificate2 cert) {
