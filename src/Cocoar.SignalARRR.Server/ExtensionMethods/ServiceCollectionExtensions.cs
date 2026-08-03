@@ -40,6 +40,43 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         }
 
 
+        /// <summary>
+        /// Returns the methods of a <see cref="ServerMethods{T}"/> class that may be invoked over RPC.
+        /// </summary>
+        /// <remarks>
+        /// Only members the user actually declared are invokable. Property accessors
+        /// (<see cref="MethodBase.IsSpecialName"/>) and everything inherited from
+        /// <see cref="ServerMethods"/> or <see cref="object"/> are infrastructure: none of them carry
+        /// <c>[Authorize]</c>, so registering them would expose e.g. <c>get_ClientContext</c> —
+        /// which returns the caller's principal, claims, client certificate and remote IP — as an
+        /// anonymously callable endpoint. Inherited members are otherwise kept, so a user-defined
+        /// intermediate base class still contributes its methods.
+        /// </remarks>
+        /// <summary>
+        /// Resolves the hub type a <see cref="ServerMethods{T}"/> class belongs to, by walking the
+        /// inheritance chain until the closed <c>ServerMethods&lt;THub&gt;</c> base is found.
+        /// </summary>
+        /// <remarks>
+        /// Walking is required: the class need not derive from <c>ServerMethods&lt;THub&gt;</c>
+        /// directly. With a user-defined intermediate base class, <c>BaseType</c> is that class and
+        /// its <c>GenericTypeArguments</c> is empty, so indexing it blindly threw
+        /// <see cref="IndexOutOfRangeException"/> out of <c>AddSignalARRR</c> at startup.
+        /// </remarks>
+        private static Type? GetHubTypeForServerMethods(Type type) {
+            for (var current = type.BaseType; current != null; current = current.BaseType) {
+                if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(ServerMethods<>))
+                    return current.GenericTypeArguments[0];
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<MethodInfo> GetInvokableServerMethods(Type type) =>
+            type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                .Where(m => !m.IsSpecialName
+                            && m.DeclaringType != typeof(object)
+                            && m.DeclaringType != typeof(ServerMethods));
+
         private static void AddSignalARRRMethods(IServiceCollection serviceCollection, SignalARRRServerOptions serverOptions) {
 
 
@@ -54,8 +91,11 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             foreach (var harrType in harrTypes) {
                 var methodsCollection = new SignalARRRMethodsCollection();
-                var messageMethodsWithName = harrType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Select(m =>
-                    (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
+                // DeclaredOnly keeps the HARRR/Hub infrastructure out; IsSpecialName additionally keeps
+                // the accessors of any property declared on the user's own hub from becoming endpoints.
+                var messageMethodsWithName = harrType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Where(m => !m.IsSpecialName)
+                    .Select(m => (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
 
                 foreach (var (methodInfo, methodNameAttribute) in messageMethodsWithName) {
                     var methodName = methodNameAttribute?.Name ?? methodInfo.Name;
@@ -78,8 +118,12 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
 
             var serverMethodsFromAllAssemblies = serverOptions.AssembliesContainingServerMethods
-                 .SelectMany(ass => ass.GetTypes().WhichInheritFromClass(typeof(ServerMethods<>))).ToList();
-            var grouped = serverMethodsFromAllAssemblies.GroupBy(ass => ass.BaseType?.GenericTypeArguments[0]).ToList();
+                 .SelectMany(ass => ass.GetTypes().WhichInheritFromClass(typeof(ServerMethods<>)))
+                 // Abstract classes are shared bases, not endpoints. They cannot be constructed, so
+                 // registering them as transient services would only fail at resolution time.
+                 .Where(t => !t.IsAbstract)
+                 .ToList();
+            var grouped = serverMethodsFromAllAssemblies.GroupBy(GetHubTypeForServerMethods).ToList();
 
             foreach (var grouping in grouped) {
 
@@ -92,7 +136,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                     serviceCollection.AddTransient(type);
 
                     var rootName = type.GetCustomAttribute<MessageNameAttribute>()?.Name ?? type.Name;
-                    var methodsWithName = type.GetMethods().Select(m => (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
+                    var methodsWithName = GetInvokableServerMethods(type).Select(m => (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
                     foreach (var (methodInfo, methodNameAttribute) in methodsWithName) {
                         var methodName = methodNameAttribute?.Name ?? methodInfo.Name;
                         var concatNames = $"{rootName}.{methodName}";
@@ -109,7 +153,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                             interfaceCollection.RegisterInterface(@interface, type);
                         }
 
-                        interfaceDictionary[type.BaseType!.GenericTypeArguments[0]] = interfaceCollection;
+                        interfaceDictionary[GetHubTypeForServerMethods(type)!] = interfaceCollection;
                     }
 
                 }

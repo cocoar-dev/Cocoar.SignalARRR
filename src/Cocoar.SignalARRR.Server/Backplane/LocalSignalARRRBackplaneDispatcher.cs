@@ -8,6 +8,7 @@ using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cocoar.SignalARRR.Server {
     internal sealed class LocalSignalARRRBackplaneDispatcher {
@@ -17,10 +18,12 @@ namespace Cocoar.SignalARRR.Server {
 
         private readonly IServiceProvider _serviceProvider;
         private readonly IHARRRClientManager _clientManager;
+        private readonly ILogger<LocalSignalARRRBackplaneDispatcher> _logger;
 
-        public LocalSignalARRRBackplaneDispatcher(IServiceProvider serviceProvider, IHARRRClientManager clientManager) {
+        public LocalSignalARRRBackplaneDispatcher(IServiceProvider serviceProvider, IHARRRClientManager clientManager, ILogger<LocalSignalARRRBackplaneDispatcher> logger) {
             _serviceProvider = serviceProvider;
             _clientManager = clientManager;
+            _logger = logger;
         }
 
         public bool HasLocalConnection(string connectionId, Type? hubType) {
@@ -136,7 +139,12 @@ namespace Cocoar.SignalARRR.Server {
                             Value = result
                         };
                     }
-                } catch {
+                } catch (Exception ex) {
+                    // Try the next candidate, but do not destroy the reason this one failed --
+                    // authorization denied, deserialization failure and client timeout are very
+                    // different problems and used to be indistinguishable from "nobody answered".
+                    _logger.LogWarning(ex, "Invoking '{Method}' on local connection {ConnectionId} failed; trying the next candidate.",
+                        message.Method, client.Id);
                 }
             }
 

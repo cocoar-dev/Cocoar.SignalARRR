@@ -111,6 +111,11 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         }
 
         public static async Task<ClientCollectionResult<TResult>> InvokeOneAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
+            // Every candidate that fails contributes its exception here. Without them the caller only
+            // ever saw "No client responded", which says nothing about *why* -- authorization denied,
+            // deserialization failure and client timeout all looked identical.
+            var failures = new List<Exception>();
+
             if (clientContext is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
                 var backplane = clusterQuery.ServiceProvider.GetRequiredService<ISignalARRRBackplane>();
                 if (backplane.IsEnabled) {
@@ -155,13 +160,15 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                                     };
                                     break;
                                 }
-                            } catch (Exception) {
+                            } catch (Exception e) {
+                                failures.Add(new InvalidOperationException(
+                                    $"Invoking '{method}' on connection '{registration.ConnectionId}' (node '{registration.NodeId}') failed.", e));
                             }
                         }
                     }
 
                     if (firstResult == null) {
-                        throw new InvalidOperationException("No client responded to the invoke request.");
+                        throw NoClientResponded(method, failures);
                     }
 
                     return new ClientCollectionResult<TResult>(firstResult.ConnectionId, (TResult)firstResult.Value!);
@@ -177,12 +184,30 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                     result = await context.Invoke<TResult>(method, arguments, cancellationToken);
                     break;
                 } catch (Exception e) {
-                    Console.WriteLine(e);
+                    failures.Add(new InvalidOperationException(
+                        $"Invoking '{method}' on connection '{context.Id}' failed.", e));
                 }
 
             }
 
-            return result!;
+            if (result == null) {
+                // Previously this returned null behind a `!`, so the caller got a NullReferenceException
+                // at an unrelated frame -- and only on the local path, while the cluster path above threw.
+                // Same failure, same exception, regardless of whether a backplane is configured.
+                throw NoClientResponded(method, failures);
+            }
+
+            return result;
+        }
+
+        private static Exception NoClientResponded(string method, IReadOnlyList<Exception> failures) {
+            var message = $"No client responded to the invoke request for '{method}'.";
+
+            return failures.Count switch {
+                0 => new InvalidOperationException($"{message} No client matched the query."),
+                1 => new InvalidOperationException(message, failures[0]),
+                _ => new AggregateException(message, failures)
+            };
         }
 
 
