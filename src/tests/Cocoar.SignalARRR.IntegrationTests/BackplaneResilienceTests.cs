@@ -22,7 +22,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
     /// rather than the production 5 s / 20 s.
     /// </para>
     /// </remarks>
-    public class BackplaneResilienceTests {
+    // Named to contain "BackplaneIntegrationTests": the CI workflows exclude Docker-dependent
+    // backplane tests with the substring filter FullyQualifiedName!~BackplaneIntegrationTests.
+    // A class outside that pattern runs on macOS and Windows, where there is no Redis container.
+    public class BackplaneIntegrationTestsResilience {
 
         private static readonly TimeSpan Heartbeat = TimeSpan.FromMilliseconds(200);
         private static readonly TimeSpan NodeTimeout = TimeSpan.FromMilliseconds(900);
@@ -83,14 +86,23 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 // connections it still serves. Without that, the client stays unroutable for good.
                 await WaitForPresenceCount(fixture.ServerUrl2, "role", "admin", 1, ct);
 
-                // And the restored registration is usable, not just present.
+                // And the restored registration is usable, not just present. Polled, not asserted at
+                // a fixed moment: presence reappearing and the connection being routable again are
+                // not the same instant, and asserting once right after the former is precisely the
+                // fixed-moment race this file warns about elsewhere. It cost a red CI run.
                 using var http = new HttpClient();
-                var response = await http.PostAsync(
-                    $"{fixture.ServerUrl2}/__test/invoke-attribute-all-getbyid?tag=admin&id=after-eviction", null, ct);
-                response.EnsureSuccessStatusCode();
+                await WaitFor(async () => {
+                    var response = await http.PostAsync(
+                        $"{fixture.ServerUrl2}/__test/invoke-attribute-all-getbyid?tag=admin&id=after-eviction", null, ct);
 
-                var results = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(ct));
-                Assert.Equal(1, results.GetArrayLength());
+                    if (!response.IsSuccessStatusCode) {
+                        return false;
+                    }
+
+                    var results = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(ct));
+                    return results.GetArrayLength() == 1
+                        && results[0].GetProperty("value").GetString()!.Contains("after-eviction");
+                }, "the re-registered connection to answer a cluster invoke again", ct);
             } finally {
                 await connection.DisposeAsync();
             }
