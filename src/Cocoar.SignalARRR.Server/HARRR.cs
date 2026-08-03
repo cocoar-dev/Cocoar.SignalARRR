@@ -135,6 +135,12 @@ namespace Cocoar.SignalARRR.Server {
             try {
                 var totalStopwatch = Stopwatch.StartNew();
 
+                // Anything this connection was still streaming to us can never complete now. Without
+                // this the channel is never completed and the server task awaiting it stays parked
+                // for the process lifetime, holding the channel and everything buffered in it.
+                ServiceProvider.GetRequiredService<ServerStreamManager>()
+                    .CompleteStreamsFor(Context.ConnectionId, "The client disconnected while streaming.");
+
                 var unregisterStopwatch = Stopwatch.StartNew();
                 var client = ClientManager.UnRegister(Context.ConnectionId);
                 unregisterStopwatch.Stop();
@@ -312,10 +318,17 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         /// <param name="streamId">The stream correlation identifier.</param>
         /// <param name="item">The streamed item.</param>
-        public void StreamItemToServer(Guid streamId, object item) {
+        public async Task StreamItemToServer(Guid streamId, object item) {
             try {
                 var streamManager = ServiceProvider.GetRequiredService<ServerStreamManager>();
-                streamManager.WriteItem(streamId, item);
+
+                // Awaited, so a full buffer throttles this connection instead of letting it grow the
+                // heap. The connection id is passed so that only the owner can feed the stream.
+                if (!await streamManager.WriteItemAsync(streamId, item, Context.ConnectionId, Context.ConnectionAborted).ConfigureAwait(false)) {
+                    Logger.LogWarning(
+                        "Rejected a stream item for StreamId {StreamId} from connection {ConnectionId}: the stream is unknown, already finished, or owned by another connection.",
+                        streamId, Context.ConnectionId);
+                }
             } catch (Exception ex) {
                 Logger.LogError(ex, "Error writing stream item for StreamId: {StreamId}", streamId);
             }
@@ -329,7 +342,12 @@ namespace Cocoar.SignalARRR.Server {
         public void StreamCompleteToServer(Guid streamId, string? error = null) {
             try {
                 var streamManager = ServiceProvider.GetRequiredService<ServerStreamManager>();
-                streamManager.CompleteStream(streamId, error);
+
+                if (!streamManager.CompleteStream(streamId, Context.ConnectionId, error)) {
+                    Logger.LogWarning(
+                        "Rejected a stream completion for StreamId {StreamId} from connection {ConnectionId}: the stream is unknown, already finished, or owned by another connection.",
+                        streamId, Context.ConnectionId);
+                }
             } catch (Exception ex) {
                 Logger.LogError(ex, "Error completing stream for StreamId: {StreamId}", streamId);
             }

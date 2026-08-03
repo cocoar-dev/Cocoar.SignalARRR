@@ -110,7 +110,8 @@ namespace Cocoar.SignalARRR.Server {
             }
 
             var serverStreamManager = _clientContext.ServiceProvider.GetRequiredService<ServerStreamManager>();
-            serverStreamManager.CreateStream(streamId);
+            // Only the client this stream was requested from may feed it.
+            serverStreamManager.CreateStream(streamId, _clientContext.Id);
 
             // Send in background — scope must outlive the send
             var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
