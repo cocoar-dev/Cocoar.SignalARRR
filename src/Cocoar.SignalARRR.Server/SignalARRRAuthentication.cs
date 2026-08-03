@@ -21,14 +21,16 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<PolicyAuthorizationResult> Authorize(ClientContext clientContext, string authorization, MethodInfo methodInfo) {
 
-            // Check [AllowAnonymous] first — skip all auth if present
-            if (methodInfo.GetCustomAttribute<AllowAnonymousAttribute>() != null) {
+            var plan = methodInfo.GetAuthorizationPlan();
+
+            // [AllowAnonymous] anywhere on the method, its contract, its type chain or the hub.
+            if (plan.AllowAnonymous) {
                 return PolicyAuthorizationResult.Success();
             }
 
-            var authorizeData = methodInfo.GetAuthorizeData();
+            var authorizeData = plan.AuthorizeData;
 
-            if (!authorizeData.Any())
+            if (authorizeData.Count == 0)
                 return PolicyAuthorizationResult.Success();
 
             var authenticationService = _serviceProvider.GetRequiredService<IAuthenticationService>();
@@ -63,7 +65,11 @@ namespace Cocoar.SignalARRR.Server {
                             ctx.Connection.ClientCertificate = clientContext.ClientCertificate;
                         }
                     } else {
-                        throw new ArgumentNullException("Authorization not provided!");
+                        // Previously threw ArgumentNullException with the message passed as the
+                        // parameter name, so a client whose token had simply expired got a mangled
+                        // argument error instead of an authentication challenge -- and clients that
+                        // key off the error type to trigger a token refresh could not recognise it.
+                        return PolicyAuthorizationResult.Challenge();
                     }
                 } else {
                     if (!authorization.Contains(" ")) {
@@ -112,13 +118,15 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public async Task<PolicyAuthorizationResult> AuthorizeWithPrincipal(ClientContext clientContext, MethodInfo methodInfo) {
 
-            if (methodInfo.GetCustomAttribute<AllowAnonymousAttribute>() != null) {
+            var plan = methodInfo.GetAuthorizationPlan();
+
+            if (plan.AllowAnonymous) {
                 return PolicyAuthorizationResult.Success();
             }
 
-            var authorizeData = methodInfo.GetAuthorizeData();
+            var authorizeData = plan.AuthorizeData;
 
-            if (!authorizeData.Any())
+            if (authorizeData.Count == 0)
                 return PolicyAuthorizationResult.Success();
 
             var policyEvaluator = _serviceProvider.GetRequiredService<IPolicyEvaluator>();

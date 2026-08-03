@@ -141,10 +141,17 @@ namespace Cocoar.SignalARRR.Server {
             var harrrContext = (IClientContextDispatcher)ServiceProvider.GetRequiredService(hubContextType);
             var res = await harrrContext.Challenge(Id);
 
-            // If challenge returned empty and AuthMode is still undetermined,
-            // check if this client has transport-level credentials
+            // If the challenge came back empty and the mode is still undetermined, this client may
+            // be transport-authenticated and simply have no token to give.
+            //
+            // The test must be for *genuine* transport credentials. Accepting any authenticated
+            // identity here was an escalation path: a client that connected with a short-lived
+            // bearer token still has an authenticated cached principal, so answering the challenge
+            // with an empty string moved it to TransportLevel, where revalidation then approved it
+            // against that same cached principal. AuthMode persists for the connection, so token
+            // expiry and revocation were never enforced again for its whole lifetime.
             if (string.IsNullOrWhiteSpace(res) && AuthMode == AuthenticationMode.None) {
-                if (ClientCertificate != null || User.Identity?.IsAuthenticated == true) {
+                if (HasTransportLevelCredentials()) {
                     AuthMode = AuthenticationMode.TransportLevel;
                     return await RevalidateTransportAuth(methodInfo);
                 }
@@ -175,18 +182,16 @@ namespace Cocoar.SignalARRR.Server {
             return PolicyAuthorizationResult.Forbid();
         }
 
-        private AuthenticationMode DetectAuthenticationMode() {
-            // Client certificate is unambiguous
-            if (ClientCertificate != null) {
-                return AuthenticationMode.TransportLevel;
-            }
+        /// <summary>
+        /// Indicates whether this connection carries credentials bound to the transport rather than
+        /// to a message. See <see cref="TransportCredentialPolicy"/>.
+        /// </summary>
+        internal bool HasTransportLevelCredentials() =>
+            TransportCredentialPolicy.IsTransportLevel(ClientCertificate, User);
 
-            // Windows/Negotiate auth is unambiguous
-            if (User.Identity?.IsAuthenticated == true) {
-                var authType = User.Identity.AuthenticationType;
-                if (authType is "Negotiate" or "NTLM" or "Kerberos" or "Windows") {
-                    return AuthenticationMode.TransportLevel;
-                }
+        private AuthenticationMode DetectAuthenticationMode() {
+            if (HasTransportLevelCredentials()) {
+                return AuthenticationMode.TransportLevel;
             }
 
             // For cookie auth and bearer-via-negotiate, we cannot distinguish at connect time.

@@ -31,8 +31,8 @@ namespace Cocoar.SignalARRR.Common {
             where TClass : class, TInterface {
 
             RegisteredTypes.AddOrUpdate(typeof(TInterface),
-                type => new ClientInterfaceMethodsCache(factory, type),
-                (type, del) => new ClientInterfaceMethodsCache(factory, type));
+                type => new ClientInterfaceMethodsCache(factory, type, typeof(TClass)),
+                (type, del) => new ClientInterfaceMethodsCache(factory, type, typeof(TClass)));
         }
 
         public void RegisterInterface(Type interfaceType, Type instanceType) {
@@ -48,17 +48,23 @@ namespace Cocoar.SignalARRR.Common {
                 //return Activator.CreateInstance(instanceType);
             }
 
-            RegisterInterface(interfaceType, Factory);
+            RegisterInterface(interfaceType, Factory, instanceType);
         }
 
         public void RegisterInterface(Type interfaceType, object instance) {
-            RegisterInterface(interfaceType, (sp) => instance);
+            RegisterInterface(interfaceType, (sp) => instance, instance.GetType());
         }
 
         public void RegisterInterface(Type interfaceType, Func<IServiceProvider, object> factory) {
+            // No implementation type available on this overload, so the cache falls back to the
+            // interface declarations and only attributes on the contract are visible.
+            RegisterInterface(interfaceType, factory, implementationType: null);
+        }
+
+        public void RegisterInterface(Type interfaceType, Func<IServiceProvider, object> factory, Type? implementationType) {
             RegisteredTypes.AddOrUpdate(interfaceType,
-                type => new ClientInterfaceMethodsCache(factory, type),
-                (type, del) => new ClientInterfaceMethodsCache(factory, type));
+                type => new ClientInterfaceMethodsCache(factory, type, implementationType),
+                (type, del) => new ClientInterfaceMethodsCache(factory, type, implementationType));
         }
 
 
