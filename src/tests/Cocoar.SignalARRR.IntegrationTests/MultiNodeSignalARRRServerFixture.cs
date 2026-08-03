@@ -18,6 +18,27 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         public string ServerUrl1 { get; }
         public string ServerUrl2 { get; }
 
+        /// <summary>Node id of the server behind <see cref="ServerUrl1"/>.</summary>
+        public const string NodeId1 = "node-1";
+
+        /// <summary>Node id of the server behind <see cref="ServerUrl2"/>.</summary>
+        public const string NodeId2 = "node-2";
+
+        /// <summary>
+        /// Connection string of this fixture's Redis instance, so a test can act on the backplane's
+        /// state directly — for instance to make a node look dead while it keeps running.
+        /// </summary>
+        public string RedisConnectionString { get; }
+
+        /// <summary>Key prefix this fixture's nodes use, unique per fixture.</summary>
+        public string ChannelPrefix { get; }
+
+        /// <summary>The key whose presence tells the other nodes that <paramref name="nodeId"/> is alive.</summary>
+        public string HeartbeatKey(string nodeId) => $"{ChannelPrefix}:nodes:{nodeId}:heartbeat";
+
+        /// <summary>The set of connection ids <paramref name="nodeId"/> has registered.</summary>
+        public string NodeConnectionsKey(string nodeId) => $"{ChannelPrefix}:nodes:{nodeId}:connections";
+
         public MultiNodeSignalARRRServerFixture() : this(null, null) {
         }
 
@@ -35,8 +56,11 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var channelPrefix = $"signalarrr-tests-{Guid.NewGuid():N}";
             var connectionString = $"127.0.0.1:{_redisPort},abortConnect=false";
 
-            _server1 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, "node-1", _heartbeatInterval, _nodeTimeout, out var serverUrl1);
-            _server2 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, "node-2", _heartbeatInterval, _nodeTimeout, out var serverUrl2);
+            ChannelPrefix = channelPrefix;
+            RedisConnectionString = connectionString;
+
+            _server1 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId1, _heartbeatInterval, _nodeTimeout, out var serverUrl1);
+            _server2 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId2, _heartbeatInterval, _nodeTimeout, out var serverUrl2);
 
             ServerUrl1 = serverUrl1;
             ServerUrl2 = serverUrl2;

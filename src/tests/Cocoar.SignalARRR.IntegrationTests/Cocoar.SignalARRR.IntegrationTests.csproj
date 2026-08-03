@@ -16,6 +16,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!-- Lets a test act on the backplane's Redis state directly, e.g. expire a node's heartbeat
+         while that node keeps running. -->
+    <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

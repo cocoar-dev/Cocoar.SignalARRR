@@ -26,6 +26,15 @@ namespace Cocoar.SignalARRR.Server {
             _logger = logger;
         }
 
+        /// <summary>
+        /// The connections this node currently serves.
+        /// </summary>
+        /// <remarks>
+        /// Used by the backplane to re-assert its registrations after it was evicted from the
+        /// distributed registry.
+        /// </remarks>
+        public IEnumerable<ClientContext> GetLocalConnections() => _clientManager.GetClients();
+
         public bool HasLocalConnection(string connectionId, Type? hubType) {
             var client = _clientManager.GetClient(connectionId);
             return client != null && (hubType == null || client.HARRRType == hubType);
