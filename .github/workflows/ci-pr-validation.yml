@@ -68,9 +68,14 @@ jobs:
         working-directory: src
         run: dotnet restore Cocoar.SignalARRR.slnx
 
+      # Built without --framework on purpose. The solution contains netstandard2.0-only projects
+      # (the source generator, the .NET Framework client); passing --framework sets TargetFramework
+      # as a global property, which overrides their own TFM and fails with NETSDK1005 because the
+      # restore assets have no such target. The matrix exists to run the *tests* on each runtime,
+      # which the next step still does via --framework.
       - name: Build solution
         working-directory: src
-        run: dotnet build Cocoar.SignalARRR.slnx -c Release --no-restore --framework ${{ steps.tfm.outputs.framework }} -p:Version=${{ steps.gv.outputs.SemVer }} -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
+        run: dotnet build Cocoar.SignalARRR.slnx -c Release --no-restore -p:Version=${{ steps.gv.outputs.SemVer }} -p:AssemblyVersion=${{ steps.gv.outputs.AssemblySemVer }} -p:FileVersion=${{ steps.gv.outputs.AssemblySemFileVer }}
 
       - name: Run tests
         working-directory: src
