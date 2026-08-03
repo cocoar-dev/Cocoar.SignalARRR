@@ -191,6 +191,49 @@ namespace Cocoar.SignalARRR.Server {
 
         }
 
+        /// <summary>
+        /// Closes an open generic method over the type arguments named by the caller.
+        /// </summary>
+        /// <remarks>
+        /// The names come off the wire, so they are validated rather than trusted. Previously they
+        /// went straight into <see cref="MethodInfo.MakeGenericMethod"/>: an unresolvable name became
+        /// a <c>null</c> element and surfaced as an opaque reflection error, a wrong arity produced
+        /// another, and every distinct value-type instantiation permanently JITs native code that is
+        /// never reclaimed — so the caller both chose which type a generic method ran on and could
+        /// grow the process without bound.
+        /// </remarks>
+        private static MethodInfo MakeGenericMethodChecked(MethodInfo methodInfo, IEnumerable<string> genericArguments) {
+
+            if (!methodInfo.IsGenericMethodDefinition) {
+                throw new HARRRException(new ArgumentException(
+                    $"Method '{methodInfo.Name}' is not generic, but {genericArguments.Count()} type argument(s) were supplied."));
+            }
+
+            var expected = methodInfo.GetGenericArguments().Length;
+            var names = genericArguments.ToList();
+
+            if (names.Count != expected) {
+                throw new HARRRException(new ArgumentException(
+                    $"Method '{methodInfo.Name}' expects {expected} type argument(s), but {names.Count} were supplied."));
+            }
+
+            var resolved = new Type[names.Count];
+            for (var i = 0; i < names.Count; i++) {
+                resolved[i] = TypeHelper.FindType(names[i])
+                    ?? throw new HARRRException(new ArgumentException(
+                        $"Type argument '{names[i]}' for method '{methodInfo.Name}' could not be resolved."));
+            }
+
+            try {
+                // Enforces the generic constraints declared on the method; without this any resolvable
+                // type was accepted and the violation only showed up as an obscure failure later.
+                return methodInfo.MakeGenericMethod(resolved);
+            } catch (ArgumentException ex) {
+                throw new HARRRException(new ArgumentException(
+                    $"Type arguments for method '{methodInfo.Name}' do not satisfy its constraints.", ex));
+            }
+        }
+
         public async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments) {
 
             var parameters = BuildExecuteMethodParameters(methodInfo, arguments);
@@ -198,9 +241,7 @@ namespace Cocoar.SignalARRR.Server {
             SetInvokingInstanceProperties(instance);
 
             if (genericArguments?.Any() == true) {
-
-                var arrType = genericArguments.Select(TypeHelper.FindType).ToList();
-                methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray()!);
+                methodInfo = MakeGenericMethodChecked(methodInfo, genericArguments);
             }
 
             if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
