@@ -69,9 +69,14 @@ namespace Cocoar.SignalARRR.Server {
                 throw new UnauthorizedException();
             }
 
+            // Methods declared on the hub run on the hub instance SignalR created for this
+            // invocation. Constructing a second one via ActivatorUtilities bypassed IHubActivator
+            // and any hub filters, re-ran the hub constructor on every message, made state
+            // established in OnConnectedAsync invisible to the method, and leaked: Hub is
+            // IDisposable, but ActivatorUtilities does not register the instance for scope disposal.
             object instance;
             if (methodInformations.MethodInfo.DeclaringType == HARRR.GetType()) {
-                instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
+                instance = HARRR;
             } else {
                 instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType!);
             }
@@ -152,7 +157,7 @@ namespace Cocoar.SignalARRR.Server {
 
             object instance;
             if (methodInformations.MethodInfo.DeclaringType == HARRR.GetType()) {
-                instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
+                instance = HARRR;
             } else {
                 instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType!);
             }
@@ -174,7 +179,7 @@ namespace Cocoar.SignalARRR.Server {
 
             object instance;
             if (invokeInfos.MethodInfo.DeclaringType == HARRR.GetType()) {
-                instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
+                instance = HARRR;
             } else {
                 instance = invokeInfos.Factory.DynamicInvoke(_serviceProvider)!;
             }
@@ -214,9 +219,14 @@ namespace Cocoar.SignalARRR.Server {
 
             object instance;
             if (methodInfo.DeclaringType == HARRR.GetType()) {
-                instance = ActivatorUtilities.CreateInstance(_serviceProvider, HARRR.GetType());
+                instance = HARRR;
             } else {
                 instance = _serviceProvider.GetRequiredService(methodInfo.ReflectedType!);
+            }
+
+            // See SetInvokingInstanceProperties: the hub is already fully populated.
+            if (ReferenceEquals(instance, HARRR)) {
+                return instance;
             }
 
             var reflectInstance = instance.Reflect();
@@ -231,6 +241,13 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private object SetInvokingInstanceProperties(object instance) {
+
+            // The hub already has all of these -- SignalR populated Context/Clients/Groups, and the
+            // ctor wired ClientContext and Logger. Re-setting them reflectively would be five
+            // pointless lookups per message and would replace the hub's own logger.
+            if (ReferenceEquals(instance, HARRR)) {
+                return instance;
+            }
 
             var reflectInstance = instance.Reflect();
             reflectInstance.SetPropertyValue("ClientContext", ClientContext);

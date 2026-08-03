@@ -59,7 +59,11 @@ namespace Cocoar.SignalARRR.Server {
             ServiceProvider = serviceProvider;
 
             ClientManager = serviceProvider.GetRequiredService<IHARRRClientManager>();
-            Logger = NullLogger.Instance;
+
+            // Nothing else ever assigned this, so every Logger.LogError/LogDebug in this class wrote
+            // to NullLogger: invocation failures, connect/disconnect failures and stream write errors
+            // were all invisible unless the consumer happened to set Logger themselves.
+            Logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
             // Get hub-specific method collections registered via AddSignalARRR
             MethodsCollection = serviceProvider.GetKeyedService<ISignalARRRMethodsCollection>(GetType().FullName)

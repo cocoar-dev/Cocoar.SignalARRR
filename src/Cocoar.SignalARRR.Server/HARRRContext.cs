@@ -5,14 +5,17 @@ using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 
 namespace Cocoar.SignalARRR.Server {
     internal class ClientContextDispatcher<T> : IClientContextDispatcher where T : HARRR {
 
         private IHubContext<T> HubContext { get; }
+        private ILogger<ClientContextDispatcher<T>> Logger { get; }
 
-        public ClientContextDispatcher(IHubContext<T> hubContext) {
+        public ClientContextDispatcher(IHubContext<T> hubContext, ILogger<ClientContextDispatcher<T>> logger) {
             HubContext = hubContext;
+            Logger = logger;
         }
 
         public Task<TResult> InvokeClientAsync<TResult>(string clientId, ServerRequestMessage serverRequestMessage, CancellationToken cancellationToken) {
@@ -24,24 +27,31 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public async Task<string> Challenge(string clientId) {
+            var msg = new ServerRequestMessage(MethodNames.ChallengeAuthentication);
+            using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
             try {
-                var msg = new ServerRequestMessage(MethodNames.ChallengeAuthentication);
-                var ct = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 return await InvokeClientMessageAsync<string>(clientId, MethodNames.ChallengeAuthentication, msg, ct.Token);
             } catch (Exception e) {
-                Console.WriteLine(e);
+                // The caller decides what a failed challenge means (it is an authentication
+                // decision), so this only records context and rethrows.
+                Logger.LogDebug(e, "Authentication challenge to client {ConnectionId} failed.", clientId);
                 throw;
             }
         }
 
         public async Task CancelToken(string clientId, Guid id) {
+            var msg = new ServerRequestMessage(MethodNames.CancelTokenFromServer) {
+                CancellationGuid = id
+            };
+
             try {
-                var msg = new ServerRequestMessage(MethodNames.CancelTokenFromServer);
-                msg.CancellationGuid = id;
                 await SendClientMessageAsync(clientId, MethodNames.CancelTokenFromServer, msg, CancellationToken.None);
             } catch (Exception e) {
-                Console.WriteLine(e);
-                throw;
+                // Best effort by design: this is a one-way notification raised from a cancellation
+                // callback, so there is no caller left to handle a rethrow. Failing here normally
+                // just means the client already disconnected -- which is why the token fired.
+                Logger.LogDebug(e, "Could not notify client {ConnectionId} about cancellation of token {TokenId}.", clientId, id);
             }
         }
 
