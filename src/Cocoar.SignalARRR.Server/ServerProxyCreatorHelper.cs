@@ -54,7 +54,10 @@ namespace Cocoar.SignalARRR.Server {
                 var streamRef = await harrrContext.InvokeClientAsync<StreamReference>(_clientContext.Id, msg, cancellationToken);
                 if (streamRef != null && !string.IsNullOrEmpty(streamRef.Uri)) {
                     var streamManager = _clientContext.ServiceProvider.GetRequiredService<ServerPushStreamManager>();
-                    var stream = await streamManager.WaitForUpload(streamRef.Uri, cancellationToken);
+                    var timeout = _clientContext.ServiceProvider.GetService<SignalARRRServerOptions>()?.StreamUploadTimeout
+                        ?? TimeSpan.FromMinutes(2);
+
+                    var stream = await streamManager.WaitForUpload(streamRef.Uri, timeout, cancellationToken);
                     return (T)(object)stream;
                 }
                 return default!;
@@ -107,7 +110,8 @@ namespace Cocoar.SignalARRR.Server {
             }
 
             var serverStreamManager = _clientContext.ServiceProvider.GetRequiredService<ServerStreamManager>();
-            serverStreamManager.CreateStream(streamId);
+            // Only the client this stream was requested from may feed it.
+            serverStreamManager.CreateStream(streamId, _clientContext.Id);
 
             // Send in background — scope must outlive the send
             var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();

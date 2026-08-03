@@ -9,7 +9,7 @@ namespace Cocoar.SignalARRR.Server {
     internal class ServerPushStreamManager : IDisposable {
 
         private readonly ConcurrentDictionary<string, PendingStream> _pendingStreams = new();
-        private readonly ConcurrentDictionary<string, TaskCompletionSource<Stream>> _uploadSlots = new();
+        private readonly ConcurrentDictionary<string, UploadSlot> _uploadSlots = new();
         private readonly Timer _cleanupTimer;
         private readonly TimeSpan _expirationTimeout;
 
@@ -17,7 +17,9 @@ namespace Cocoar.SignalARRR.Server {
 
         public ServerPushStreamManager(TimeSpan expirationTimeout) {
             _expirationTimeout = expirationTimeout;
-            _cleanupTimer = new Timer(_ => CleanupExpired(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+            // The callback must not throw: an unhandled exception on a timer thread takes the process
+            // down, and DisposeStream can fail while flushing a FileStream.
+            _cleanupTimer = new Timer(_ => SafeCleanupExpired(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         }
 
         // --- Download (Server → Client) ---
@@ -51,12 +53,25 @@ namespace Cocoar.SignalARRR.Server {
         /// The client uploads the stream to this URL, and the server awaits it via WaitForUpload.
         /// </summary>
         public string CreateUploadSlot(Uri baseUrl) {
-            var id = Guid.NewGuid().ToString().ToLower();
+            var id = Guid.NewGuid().ToString().ToLowerInvariant();
             var uri = new Uri($"{baseUrl}/upload/{id}");
             var tcs = new TaskCompletionSource<Stream>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _uploadSlots.TryAdd(uri.ToString().ToLower(), tcs);
+            _uploadSlots.TryAdd(Normalize(uri.ToString()), new UploadSlot(tcs, DateTime.UtcNow));
             return uri.ToString();
         }
+
+        /// <summary>
+        /// Indicates whether an upload slot exists, without consuming it.
+        /// </summary>
+        /// <remarks>
+        /// Lets the HTTP endpoint reject an unknown slot <em>before</em> buffering the request body,
+        /// rather than after.
+        /// </remarks>
+        public bool UploadSlotExists(string identifier) => _uploadSlots.ContainsKey(Normalize(identifier));
+
+        // ToLowerInvariant, not ToLower: under a Turkish locale 'I' lowercases to 'ı', so a slot
+        // created on one request could not be found by the next.
+        private static string Normalize(string identifier) => identifier.ToLowerInvariant();
 
         /// <summary>
         /// Called by the upload HTTP endpoint when the client sends the stream data.
@@ -65,10 +80,13 @@ namespace Cocoar.SignalARRR.Server {
         /// then returns StreamReference, then server calls WaitForUpload).
         /// </summary>
         public bool CompleteUpload(string identifier, Stream stream) {
-            if (_uploadSlots.TryGetValue(identifier, out var tcs)) {
-                tcs.TrySetResult(stream);
+            if (_uploadSlots.TryGetValue(Normalize(identifier), out var slot) && slot.Completion.TrySetResult(stream)) {
                 return true;
             }
+
+            // Either the slot is gone (expired, cancelled, already used) or it was completed by a
+            // concurrent upload. Either way nobody will consume this stream, so do not leak it.
+            stream.Dispose();
             return false;
         }
 
@@ -76,23 +94,36 @@ namespace Cocoar.SignalARRR.Server {
         /// Wait for a client to upload a stream to the given upload slot.
         /// Returns immediately if the upload already completed.
         /// </summary>
-        public async Task<Stream> WaitForUpload(string uploadUrl, CancellationToken cancellationToken = default) {
-            var key = uploadUrl.ToLower();
-            if (!_uploadSlots.TryGetValue(key, out var tcs)) {
+        /// <summary>
+        /// Wait for a client to upload a stream to the given upload slot.
+        /// Returns immediately if the upload already completed.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="timeout"/> is not optional by design. This waits on something only the
+        /// client can supply, so without a deadline a client that requests a slot and never uploads
+        /// parks the invocation forever.
+        /// </remarks>
+        public async Task<Stream> WaitForUpload(string uploadUrl, TimeSpan timeout, CancellationToken cancellationToken = default) {
+            var key = Normalize(uploadUrl);
+            if (!_uploadSlots.TryGetValue(key, out var slot)) {
                 throw new InvalidOperationException($"Upload slot not found: {uploadUrl}");
             }
 
-            if (cancellationToken.CanBeCanceled) {
-                cancellationToken.Register(() => {
-                    if (_uploadSlots.TryRemove(key, out var t)) {
-                        t.TrySetCanceled(cancellationToken);
-                    }
-                });
+            try {
+                return timeout > TimeSpan.Zero
+                    ? await slot.Completion.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false)
+                    : await slot.Completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            } catch (TimeoutException) {
+                throw new TimeoutException(
+                    $"The client did not upload to '{uploadUrl}' within {timeout}. " +
+                    $"Adjust {nameof(SignalARRRServerOptions)}.{nameof(SignalARRRServerOptions.StreamUploadTimeout)} if larger uploads are expected.");
+            } finally {
+                // Whatever the outcome, the slot is done. Previously it was only removed on success,
+                // so a cancelled or abandoned wait left it behind for the process lifetime.
+                if (_uploadSlots.TryRemove(key, out var removed)) {
+                    removed.Completion.TrySetCanceled();
+                }
             }
-
-            var stream = await tcs.Task;
-            _uploadSlots.TryRemove(key, out _);
-            return stream;
         }
 
         // --- Cleanup ---
@@ -100,6 +131,14 @@ namespace Cocoar.SignalARRR.Server {
         public void DisposeStream(string identifier) {
             if (_pendingStreams.TryRemove(identifier, out var pending)) {
                 pending.Stream?.Dispose();
+            }
+        }
+
+        private void SafeCleanupExpired() {
+            try {
+                CleanupExpired();
+            } catch {
+                // Never let this escape onto the timer thread — see the constructor.
             }
         }
 
@@ -113,6 +152,18 @@ namespace Cocoar.SignalARRR.Server {
             foreach (var key in expiredDownloads) {
                 DisposeStream(key);
             }
+
+            // Upload slots were never swept: RequestUploadSlot is a plain hub method, so a client
+            // calling it in a loop grew this dictionary without bound for the process lifetime.
+            var expiredUploads = _uploadSlots
+                .Where(kvp => kvp.Value.CreatedAt < cutoff)
+                .Select(kvp => kvp.Key)
+                .ToList();
+            foreach (var key in expiredUploads) {
+                if (_uploadSlots.TryRemove(key, out var slot)) {
+                    slot.Completion.TrySetCanceled();
+                }
+            }
         }
 
         public void Dispose() {
@@ -121,12 +172,14 @@ namespace Cocoar.SignalARRR.Server {
                 DisposeStream(key);
             }
             foreach (var key in _uploadSlots.Keys.ToList()) {
-                if (_uploadSlots.TryRemove(key, out var tcs)) {
-                    tcs.TrySetCanceled();
+                if (_uploadSlots.TryRemove(key, out var slot)) {
+                    slot.Completion.TrySetCanceled();
                 }
             }
         }
 
         private sealed record PendingStream(Stream Stream, DateTime CreatedAt, string? ContentType);
+
+        private sealed record UploadSlot(TaskCompletionSource<Stream> Completion, DateTime CreatedAt);
     }
 }
