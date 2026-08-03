@@ -38,6 +38,33 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public Func<X509Certificate2, bool>? CustomCertificateValidator { get; set; }
 
+        /// <summary>
+        /// How long a server method with a <see cref="System.IO.Stream"/> parameter waits for the
+        /// client to actually upload it. Default: 2 minutes.
+        /// </summary>
+        /// <remarks>
+        /// There was previously no timeout at all, and on the non-streaming invoke path not even a
+        /// cancellation token. A client could request an upload slot, invoke the method and simply
+        /// never upload — parking the invocation indefinitely. Repeated, that exhausts the thread
+        /// pool and the server stops answering anyone.
+        /// </remarks>
+        public TimeSpan StreamUploadTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
+        /// <summary>
+        /// Maximum accepted size of a client-to-server stream upload, in bytes. Default: 100 MB.
+        /// Set to 0 to disable the limit.
+        /// </summary>
+        /// <remarks>
+        /// Uploads are buffered in memory so they can outlive the HTTP request, so an unbounded body
+        /// is an unbounded allocation.
+        /// </remarks>
+        public long MaxUploadSizeBytes { get; set; } = 100L * 1024 * 1024;
+
+        /// <summary>
+        /// How long an unused upload slot is kept before it is swept. Default: 10 minutes.
+        /// </summary>
+        public TimeSpan UploadSlotExpiration { get; set; } = TimeSpan.FromMinutes(10);
+
     }
 
     public class SignalARRRServerOptionsBuilder {
@@ -93,6 +120,31 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public SignalARRRServerOptionsBuilder WithCustomCertificateValidator(Func<X509Certificate2, bool> validator) {
             _options.CustomCertificateValidator = validator;
+            return this;
+        }
+
+        /// <summary>
+        /// Set how long a server method waits for a client to upload a <see cref="System.IO.Stream"/>
+        /// parameter. Default: 2 minutes.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithStreamUploadTimeout(TimeSpan timeout) {
+            _options.StreamUploadTimeout = timeout;
+            return this;
+        }
+
+        /// <summary>
+        /// Set the maximum accepted upload size in bytes. Default: 100 MB. Use 0 to disable.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithMaxUploadSize(long bytes) {
+            _options.MaxUploadSizeBytes = bytes;
+            return this;
+        }
+
+        /// <summary>
+        /// Set how long an unused upload slot is kept before being swept. Default: 10 minutes.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithUploadSlotExpiration(TimeSpan expiration) {
+            _options.UploadSlotExpiration = expiration;
             return this;
         }
 

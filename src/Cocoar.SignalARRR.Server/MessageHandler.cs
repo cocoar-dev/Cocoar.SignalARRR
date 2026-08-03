@@ -111,7 +111,7 @@ namespace Cocoar.SignalARRR.Server {
                 taskType = methodInfo.ReturnType.GenericTypeArguments[0];
             }
 
-            var parameters = BuildExecuteMethodParameters(methodInfo, arguments, cancellationToken);
+            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, cancellationToken).ConfigureAwait(false);
             SetInvokingInstanceProperties(instance);
 
             if (taskType.IsGenericTypeOf(typeof(ChannelReader<>))) {
@@ -236,7 +236,10 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments) {
 
-            var parameters = BuildExecuteMethodParameters(methodInfo, arguments);
+            // ConnectionAborted rather than None: a server method declaring a CancellationToken now
+            // actually observes the client going away, and an upload wait is released with it
+            // instead of running to its timeout.
+            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, HARRR.Context.ConnectionAborted).ConfigureAwait(false);
 
             SetInvokingInstanceProperties(instance);
 
@@ -339,20 +342,38 @@ namespace Cocoar.SignalARRR.Server {
         }
 
 
-        private object[] BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default) {
+        /// <summary>
+        /// Binds the incoming arguments to the method's parameters.
+        /// </summary>
+        /// <remarks>
+        /// Asynchronous because a <see cref="Stream"/> parameter waits for the client to upload it.
+        /// That wait used to be bridged with a blocking <c>RunSync</c>, and on the non-streaming
+        /// invoke path it was handed <see cref="CancellationToken.None"/> with no timeout — so a
+        /// client that requested an upload slot and never uploaded parked a thread pool thread
+        /// permanently. Repeated, that is a remote denial of service against the whole server.
+        /// </remarks>
+        private async Task<object[]> BuildExecuteMethodParametersAsync(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default) {
 
-            int paramsPosition = 0;
-            var @params = parameters.ToList();
-            return methodInfo.GetParameters().Select<ParameterInfo, object>(p => {
+            var @params = parameters as IList<object> ?? parameters.ToList();
+            var methodParameters = methodInfo.GetParameters();
+            var bound = new object[methodParameters.Length];
+
+            var paramsPosition = 0;
+            Common.Serialization.IProtocolSerializer? serializer = null;
+
+            for (var i = 0; i < methodParameters.Length; i++) {
+                var p = methodParameters[i];
 
                 if (p.ParameterType == typeof(CancellationToken)) {
-                    return cancellation;
+                    bound[i] = cancellation;
+                    continue;
                 }
 
                 var fromServices = p.GetCustomAttribute<FromServicesAttribute>();
 
                 if (fromServices != null) {
-                    return _serviceProvider.GetRequiredService(p.ParameterType);
+                    bound[i] = _serviceProvider.GetRequiredService(p.ParameterType);
+                    continue;
                 }
 
                 if (paramsPosition >= @params.Count) {
@@ -362,31 +383,38 @@ namespace Cocoar.SignalARRR.Server {
                 }
 
                 var par = @params[paramsPosition];
-                var serializer = _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>();
+                // Resolved once per message rather than once per parameter.
+                serializer ??= _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>();
 
                 // If the parameter type is Stream, resolve StreamReference via HTTP upload
                 if (typeof(Stream).IsAssignableFrom(p.ParameterType) && par != null) {
                     var streamRef = serializer.TryConvertTo<StreamReference>(par);
                     if (streamRef != null && !string.IsNullOrEmpty(streamRef.Uri)) {
                         var streamManager = _serviceProvider.GetRequiredService<ServerPushStreamManager>();
-                        par = SimpleAsyncHelper.RunSync(() => streamManager.WaitForUpload(streamRef.Uri, cancellation));
+                        var timeout = _serviceProvider.GetService<SignalARRRServerOptions>()?.StreamUploadTimeout
+                            ?? TimeSpan.FromMinutes(2);
+
+                        par = await streamManager
+                            .WaitForUpload(streamRef.Uri, timeout, cancellation)
+                            .ConfigureAwait(false);
                     }
                 } else if (par != null && p.ParameterType != par.GetType()) {
                     try {
                         par = serializer.ConvertTo(par, p.ParameterType)!;
                     } catch (Exception ex) {
+                        // The received value is deliberately not echoed: a credential that fails to
+                        // deserialize would otherwise land in the server log in clear text.
                         throw new ArgumentException(
                             $"Parameter '{p.Name}' (position {paramsPosition}): " +
-                            $"failed to deserialize to {p.ParameterType.Name}. " +
-                            $"Received value: {par}", ex);
+                            $"failed to deserialize {par.GetType().Name} to {p.ParameterType.Name}.", ex);
                     }
                 }
 
+                bound[i] = par!;
                 paramsPosition++;
-                return par!;
+            }
 
-            }).ToArray();
-
+            return bound;
         }
 
 
