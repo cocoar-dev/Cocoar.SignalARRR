@@ -27,6 +27,12 @@ namespace Cocoar.SignalARRR.Server {
         private CancellationTokenSource? _heartbeatCts;
         private Task? _heartbeatTask;
 
+        /// <summary>
+        /// Set once the first heartbeat has been written, so that a missing heartbeat key afterwards
+        /// means this node was evicted rather than that it has not started yet.
+        /// </summary>
+        private bool _heartbeatEstablished;
+
         public RedisSignalARRRBackplane(
             SignalARRRRedisBackplaneOptions options,
             LocalSignalARRRBackplaneDispatcher localDispatcher,
@@ -650,31 +656,107 @@ namespace Cocoar.SignalARRR.Server {
             return await _database.KeyExistsAsync(GetNodeHeartbeatKey(nodeId));
         }
 
+        /// <summary>
+        /// Keeps this node's heartbeat alive and sweeps nodes that stopped heartbeating.
+        /// </summary>
+        /// <remarks>
+        /// Every iteration is guarded. Previously only <see cref="OperationCanceledException"/> was
+        /// caught and the priming calls sat outside the try entirely, so a single transient
+        /// <c>RedisConnectionException</c> — routine during a failover or a one-second network blip —
+        /// ended the loop permanently. Nothing observed the faulted task, so nothing logged it and
+        /// nothing restarted it.
+        /// <para>
+        /// The consequence was not local: once the heartbeat key expired, every other node treated
+        /// this one as dead and deleted all of its connection registrations, while it went on serving
+        /// those very connections. It became invisible cluster-wide, permanently, and only a restart
+        /// recovered it.
+        /// </para>
+        /// </remarks>
         private async Task RunHeartbeatLoopAsync(CancellationToken cancellationToken) {
             if (_database == null) {
                 return;
             }
 
             using var timer = new PeriodicTimer(_options.HeartbeatInterval);
-            await RefreshHeartbeatAsync().ConfigureAwait(false);
-            await SweepStaleNodesAsync(cancellationToken).ConfigureAwait(false);
+
+            await RunHeartbeatIterationAsync(cancellationToken).ConfigureAwait(false);
 
             try {
-                while (await timer.WaitForNextTickAsync(cancellationToken)) {
-                    await RefreshHeartbeatAsync().ConfigureAwait(false);
-                    await SweepStaleNodesAsync(cancellationToken).ConfigureAwait(false);
+                while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false)) {
+                    await RunHeartbeatIterationAsync(cancellationToken).ConfigureAwait(false);
                 }
             } catch (OperationCanceledException) {
+                // Shutdown.
             }
         }
 
-        private async Task RefreshHeartbeatAsync() {
+        private async Task RunHeartbeatIterationAsync(CancellationToken cancellationToken) {
+            try {
+                await RefreshHeartbeatAsync(cancellationToken).ConfigureAwait(false);
+                await SweepStaleNodesAsync(cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                throw;
+            } catch (Exception ex) {
+                // Keep ticking: the next iteration re-registers whatever this one failed to write,
+                // which is what makes a transient Redis outage survivable instead of terminal.
+                _logger.LogError(ex,
+                    "SignalARRR backplane heartbeat iteration failed for node {NodeId}; retrying in {Interval}.",
+                    NodeId, _options.HeartbeatInterval);
+            }
+        }
+
+        /// <summary>
+        /// Refreshes this node's heartbeat, and re-registers its connections if the node had been
+        /// declared dead in the meantime.
+        /// </summary>
+        /// <remarks>
+        /// Registrations were written once at connect time and never re-asserted, while liveness was
+        /// judged solely by another node's view of a TTL key — and the cleanup that follows is
+        /// destructive and irreversible. A stop-the-world GC, thread pool starvation or a partial
+        /// network partition longer than <c>NodeTimeout</c> was therefore enough for another node to
+        /// wipe every registration belonging to this one.
+        /// <para>
+        /// The node then came back, refreshed its heartbeat and looked healthy again — but all of its
+        /// connections were gone from the hub, group, user and attribute indexes, permanently.
+        /// <c>CleanupNodeIfDeadAsync</c> skips the local node, so it could not even repair itself.
+        /// Detecting the eviction and re-registering makes the outcome recoverable instead.
+        /// </para>
+        /// </remarks>
+        private async Task RefreshHeartbeatAsync(CancellationToken cancellationToken = default) {
             if (_database == null) {
                 return;
             }
 
-            await _database.SetAddAsync(GetNodesKey(), NodeId);
-            await _database.StringSetAsync(GetNodeHeartbeatKey(NodeId), "1", _options.NodeTimeout);
+            var wasConsideredDead = _heartbeatEstablished
+                && !await _database.KeyExistsAsync(GetNodeHeartbeatKey(NodeId)).ConfigureAwait(false);
+
+            await _database.SetAddAsync(GetNodesKey(), NodeId).ConfigureAwait(false);
+            await _database.StringSetAsync(GetNodeHeartbeatKey(NodeId), "1", _options.NodeTimeout).ConfigureAwait(false);
+            _heartbeatEstablished = true;
+
+            if (wasConsideredDead) {
+                await ReregisterLocalConnectionsAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        private async Task ReregisterLocalConnectionsAsync(CancellationToken cancellationToken) {
+            var connections = _localDispatcher.GetLocalConnections().ToList();
+
+            _logger.LogWarning(
+                "SignalARRR backplane node {NodeId} lost its heartbeat and was treated as dead; re-registering {ConnectionCount} live connection(s).",
+                NodeId, connections.Count);
+
+            foreach (var client in connections) {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try {
+                    await RegisterConnectionAsync(client, cancellationToken).ConfigureAwait(false);
+                } catch (Exception ex) {
+                    _logger.LogError(ex,
+                        "Could not re-register connection {ConnectionId} for node {NodeId}.",
+                        client.Id, NodeId);
+                }
+            }
         }
 
         private async Task CleanupNodeAsync(string nodeId) {
