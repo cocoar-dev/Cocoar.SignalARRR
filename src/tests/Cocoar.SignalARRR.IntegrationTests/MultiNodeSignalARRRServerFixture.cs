@@ -4,6 +4,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using Cocoar.SignalARRR.TestInfrastructure;
 using Xunit;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
@@ -116,12 +117,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         private static string WaitForUrl(Process process, string urlFile) {
             var deadline = DateTime.UtcNow.AddSeconds(300);
             while (DateTime.UtcNow < deadline) {
-                if (File.Exists(urlFile)) {
-                    var content = File.ReadAllText(urlFile).Trim();
-                    if (!string.IsNullOrEmpty(content)) {
-                        try { File.Delete(urlFile); } catch { }
-                        return content;
-                    }
+                if (ServerUrlFile.TryRead(urlFile, out var content)) {
+                    try { File.Delete(urlFile); } catch { }
+                    return content;
                 }
 
                 if (process.HasExited) {
