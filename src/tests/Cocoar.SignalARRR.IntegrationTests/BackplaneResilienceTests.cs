@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -103,6 +104,83 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                     return results.GetArrayLength() == 1
                         && results[0].GetProperty("value").GetString()!.Contains("after-eviction");
                 }, "the re-registered connection to answer a cluster invoke again", ct);
+            } finally {
+                await connection.DisposeAsync();
+            }
+        }
+
+        /// <summary>
+        /// A cluster query must hand back what it collected even when a node never answers.
+        /// </summary>
+        /// <remarks>
+        /// There is no per-node deadline and no way to force an answer, so one node that is
+        /// restarting, wedged or unable to resolve the types used to make the whole query throw
+        /// after the full <c>InvokeTimeout</c> — discarding the local results and every other node's
+        /// answers along with it. On a five-node cluster with one node mid-restart the caller waited
+        /// fifteen seconds and then got nothing, although four nodes had replied in milliseconds.
+        /// <para>
+        /// Targeting matters here. <c>WithAttribute</c> does not reach this code at all:
+        /// <c>CanUseDirectBackplaneDispatch</c> requires <c>AttributeFilters.Count == 0</c>, so an
+        /// attribute-filtered query resolves connections up front and invokes them one by one,
+        /// without ever entering <c>InvokeQueryAsync</c>'s wait. A first attempt at this test used
+        /// that route and passed against the unfixed code. <c>WithUser</c> alone takes the direct
+        /// dispatch path, which is the one that could time out.
+        /// </para>
+        /// <para>
+        /// Node 2 is killed rather than merely stalled, and <c>NodeTimeout</c> is set far beyond the
+        /// test, so it stays in the registry and the query goes on expecting an answer that can
+        /// never arrive.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task A_cluster_query_returns_partial_results_when_a_node_never_answers() {
+            var invokeTimeout = TimeSpan.FromSeconds(2);
+
+            using var fixture = new MultiNodeSignalARRRServerFixture(
+                Heartbeat, nodeTimeout: TimeSpan.FromMinutes(5), invokeTimeout: invokeTimeout);
+            var ct = TestContext.Current.CancellationToken;
+
+            var connection = HARRRConnection.Create(builder =>
+                builder.WithUrl($"{fixture.ServerUrl1}/signalr/testhub?userId=carol"));
+            connection.RegisterInterface<TestShared.ITestClientMethods, ResilienceProbeClient>(new ResilienceProbeClient());
+            await connection.StartAsync(ct);
+
+            try {
+                await TestHelper.WaitForClientRegistration(fixture.ServerUrl1, connection, ct);
+
+                // Node 1 has to know node 2 before it dies — otherwise the query never waits on it
+                // and the test would prove nothing. This is exactly the state
+                // GetActiveRemoteNodeIdsAsync reads: membership in the node set plus a live
+                // heartbeat key.
+                using var redis = await ConnectionMultiplexer.ConnectAsync(fixture.RedisConnectionString);
+                var db = redis.GetDatabase();
+                await WaitFor(
+                    async () => await db.SetContainsAsync($"{fixture.ChannelPrefix}:nodes", MultiNodeSignalARRRServerFixture.NodeId2)
+                        && await db.KeyExistsAsync(fixture.HeartbeatKey(MultiNodeSignalARRRServerFixture.NodeId2)),
+                    $"node 1 to see '{MultiNodeSignalARRRServerFixture.NodeId2}' as a live peer", ct);
+
+                fixture.KillServer2();
+
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                var started = Stopwatch.StartNew();
+                var response = await http.PostAsync(
+                    $"{fixture.ServerUrl1}/__test/invoke-user-all-getbyid?userId=carol&id=partial", null, ct);
+                started.Stop();
+
+                // Unfixed, this is a 500: InvokeQueryAsync threw TimeoutException and the local
+                // client's answer went down with it.
+                Assert.True(response.IsSuccessStatusCode,
+                    $"Expected partial results, got {(int)response.StatusCode}: {await response.Content.ReadAsStringAsync(ct)}");
+
+                var results = JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(ct));
+                Assert.Equal(1, results.GetArrayLength());
+                Assert.Contains("partial", results[0].GetProperty("value").GetString());
+
+                // The query really did wait out the timeout rather than completing early. Without
+                // this the test would still pass if node 2 had been swept from the registry before
+                // the request, and it would then be covering nothing.
+                Assert.True(started.Elapsed >= invokeTimeout * 0.8,
+                    $"Query returned after {started.Elapsed}, so it never entered the timeout path.");
             } finally {
                 await connection.DisposeAsync();
             }

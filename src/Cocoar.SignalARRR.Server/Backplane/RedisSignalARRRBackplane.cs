@@ -187,7 +187,7 @@ namespace Cocoar.SignalARRR.Server {
             }
 
             var requestId = Guid.NewGuid();
-            var pending = new PendingQueryInvoke(resultType, activeRemoteNodes.Count, singleResult, localResults);
+            var pending = new PendingQueryInvoke(resultType, activeRemoteNodes, singleResult, localResults);
             if (!_pendingQueryInvocations.TryAdd(requestId, pending)) {
                 throw new InvalidOperationException("Could not register backplane query invoke request.");
             }
@@ -212,7 +212,17 @@ namespace Cocoar.SignalARRR.Server {
                 timeoutCts.CancelAfter(_options.InvokeTimeout);
                 return await pending.Completion.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
             } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
-                throw new TimeoutException("Timed out waiting for cluster invoke results.");
+                // Return what did arrive rather than discarding it. There is no per-node deadline and
+                // no way to force an answer, so a single node that is restarting, wedged, or unable
+                // to resolve the types used to make the whole query throw after the full timeout --
+                // taking the local results and every other node's answers down with it. A partial
+                // answer is the honest outcome; the log names who did not reply.
+                _logger.LogWarning(
+                    "Cluster invoke query {RequestId} timed out after {Timeout}; returning partial results. Node(s) that did not respond: {OutstandingNodes}.",
+                    requestId, _options.InvokeTimeout, string.Join(", ", pending.OutstandingNodes));
+
+                pending.CompleteWithPartialResults();
+                return await pending.Completion.Task.ConfigureAwait(false);
             } finally {
                 _pendingQueryInvocations.TryRemove(requestId, out _);
             }
@@ -544,14 +554,26 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private async Task HandleInvokeQueryRequestAsync(SignalARRRBackplaneEnvelope envelope) {
-            var hubType = ResolveType(envelope.HubType);
-            var resultType = ResolveType(envelope.ResultType);
-
-            if (hubType == null || resultType == null || envelope.Message == null || envelope.RequestId == null) {
+            if (envelope.RequestId == null) {
                 return;
             }
 
             try {
+                var hubType = ResolveType(envelope.HubType);
+                var resultType = ResolveType(envelope.ResultType);
+
+                // Inside the try on purpose. This used to return before it, so the finally that
+                // publishes InvokeQueryCompleted never ran and the asking node waited out its full
+                // timeout for an answer that could never come. A node unable to resolve the types --
+                // during a rolling deployment, or when a second application shares the same Redis
+                // and channel prefix -- silently stalled every cluster query.
+                if (hubType == null || resultType == null || envelope.Message == null) {
+                    _logger.LogDebug(
+                        "Ignoring cluster query {RequestId} from node {OriginNodeId}: hub type '{HubType}' or result type '{ResultType}' is unknown here.",
+                        envelope.RequestId, envelope.OriginNodeId, envelope.HubType, envelope.ResultType);
+                    return;
+                }
+
                 var singleResult = string.Equals(envelope.ErrorMessage, "single", StringComparison.Ordinal);
                 var results = singleResult
                     ? await GetLocalSingleInvokeResultAsync(hubType, envelope.TargetKind, envelope.Message, resultType, envelope.GroupName, envelope.UserId, CancellationToken.None).ConfigureAwait(false)
@@ -607,7 +629,9 @@ namespace Cocoar.SignalARRR.Server {
             }
 
             if (_pendingQueryInvocations.TryGetValue(envelope.RequestId.Value, out var pending)) {
-                pending.MarkCompleted();
+                // Attributed to the node that sent it, so an answer from a node this query never
+                // waited on cannot complete it on someone else's behalf.
+                pending.MarkCompleted(envelope.OriginNodeId);
             }
         }
 
@@ -984,10 +1008,20 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
+        /// <summary>
+        /// Tracks the nodes a cluster query is still waiting on.
+        /// </summary>
+        /// <remarks>
+        /// By identity, not by count. The node count was sampled before the request was published, so
+        /// any node that subscribed in that window — routine during scale-out or a rolling restart —
+        /// also received the request and also answered. The extra decrement drove the counter to zero
+        /// early: with two nodes counted and three answering, the query completed after the two
+        /// fastest and silently omitted the third node's clients. A successful-looking result with
+        /// missing entries is worse than a timeout, because nothing indicates it happened.
+        /// </remarks>
         private sealed class PendingQueryInvoke {
             private readonly bool _singleResult;
-            private int _remainingNodes;
-            private int _completed;
+            private readonly HashSet<string> _outstandingNodes;
             private readonly List<SignalARRRBackplaneInvokeResult> _results;
             private readonly object _syncRoot = new object();
 
@@ -995,16 +1029,25 @@ namespace Cocoar.SignalARRR.Server {
             public TaskCompletionSource<IReadOnlyList<SignalARRRBackplaneInvokeResult>> Completion { get; }
                 = new TaskCompletionSource<IReadOnlyList<SignalARRRBackplaneInvokeResult>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            public PendingQueryInvoke(Type resultType, int remainingNodes, bool singleResult, IReadOnlyList<SignalARRRBackplaneInvokeResult> initialResults) {
+            public PendingQueryInvoke(Type resultType, IEnumerable<string> expectedNodes, bool singleResult, IReadOnlyList<SignalARRRBackplaneInvokeResult> initialResults) {
                 ResultType = resultType;
-                _remainingNodes = remainingNodes;
+                _outstandingNodes = new HashSet<string>(expectedNodes, StringComparer.Ordinal);
                 _singleResult = singleResult;
                 _results = new List<SignalARRRBackplaneInvokeResult>(initialResults);
 
                 if (_singleResult && _results.Count > 0) {
                     Completion.TrySetResult(new[] { _results[0] });
-                } else if (_remainingNodes == 0) {
-                    Completion.TrySetResult(_results);
+                } else if (_outstandingNodes.Count == 0) {
+                    Completion.TrySetResult(Snapshot());
+                }
+            }
+
+            /// <summary>The nodes that have not answered yet.</summary>
+            public IReadOnlyCollection<string> OutstandingNodes {
+                get {
+                    lock (_syncRoot) {
+                        return _outstandingNodes.ToArray();
+                    }
                 }
             }
 
@@ -1017,21 +1060,42 @@ namespace Cocoar.SignalARRR.Server {
                 }
             }
 
-            public void MarkCompleted() {
-                if (Interlocked.Decrement(ref _remainingNodes) > 0) {
-                    return;
-                }
+            /// <summary>
+            /// Records that <paramref name="nodeId"/> has finished. Unknown nodes are ignored, so a
+            /// late subscriber cannot complete the query on another node's behalf.
+            /// </summary>
+            public void MarkCompleted(string? nodeId) {
+                lock (_syncRoot) {
+                    if (nodeId == null || !_outstandingNodes.Remove(nodeId) || _outstandingNodes.Count > 0) {
+                        return;
+                    }
 
-                if (Interlocked.Exchange(ref _completed, 1) == 1) {
-                    return;
+                    Completion.TrySetResult(_singleResult && _results.Count > 0
+                        ? new[] { _results[0] }
+                        : Snapshot());
                 }
+            }
 
+            /// <summary>
+            /// Completes with what has arrived so far, for the case where some node never answers.
+            /// </summary>
+            public void CompleteWithPartialResults() {
                 lock (_syncRoot) {
                     Completion.TrySetResult(_singleResult && _results.Count > 0
                         ? new[] { _results[0] }
-                        : _results);
+                        : Snapshot());
                 }
             }
+
+            /// <summary>
+            /// Copies the results before handing them out.
+            /// </summary>
+            /// <remarks>
+            /// The live list used to be returned directly while <see cref="TryAddResult"/> kept
+            /// mutating it, so a straggler arriving as the caller enumerated threw
+            /// "Collection was modified".
+            /// </remarks>
+            private IReadOnlyList<SignalARRRBackplaneInvokeResult> Snapshot() => _results.ToArray();
         }
     }
 }
