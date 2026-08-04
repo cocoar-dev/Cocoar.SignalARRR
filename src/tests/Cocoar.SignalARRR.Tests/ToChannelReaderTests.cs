@@ -60,7 +60,7 @@ public class ToChannelReaderTests {
         var received = new List<int>();
 
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(async () => {
-            await foreach (var item in reader.ReadAllAsync().WithCancellation(Timeout(TimeSpan.FromSeconds(10)))) {
+            await foreach (var item in reader.ReadAllAsync().WithCancellation(Timeout(TimeSpan.FromSeconds(20)))) {
                 received.Add(item);
             }
         });
@@ -82,7 +82,7 @@ public class ToChannelReaderTests {
 
         var received = new List<int>();
         try {
-            await foreach (var item in reader.ReadAllAsync().WithCancellation(Timeout(TimeSpan.FromSeconds(10)))) {
+            await foreach (var item in reader.ReadAllAsync().WithCancellation(Timeout(TimeSpan.FromSeconds(20)))) {
                 received.Add(item);
             }
         } catch (OperationCanceledException) {
@@ -104,18 +104,33 @@ public class ToChannelReaderTests {
         using var cts = new CancellationTokenSource();
         var reader = new Bridge().ToChannelReader(Forever(), cts.Token);
 
-        await reader.ReadAsync(Timeout(TimeSpan.FromSeconds(10)));
+        await reader.ReadAsync(Timeout(TimeSpan.FromSeconds(20)));
         cts.Cancel();
 
         // Asserted on Completion, not by enumerating: an enumeration guarded by a timeout token
         // throws OperationCanceledException when the producer stops *and* when it never does, so it
         // is satisfied by the very hang this covers. The channel reaching a completed state at all
         // is the thing that distinguishes the two.
-        var finished = await Task.WhenAny(reader.Completion, Task.Delay(TimeSpan.FromSeconds(5)));
+        var completion = reader.Completion;
+        await Task.WhenAny(completion, Task.Delay(TimeSpan.FromSeconds(15)));
 
-        Assert.True(ReferenceEquals(finished, reader.Completion),
+        Assert.True(completion.IsCompleted,
             "The channel never completed, so the producer was still running after cancellation.");
     }
 
-    private static CancellationToken Timeout(TimeSpan after) => new CancellationTokenSource(after).Token;
+    /// <summary>
+    /// A token that trips after <paramref name="after"/>, used to turn a hang into a failure.
+    /// </summary>
+    /// <remarks>
+    /// The sources are rooted deliberately. An undisposed <see cref="CancellationTokenSource"/> with
+    /// a timer is collectable once nothing references it, and a collected one never fires — so the
+    /// hang this is meant to catch would simply wait forever instead.
+    /// </remarks>
+    private readonly List<CancellationTokenSource> _timeouts = new();
+
+    private CancellationToken Timeout(TimeSpan after) {
+        var cts = new CancellationTokenSource(after);
+        _timeouts.Add(cts);
+        return cts.Token;
+    }
 }

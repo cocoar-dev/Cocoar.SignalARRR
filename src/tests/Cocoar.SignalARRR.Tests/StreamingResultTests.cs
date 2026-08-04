@@ -23,7 +23,7 @@ namespace Cocoar.SignalARRR.Tests;
 public class StreamingResultTests {
 
     /// <summary>How long a still-running stream is given before it counts as not cancellable.</summary>
-    private static readonly TimeSpan Grace = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan Grace = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// A stand-in for the per-item authorization check, which is not what these tests are about.
@@ -99,17 +99,33 @@ public class StreamingResultTests {
     [Fact]
     public async Task A_channel_source_observes_the_stream_token() {
         var channel = Channel.CreateUnbounded<int>();
-        _ = Task.Run(async () => {
-            var i = 0;
-            while (await channel.Writer.WaitToWriteAsync()) {
-                await channel.Writer.WriteAsync(i++);
-                await Task.Delay(5);
+
+        // The producer is bounded and completed at the end. An endless one outlives the test: it
+        // keeps a thread pool item and an unbounded channel growing for the whole run, and on a
+        // two-core CI runner that is enough to starve unrelated tests out of their timing windows.
+        using var producerStopped = new CancellationTokenSource();
+        var producer = Task.Run(async () => {
+            try {
+                var i = 0;
+                while (!producerStopped.IsCancellationRequested) {
+                    await channel.Writer.WriteAsync(i++, producerStopped.Token);
+                    await Task.Delay(5, producerStopped.Token);
+                }
+            } catch (OperationCanceledException) {
+                // expected on teardown
+            } finally {
+                channel.Writer.TryComplete();
             }
-        });
+        }, CancellationToken.None);
 
-        var streamingResult = new StreamingResult<int>(channel.Reader, UnauthenticatedContext(), UnrestrictedMethod());
+        try {
+            var streamingResult = new StreamingResult<int>(channel.Reader, UnauthenticatedContext(), UnrestrictedMethod());
 
-        Assert.True(await StopsWhenCancelled(streamingResult),
-            "The stream kept running after cancellation, so the token never reached the channel reader.");
+            Assert.True(await StopsWhenCancelled(streamingResult),
+                "The stream kept running after cancellation, so the token never reached the channel reader.");
+        } finally {
+            producerStopped.Cancel();
+            await producer;
+        }
     }
 }
