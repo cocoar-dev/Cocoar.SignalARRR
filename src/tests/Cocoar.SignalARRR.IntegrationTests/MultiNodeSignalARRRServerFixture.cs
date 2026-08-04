@@ -46,9 +46,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         internal MultiNodeSignalARRRServerFixture(TimeSpan? heartbeatInterval, TimeSpan? nodeTimeout) {
             _heartbeatInterval = heartbeatInterval;
             _nodeTimeout = nodeTimeout;
-            _redisPort = GetFreePort();
             _redisContainerName = $"signalarrr-redis-{Guid.NewGuid():N}";
-            StartRedisContainer(_redisContainerName, _redisPort);
+            _redisPort = StartRedisContainer(_redisContainerName);
             WaitForPort(_redisPort);
 
             var tfm = $"net{Environment.Version.Major}.0";
@@ -134,19 +133,62 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             throw new TimeoutException("IntegrationTestServer did not start within 300 seconds.");
         }
 
-        private static int GetFreePort() {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
-        }
-
-        private static void StartRedisContainer(string containerName, int hostPort) {
+        /// <summary>
+        /// Starts this fixture's Redis container and returns the host port it was bound to.
+        /// </summary>
+        /// <remarks>
+        /// Docker picks the host port, and the container is asked afterwards which one it got. The
+        /// fixture used to pick it itself by opening a <see cref="TcpListener"/> on port 0, reading
+        /// the assigned number and closing the listener again — which reserves nothing. Between that
+        /// close and Docker's bind the port can be taken by anything, including another fixture doing
+        /// the very same thing, and the container then fails with "port is already allocated".
+        /// <para>
+        /// The window is not always small: <c>docker run</c> pulls the image first if it is not
+        /// cached, so on a cold runner several seconds pass between the port being chosen and being
+        /// bound. Letting Docker allocate removes the window entirely rather than narrowing it.
+        /// </para>
+        /// </remarks>
+        private static int StartRedisContainer(string containerName) {
             StopRedisContainer(containerName);
 
+            // An empty host port means "Docker, choose one" -- it binds and reserves atomically.
+            var (exitCode, _, stderr) = RunDocker($"run -d --name {containerName} -p 127.0.0.1::6379 redis:7-alpine");
+            if (exitCode != 0) {
+                throw new InvalidOperationException($"Could not start Redis container: {stderr}");
+            }
+
+            var (portExit, portOutput, portError) = RunDocker($"port {containerName} 6379/tcp");
+            if (portExit != 0) {
+                throw new InvalidOperationException($"Could not read the Redis container's host port: {portError}");
+            }
+
+            // One line per binding, "127.0.0.1:49153". Take the first and keep only the port.
+            var lines = portOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            var firstLine = lines.Length > 0 ? lines[0].Trim() : null;
+
+            var separator = firstLine?.LastIndexOf(':') ?? -1;
+            if (separator < 0 || !int.TryParse(firstLine!.Substring(separator + 1), out var hostPort)) {
+                throw new InvalidOperationException(
+                    $"Could not parse the Redis container's host port from '{portOutput}'.");
+            }
+
+            return hostPort;
+        }
+
+        /// <summary>
+        /// Runs a docker command and returns its exit code and captured output.
+        /// </summary>
+        /// <remarks>
+        /// Both streams are drained before waiting. With redirected pipes and nothing reading them, a
+        /// child that outruns the pipe buffer blocks on write while the parent blocks in
+        /// <see cref="Process.WaitForExit()"/> — and an uncached <c>docker run</c> emits a full image
+        /// pull log, which is more than enough to get there.
+        /// </remarks>
+        private static (int ExitCode, string StandardOutput, string StandardError) RunDocker(string arguments) {
             using var process = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = "docker",
-                    Arguments = $"run -d --name {containerName} -p {hostPort}:6379 redis:7-alpine",
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -155,11 +197,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             };
 
             process.Start();
+
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
             process.WaitForExit();
 
-            if (process.ExitCode != 0) {
-                throw new InvalidOperationException($"Could not start Redis container: {process.StandardError.ReadToEnd()}");
-            }
+            return (process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult());
         }
 
         private static void WaitForPort(int port) {
@@ -181,19 +224,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         private static void StopRedisContainer(string containerName) {
-            using var process = new Process {
-                StartInfo = new ProcessStartInfo {
-                    FileName = "docker",
-                    Arguments = $"rm -f {containerName}",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            process.WaitForExit();
+            // Failure is fine and expected on the pre-start call: there is nothing to remove yet.
+            RunDocker($"rm -f {containerName}");
         }
 
         private static void StopProcess(Process? process) {
