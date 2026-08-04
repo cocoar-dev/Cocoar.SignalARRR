@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.Reflectensions;
 using Cocoar.SignalARRR.Common;
+using Cocoar.SignalARRR.Common.Helper;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
@@ -113,7 +114,7 @@ namespace Cocoar.SignalARRR.Server {
                 OriginNodeId = NodeId,
                 TargetNodeId = targetNodeId,
                 Kind = SignalARRRBackplaneEnvelopeKind.Dispatch,
-                HubType = hubType?.AssemblyQualifiedName ?? hubType?.FullName ?? string.Empty,
+                HubType = hubType == null ? string.Empty : WireTypeName.From(hubType),
                 TargetKind = targetKind,
                 ConnectionIds = connectionIds == null ? Array.Empty<string>() : new List<string>(connectionIds).ToArray(),
                 GroupName = groupName,
@@ -143,12 +144,12 @@ namespace Cocoar.SignalARRR.Server {
                 OriginNodeId = NodeId,
                 TargetNodeId = routing.NodeId,
                 Kind = SignalARRRBackplaneEnvelopeKind.InvokeRequest,
-                HubType = hubType?.AssemblyQualifiedName ?? hubType?.FullName ?? string.Empty,
+                HubType = hubType == null ? string.Empty : WireTypeName.From(hubType),
                 TargetKind = SignalARRRBackplaneTargetKind.Connections,
                 ConnectionIds = new[] { connectionId },
                 Message = message,
                 RequestId = requestId,
-                ResultType = resultType.AssemblyQualifiedName
+                ResultType = WireTypeName.From(resultType)
             };
 
             try {
@@ -195,13 +196,13 @@ namespace Cocoar.SignalARRR.Server {
             var envelope = new SignalARRRBackplaneEnvelope {
                 OriginNodeId = NodeId,
                 Kind = SignalARRRBackplaneEnvelopeKind.InvokeQueryRequest,
-                HubType = hubType.AssemblyQualifiedName ?? hubType.FullName ?? string.Empty,
+                HubType = WireTypeName.From(hubType),
                 TargetKind = targetKind,
                 GroupName = groupName,
                 UserId = userId,
                 Message = message,
                 RequestId = requestId,
-                ResultType = resultType.AssemblyQualifiedName,
+                ResultType = WireTypeName.From(resultType),
                 ErrorMessage = singleResult ? "single" : null
             };
 
@@ -241,7 +242,7 @@ namespace Cocoar.SignalARRR.Server {
                 OriginNodeId = NodeId,
                 TargetNodeId = routing.NodeId,
                 Kind = SignalARRRBackplaneEnvelopeKind.GroupCommand,
-                HubType = hubType?.AssemblyQualifiedName ?? hubType?.FullName ?? string.Empty,
+                HubType = hubType == null ? string.Empty : WireTypeName.From(hubType),
                 ConnectionIds = new[] { connectionId },
                 GroupName = groupName,
                 GroupAction = action
@@ -258,7 +259,7 @@ namespace Cocoar.SignalARRR.Server {
             var registration = new SignalARRRConnectionRegistration {
                 ConnectionId = clientContext.Id,
                 NodeId = NodeId,
-                HubType = clientContext.HARRRType.AssemblyQualifiedName ?? clientContext.HARRRType.FullName ?? string.Empty,
+                HubType = WireTypeName.From(clientContext.HARRRType),
                 UserId = clientContext.UserIdentifier,
                 Groups = clientContext.Groups.ToArray(),
                 Attributes = clientContext.Attributes
@@ -322,7 +323,7 @@ namespace Cocoar.SignalARRR.Server {
                 return Array.Empty<SignalARRRConnectionRegistration>();
             }
 
-            var hubTypeName = hubType.AssemblyQualifiedName ?? hubType.FullName ?? string.Empty;
+            var hubTypeName = WireTypeName.From(hubType);
             var indexKeys = new List<RedisKey> { GetHubConnectionsKey(hubTypeName) };
             if (!string.IsNullOrWhiteSpace(groupName)) {
                 indexKeys.Add(GetGroupConnectionsKey(hubTypeName, groupName));
@@ -656,7 +657,7 @@ namespace Cocoar.SignalARRR.Server {
         private string GetAttributeConnectionsKey(string hubType, string attributeKey) => $"{_options.ChannelPrefix}:hub:{hubType}:attributes:{NormalizeAttributeKey(attributeKey)}:connections";
 
         private static Type? ResolveType(string? typeName) {
-            return string.IsNullOrWhiteSpace(typeName) ? null : Type.GetType(typeName, throwOnError: false);
+            return WireTypeName.Resolve(typeName);
         }
 
         private async Task<SignalARRRConnectionRegistration> ResolveConnectionOrThrowAsync(IReadOnlyList<string>? connectionIds) {
