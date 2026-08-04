@@ -48,6 +48,7 @@ that are server infrastructure rather than application-facing API.
 
 ### Changed
 
+- **Version-qualified type names split a cluster during a rolling deployment**: the backplane put `AssemblyQualifiedName` on the wire and resolved it with `Type.GetType`, which binds on the full assembly identity — name, version, culture and public key token. A node one build ahead or behind therefore resolved its peers' hub and result types to `null`, silently. Worse, the same string is interpolated into the Redis index keys (`{prefix}:hub:{type}:connections` and the group, user and attribute equivalents) and compared ordinally, so two versions wrote into disjoint keyspaces and filtered each other's registrations out — a cluster quietly split in two, with no resolution failure to point at. Names are now written without build identity and resolved by partial assembly name. Note that plain `FullName` would not have sufficed: for a closed generic it still embeds the fully qualified name of each type argument, version included, so every generic result type would have stayed broken.
 - **BREAKING — `MethodInfoExtensions.GetAuthorizeData()`** returns `IReadOnlyList<IAuthorizeData>` instead of `List<AuthorizeAttribute>`. Required to honour custom authorization attributes at all. A `GetAuthorizationPlan()` extension is also available, exposing the resolved `[AllowAnonymous]` state alongside the authorization data.
 - **BREAKING — `ServerStreamManager`**: `CreateStream` and `CompleteStream` take the owning connection id, and `WriteItem` became `WriteItemAsync`. The buffer is now bounded (1024 items by default) and the write is awaited, so a full buffer throttles that connection instead of allowing unbounded growth.
 - **BREAKING — `ServerPushStreamManager.WaitForUpload`** requires a timeout. It waits on something only the client can supply, so a caller has to state a deadline.
@@ -59,7 +60,7 @@ that are server infrastructure rather than application-facing API.
 ### Added
 
 - **`SignalARRRServerOptions.StreamUploadTimeout`** (default 2 minutes), **`MaxUploadSizeBytes`** (default 100 MB) and **`UploadSlotExpiration`** (default 10 minutes), with matching `WithStreamUploadTimeout`, `WithMaxUploadSize` and `WithUploadSlotExpiration` builder methods.
-- **Regression tests**: coverage for endpoint registration, authorization metadata resolution, transport credential classification, interface name resolution, upload slot lifetime and stream ownership, plus cluster resilience (a node evicted while still serving connections, and a cluster query whose peer never answers) and the test fixtures' own infrastructure: the server-URL handshake and the transport-auth debug endpoints. The suite grew from 98 to 202 tests.
+- **Regression tests**: coverage for endpoint registration, authorization metadata resolution, transport credential classification, interface name resolution, upload slot lifetime and stream ownership, plus cluster resilience (a node evicted while still serving connections, and a cluster query whose peer never answers) and the test fixtures' own infrastructure: the server-URL handshake and the transport-auth debug endpoints. The suite grew from 98 to 223 tests.
 
 ### Fixed (build and CI)
 
