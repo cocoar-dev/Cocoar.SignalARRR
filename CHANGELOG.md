@@ -59,7 +59,7 @@ that are server infrastructure rather than application-facing API.
 ### Added
 
 - **`SignalARRRServerOptions.StreamUploadTimeout`** (default 2 minutes), **`MaxUploadSizeBytes`** (default 100 MB) and **`UploadSlotExpiration`** (default 10 minutes), with matching `WithStreamUploadTimeout`, `WithMaxUploadSize` and `WithUploadSlotExpiration` builder methods.
-- **Regression tests**: coverage for endpoint registration, authorization metadata resolution, transport credential classification, interface name resolution, upload slot lifetime and stream ownership, plus cluster resilience (a node evicted while still serving connections, and a cluster query whose peer never answers) and the fixtures' own server-URL handshake. The suite grew from 98 to 198 tests.
+- **Regression tests**: coverage for endpoint registration, authorization metadata resolution, transport credential classification, interface name resolution, upload slot lifetime and stream ownership, plus cluster resilience (a node evicted while still serving connections, and a cluster query whose peer never answers) and the test fixtures' own infrastructure: the server-URL handshake and the transport-auth debug endpoints. The suite grew from 98 to 202 tests.
 
 ### Fixed (build and CI)
 
