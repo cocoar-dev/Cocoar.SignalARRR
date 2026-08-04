@@ -26,18 +26,42 @@ namespace Cocoar.SignalARRR.Common {
         /// and every interface-routed call was evaluated as unrestricted unless the attribute
         /// happened to sit on the contract. Storing the implementation lets attributes on both
         /// sides be honoured.
+        /// <para>
+        /// Inherited contract members are included too. <c>GetMethods</c> behaves differently on
+        /// interfaces than on classes: it returns only what the interface declares, never what it
+        /// inherits. The source generator walks <c>AllInterfaces</c>, so the proxy for
+        /// <c>IDerived : IBase</c> does implement <c>IBase</c>'s methods and tags them
+        /// <c>Ns.IDerived|BaseMethod</c> — a name nothing registered, so every call to an inherited
+        /// member ended in "Method 'BaseMethod' not found!", with no hint that inheritance was why.
+        /// </para>
+        /// <para>
+        /// Two base interfaces declaring the same name still collide silently: the lookup is keyed
+        /// on the name alone, which is the overload collision (F-6) and is addressed separately.
+        /// </para>
         /// </remarks>
         public ClientInterfaceMethodsCache(Delegate factory, Type interfaceType, Type? implementationType) {
 
             Factory = factory;
 
-            var methods = interfaceType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance;
 
-            foreach (var methodInfo in methods) {
-                var target = ResolveImplementation(interfaceType, implementationType, methodInfo) ?? methodInfo;
+            foreach (var methodInfo in interfaceType.GetMethods(flags)) {
+                var target = Resolve(interfaceType, implementationType, methodInfo);
                 Methods.AddOrUpdate(methodInfo.Name, target, (s, info) => target);
             }
+
+            // Inherited members are added only where the registered interface does not already
+            // declare that name, so registering IDerived cannot change what one of its own members
+            // means. Deliberately TryAdd rather than AddOrUpdate.
+            foreach (var baseInterface in interfaceType.GetInterfaces()) {
+                foreach (var methodInfo in baseInterface.GetMethods(flags)) {
+                    Methods.TryAdd(methodInfo.Name, Resolve(baseInterface, implementationType, methodInfo));
+                }
+            }
         }
+
+        private static MethodInfo Resolve(Type declaringInterface, Type? implementationType, MethodInfo methodInfo)
+            => ResolveImplementation(declaringInterface, implementationType, methodInfo) ?? methodInfo;
 
         private static MethodInfo? ResolveImplementation(Type interfaceType, Type? implementationType, MethodInfo interfaceMethod) {
 

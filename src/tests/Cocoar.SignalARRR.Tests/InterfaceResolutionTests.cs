@@ -115,6 +115,60 @@ public class InterfaceResolutionTests {
         Assert.Throws<Exception>(() =>
             collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|NoSuchMethod"));
     }
+
+    /// <summary>
+    /// A member the contract inherits is callable, not just the ones it declares itself.
+    /// </summary>
+    /// <remarks>
+    /// <c>GetMethods</c> on an interface returns only declared members — unlike on a class, where it
+    /// walks the base chain. The source generator does walk <c>AllInterfaces</c>, so the proxy for
+    /// <c>IDerived : IBase</c> implements <c>IBase</c>'s members and puts them on the wire as
+    /// <c>Ns.IDerived|BaseMethod</c>. Nothing had registered that name, so the call ended in
+    /// "Method 'BaseMethod' not found!" — every time, with nothing pointing at inheritance.
+    /// </remarks>
+    [Fact]
+    public void An_inherited_contract_member_resolves() {
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IDerivedProbe), typeof(DerivedProbe));
+
+        var (_, methodInfo) = collection.GetInvokeInformation(
+            $"{typeof(IDerivedProbe).FullName}|{nameof(IBaseProbe.BaseMethod)}");
+
+        Assert.Equal(nameof(IBaseProbe.BaseMethod), methodInfo.Name);
+    }
+
+    /// <summary>
+    /// The inherited member still resolves to the implementation, so its attributes are visible.
+    /// </summary>
+    /// <remarks>
+    /// Same reasoning as for declared members: authorization is evaluated on the stored
+    /// <c>MethodInfo</c>, and virtual dispatch runs the implementation either way.
+    /// </remarks>
+    [Fact]
+    public void An_inherited_member_resolves_to_the_implementation() {
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IDerivedProbe), typeof(DerivedProbe));
+
+        var (_, methodInfo) = collection.GetInvokeInformation(
+            $"{typeof(IDerivedProbe).FullName}|{nameof(IBaseProbe.BaseMethod)}");
+
+        Assert.Equal(typeof(DerivedProbe), methodInfo.DeclaringType);
+    }
+
+    /// <summary>
+    /// Picking up inherited members must not disturb the ones the contract declares itself.
+    /// </summary>
+    [Fact]
+    public void A_declared_member_still_resolves_when_the_contract_also_inherits() {
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IDerivedProbe), typeof(DerivedProbe));
+
+        var (_, methodInfo) = collection.GetInvokeInformation(
+            $"{typeof(IDerivedProbe).FullName}|{nameof(IDerivedProbe.DerivedMethod)}");
+
+        Assert.Equal(nameof(IDerivedProbe.DerivedMethod), methodInfo.Name);
+        Assert.Equal(typeof(DerivedProbe), methodInfo.DeclaringType);
+    }
 }
 
 /// <summary>Covers the bounded, success-only resolution cache.</summary>
@@ -153,4 +207,17 @@ public interface IResolutionProbe {
 
 public class ResolutionProbe : IResolutionProbe {
     public Task Ping() => Task.CompletedTask;
+}
+
+public interface IBaseProbe {
+    Task BaseMethod();
+}
+
+public interface IDerivedProbe : IBaseProbe {
+    Task DerivedMethod();
+}
+
+public class DerivedProbe : IDerivedProbe {
+    public Task BaseMethod() => Task.CompletedTask;
+    public Task DerivedMethod() => Task.CompletedTask;
 }
