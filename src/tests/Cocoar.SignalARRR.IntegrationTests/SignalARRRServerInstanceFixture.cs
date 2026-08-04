@@ -54,15 +54,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             // Wait for server to write its URL (up to 300s for first build + start)
             var deadline = DateTime.UtcNow.AddSeconds(300);
             while (DateTime.UtcNow < deadline) {
-                if (File.Exists(urlFile)) {
-                    var content = File.ReadAllText(urlFile).Trim();
-                    if (!string.IsNullOrEmpty(content)) {
-                        ServerUrl = content;
-                        startStopwatch.Stop();
-                        WriteDiagnostics($"fixture server-ready url={ServerUrl} elapsedMs={startStopwatch.ElapsedMilliseconds}");
-                        try { File.Delete(urlFile); } catch { }
-                        return;
-                    }
+                if (ServerUrlFile.TryRead(urlFile, out var content)) {
+                    ServerUrl = content;
+                    startStopwatch.Stop();
+                    WriteDiagnostics($"fixture server-ready url={ServerUrl} elapsedMs={startStopwatch.ElapsedMilliseconds}");
+                    try { File.Delete(urlFile); } catch { }
+                    return;
                 }
                 if (_serverProcess.HasExited) {
                     var stderr = _serverProcess.StandardError.ReadToEnd();

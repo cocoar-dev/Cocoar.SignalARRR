@@ -41,6 +41,8 @@ that are server infrastructure rather than application-facing API.
 - **A deserialization failure could put a credential in the log in clear text**: the error message echoed the received value verbatim. It now names the types involved instead.
 - **The cleanup timer callback could terminate the process**: an unhandled exception on a timer thread is fatal, and disposing a stream during the sweep can throw.
 - **Stream and upload keys were lowercased with the current culture**: under a Turkish locale `I` lowercases to `ı`, so a slot created by one request could not be found by the next. Now `ToLowerInvariant`.
+- **A transient Redis error ended the backplane heartbeat permanently**: the heartbeat loop caught only `OperationCanceledException`, and the priming calls sat outside the `try` entirely, so a single `RedisConnectionException` — routine during a failover or a one-second network blip — ended the loop for good. Nothing observed the faulted task, so nothing logged it and nothing restarted it. The consequence was not local: once the heartbeat key expired, every *other* node treated this one as dead and deleted all of its connection registrations while it went on serving those very connections. It became invisible cluster-wide until restarted. Every iteration is now guarded and the loop keeps ticking.
+- **A node evicted from the registry could not recover**: registrations were written once at connect time and never re-asserted, while liveness was judged solely by another node's view of a TTL key — and the cleanup that follows is destructive. A stop-the-world GC, thread pool starvation or a partial network partition longer than `NodeTimeout` was enough for another node to wipe every registration belonging to this one. The node then refreshed its heartbeat and looked healthy again, but all of its connections were gone from the hub, group, user and attribute indexes permanently; `CleanupNodeIfDeadAsync` skips the local node, so it could not even repair itself. A node now detects that its own heartbeat key had vanished and re-registers its live connections.
 
 ### Changed
 
@@ -55,7 +57,7 @@ that are server infrastructure rather than application-facing API.
 ### Added
 
 - **`SignalARRRServerOptions.StreamUploadTimeout`** (default 2 minutes), **`MaxUploadSizeBytes`** (default 100 MB) and **`UploadSlotExpiration`** (default 10 minutes), with matching `WithStreamUploadTimeout`, `WithMaxUploadSize` and `WithUploadSlotExpiration` builder methods.
-- **Regression tests**: coverage for endpoint registration, authorization metadata resolution, transport credential classification, interface name resolution, upload slot lifetime and stream ownership. The suite grew from 98 to 192 tests.
+- **Regression tests**: coverage for endpoint registration, authorization metadata resolution, transport credential classification, interface name resolution, upload slot lifetime and stream ownership, plus cluster resilience (a node evicted while still serving connections) and the fixtures' own server-URL handshake. The suite grew from 98 to 197 tests.
 
 ### Fixed (build and CI)
 
