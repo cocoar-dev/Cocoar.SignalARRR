@@ -2,7 +2,10 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace Cocoar.SignalARRR.IntegrationTests {
+// Deliberately in a neutral namespace and linked into the FullFramework test project as well:
+// all three fixtures that start an IntegrationTestServer share this handshake, and duplicating the
+// guard is how one of them ends up fixed and the others do not.
+namespace Cocoar.SignalARRR.TestInfrastructure {
 
     /// <summary>
     /// Reads the file the <c>IntegrationTestServer</c> publishes its listening URL to.

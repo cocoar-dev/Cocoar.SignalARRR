@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using Cocoar.SignalARRR.TestInfrastructure;
 using Xunit;
 
 namespace Cocoar.SignalARRR.Client.FullFramework.Tests {
@@ -35,13 +36,10 @@ namespace Cocoar.SignalARRR.Client.FullFramework.Tests {
 
             var deadline = DateTime.UtcNow.AddSeconds(120);
             while (DateTime.UtcNow < deadline) {
-                if (File.Exists(urlFile)) {
-                    var content = File.ReadAllText(urlFile).Trim();
-                    if (!string.IsNullOrEmpty(content)) {
-                        ServerUrl = content;
-                        try { File.Delete(urlFile); } catch { }
-                        return;
-                    }
+                if (ServerUrlFile.TryRead(urlFile, out var content)) {
+                    ServerUrl = content;
+                    try { File.Delete(urlFile); } catch { }
+                    return;
                 }
                 if (_serverProcess.HasExited) {
                     var stderr = _serverProcess.StandardError.ReadToEnd();

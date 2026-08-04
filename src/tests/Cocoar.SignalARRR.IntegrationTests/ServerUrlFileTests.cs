@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
+using Cocoar.SignalARRR.TestInfrastructure;
 using Xunit;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
@@ -36,7 +37,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             try {
                 using (var writer = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None)) {
-                    writer.Write(Encoding.UTF8.GetBytes("http://127.0.0.1:5000"));
+                    // Explicit offset/count overload: net48's FileStream has no ReadOnlySpan<byte>
+                    // one, and this file is linked into the net48 test project too.
+                    var bytes = Encoding.UTF8.GetBytes("http://127.0.0.1:5000");
+                    writer.Write(bytes, 0, bytes.Length);
                     writer.Flush();
 
                     // Still holding the handle: the read must report "not ready" rather than throw.

@@ -10,6 +10,13 @@
     <NoWarn>xUnit1051</NoWarn>
   </PropertyGroup>
 
+  <!-- Shared with the integration test project: the same server-URL handshake, and the same race
+       if it is guarded in only one of them. Linked rather than copied for exactly that reason. -->
+  <ItemGroup>
+    <Compile Include="..\Cocoar.SignalARRR.IntegrationTests\ServerUrlFile.cs" Link="ServerUrlFile.cs" />
+    <Compile Include="..\Cocoar.SignalARRR.IntegrationTests\ServerUrlFileTests.cs" Link="ServerUrlFileTests.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
