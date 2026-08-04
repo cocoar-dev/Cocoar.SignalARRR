@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Security;
 using System.Security.Claims;
@@ -8,6 +9,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Encodings.Web;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
 using Cocoar.SignalARRR.Server;
@@ -241,29 +243,38 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                     }
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
                                     var client = clientManager.GetClientById(connectionId);
+                                    if (await NotYetRegistered(context, client)) {
+                                        return;
+                                    }
                                     client.UserValidUntil = DateTime.MinValue;
                                     await context.Response.WriteAsync("Expired");
                                 });
 
                                 // Test trigger: get client's auth mode
-                                endpoints.MapGet("/__test/auth-mode", context => {
+                                endpoints.MapGet("/__test/auth-mode", async context => {
                                     var connectionId = context.Request.Query["connectionId"].ToString();
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
                                     var client = clientManager.GetClientById(connectionId);
-                                    return context.Response.WriteAsync(client.AuthMode.ToString());
+                                    if (await NotYetRegistered(context, client)) {
+                                        return;
+                                    }
+                                    await context.Response.WriteAsync(client.AuthMode.ToString());
                                 });
 
                                 // Debug endpoint: dump client context state
-                                endpoints.MapGet("/__test/client-debug", context => {
+                                endpoints.MapGet("/__test/client-debug", async context => {
                                     var connectionId = context.Request.Query["connectionId"].ToString();
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
                                     var client = clientManager.GetClientById(connectionId);
+                                    if (await NotYetRegistered(context, client)) {
+                                        return;
+                                    }
                                     var hasCert = client.ClientCertificate != null;
                                     var certExpired = hasCert && client.ClientCertificate!.NotAfter < DateTime.Now;
                                     var isAuth = client.User.Identity?.IsAuthenticated == true;
                                     var authType = client.User.Identity?.AuthenticationType ?? "null";
                                     var cacheValid = client.UserValidUntil >= DateTime.Now;
-                                    return context.Response.WriteAsync(
+                                    await context.Response.WriteAsync(
                                         $"AuthMode={client.AuthMode}, HasCert={hasCert}, CertExpired={certExpired}, " +
                                         $"IsAuth={isAuth}, AuthType={authType}, CacheValid={cacheValid}");
                                 });
@@ -273,6 +284,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                     var connectionId = context.Request.Query["connectionId"].ToString();
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
                                     var client = clientManager.GetClientById(connectionId);
+                                    if (await NotYetRegistered(context, client)) {
+                                        return;
+                                    }
                                     var svc = context.RequestServices.GetService<ITransportAuthRevalidationService>();
                                     var svcType = svc?.GetType().Name ?? "null";
                                     var result = svc != null ? await svc.RevalidateAsync(client) : false;
@@ -303,6 +317,30 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             ServerCert.Dispose();
             ClientCert.Dispose();
             ExpiredClientCert.Dispose();
+        }
+
+        /// <summary>
+        /// Answers 503 when the connection is not in the registry (yet), and reports whether it did.
+        /// </summary>
+        /// <remarks>
+        /// <c>StartAsync</c> returns once the SignalR handshake is done, but the server registers the
+        /// client in <c>OnConnectedAsync</c>, which can still be in flight. These endpoints then got
+        /// a <c>null</c> <c>ClientContext</c> and died on the first member access — surfacing as a
+        /// bare 500 that says nothing about the cause. It cost a red macOS run on <c>develop</c>,
+        /// where the loaded runner lost a race the faster legs won.
+        /// <para>
+        /// 503 rather than 404: the connection is expected to appear, so this is "not ready yet",
+        /// which is exactly what <c>GetWhenRegisteredAsync</c> polls on.
+        /// </para>
+        /// </remarks>
+        internal static async Task<bool> NotYetRegistered(HttpContext context, ClientContext? client) {
+            if (client != null) {
+                return false;
+            }
+
+            context.Response.StatusCode = 503;
+            await context.Response.WriteAsync("NotRegistered");
+            return true;
         }
     }
 
@@ -380,6 +418,33 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             return new HttpClient(handler);
         }
 
+        /// <summary>
+        /// Fetches a debug endpoint, waiting for the connection to reach the registry first.
+        /// </summary>
+        /// <remarks>
+        /// <c>StartAsync</c> completing means the handshake is done, not that <c>OnConnectedAsync</c>
+        /// has finished registering the client. Asking at that exact moment is a fixed-moment race:
+        /// it wins on a fast runner and loses on a loaded one, which is how it reached
+        /// <c>develop</c> — green on Windows and Linux, red on macOS.
+        /// <para>
+        /// The endpoints answer 503 while the client is not in the registry; anything else, including
+        /// a real error, is returned to the caller so a genuine failure is not hidden by polling.
+        /// </para>
+        /// </remarks>
+        private static async Task<string> GetWhenRegisteredAsync(HttpClient http, string url, CancellationToken cancellationToken) {
+            for (var attempt = 0; attempt < 100; attempt++) {
+                var response = await http.GetAsync(url, cancellationToken);
+                if (response.StatusCode != HttpStatusCode.ServiceUnavailable) {
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadAsStringAsync(cancellationToken);
+                }
+
+                await Task.Delay(50, cancellationToken);
+            }
+
+            throw new TimeoutException($"Connection never reached the registry; '{url}' kept answering 503.");
+        }
+
         // ──────────────────────────────────────────────
         // Test 1: Basic cert auth
         // ──────────────────────────────────────────────
@@ -418,7 +483,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             // Verify the server detected transport-level auth
             using var http = CreateTestHttpClient();
-            var response = await http.GetStringAsync(
+            var response = await GetWhenRegisteredAsync(http,
                 $"{_fixture.ServerUrl}/__test/auth-mode?connectionId={_connection.ConnectionId}", ct);
 
             Assert.Equal("TransportLevel", response);
@@ -484,7 +549,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             Assert.Equal("CertMethodNameAsync", result2);
 
             // Verify auth mode is still TransportLevel (not upgraded to MessageLevel)
-            var authMode = await http.GetStringAsync(
+            var authMode = await GetWhenRegisteredAsync(http,
                 $"{_fixture.ServerUrl}/__test/auth-mode?connectionId={_connection.ConnectionId}", ct);
             Assert.Equal("TransportLevel", authMode);
         }
@@ -505,13 +570,13 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             using var http = CreateTestHttpClient();
 
             // Verify the client has transport-level auth with an expired cert
-            var debug = await http.GetStringAsync(
+            var debug = await GetWhenRegisteredAsync(http,
                 $"{_fixture.ServerUrl}/__test/client-debug?connectionId={_connection.ConnectionId}", ct);
             Assert.Contains("AuthMode=TransportLevel", debug);
             Assert.Contains("CertExpired=True", debug);
 
             // Verify the revalidation service correctly rejects the expired cert
-            var revalidateResult = await http.GetStringAsync(
+            var revalidateResult = await GetWhenRegisteredAsync(http,
                 $"{_fixture.ServerUrl}/__test/revalidate?connectionId={_connection.ConnectionId}", ct);
             Assert.Contains("Result=False", revalidateResult);
             Assert.Contains("DefaultTransportAuthRevalidationService", revalidateResult);
@@ -575,7 +640,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             using var http = CreateTestHttpClient();
 
             // Debug: check client state before anything
-            var debug1 = await http.GetStringAsync(
+            var debug1 = await GetWhenRegisteredAsync(http,
                 $"{_fixture.ServerUrl}/__test/client-debug?connectionId={_connection.ConnectionId}", ct);
 
             // First call succeeds
@@ -589,7 +654,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 null, ct);
 
             // Debug: check client state after expiry
-            var debug2 = await http.GetStringAsync(
+            var debug2 = await GetWhenRegisteredAsync(http,
                 $"{_fixture.ServerUrl}/__test/client-debug?connectionId={_connection.ConnectionId}", ct);
 
             // Second call after cache expiry — should re-validate cert server-side
@@ -600,6 +665,50 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             } catch (Exception ex) {
                 throw new Exception($"Call failed after cache expiry.\nBefore: {debug1}\nAfter expiry: {debug2}", ex);
             }
+        }
+
+        // ──────────────────────────────────────────────
+        // Test 9: An unregistered connection is a stated outcome, not a crash
+        // ──────────────────────────────────────────────
+
+        /// <summary>
+        /// Asking about a connection the registry does not have must answer 503, not 500.
+        /// </summary>
+        /// <remarks>
+        /// This is the deterministic half of the fixed-moment race these endpoints used to lose. The
+        /// timing itself cannot be asserted on — it depends on how loaded the machine is, which is
+        /// precisely why it stayed green here and went red on a macOS CI runner — but the state the
+        /// race lands in can be. Previously every one of these endpoints dereferenced a <c>null</c>
+        /// <c>ClientContext</c> and produced a bare 500, which is both unrecoverable for the caller
+        /// and silent about the cause. Now the "not there (yet)" case is named, which is what
+        /// <c>GetWhenRegisteredAsync</c> polls on.
+        /// </remarks>
+        [Theory]
+        [InlineData("client-debug")]
+        [InlineData("auth-mode")]
+        [InlineData("revalidate")]
+        public async Task Debug_endpoints_report_an_unknown_connection_as_unavailable(string endpoint) {
+            var ct = TestContext.Current.CancellationToken;
+            using var http = CreateTestHttpClient();
+
+            var response = await http.GetAsync(
+                $"{_fixture.ServerUrl}/__test/{endpoint}?connectionId=no-such-connection", ct);
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Equal("NotRegistered", await response.Content.ReadAsStringAsync(ct));
+        }
+
+        /// <summary>The same for the one trigger that is a POST rather than a GET.</summary>
+        [Fact]
+        public async Task Expiring_the_cache_of_an_unknown_connection_reports_unavailable() {
+            var ct = TestContext.Current.CancellationToken;
+            using var http = CreateTestHttpClient();
+
+            var response = await http.PostAsync(
+                $"{_fixture.ServerUrl}/__test/expire-cert-auth-cache?connectionId=no-such-connection", null, ct);
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            Assert.Equal("NotRegistered", await response.Content.ReadAsStringAsync(ct));
         }
     }
 }
