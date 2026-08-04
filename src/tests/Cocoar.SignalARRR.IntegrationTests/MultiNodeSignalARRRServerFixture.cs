@@ -15,6 +15,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         private readonly Process _server2;
         private readonly TimeSpan? _heartbeatInterval;
         private readonly TimeSpan? _nodeTimeout;
+        private readonly TimeSpan? _invokeTimeout;
 
         public string ServerUrl1 { get; }
         public string ServerUrl2 { get; }
@@ -43,9 +44,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         public MultiNodeSignalARRRServerFixture() : this(null, null) {
         }
 
-        internal MultiNodeSignalARRRServerFixture(TimeSpan? heartbeatInterval, TimeSpan? nodeTimeout) {
+        internal MultiNodeSignalARRRServerFixture(TimeSpan? heartbeatInterval, TimeSpan? nodeTimeout, TimeSpan? invokeTimeout = null) {
             _heartbeatInterval = heartbeatInterval;
             _nodeTimeout = nodeTimeout;
+            _invokeTimeout = invokeTimeout;
             _redisContainerName = $"signalarrr-redis-{Guid.NewGuid():N}";
             _redisPort = StartRedisContainer(_redisContainerName);
             WaitForPort(_redisPort);
@@ -59,8 +61,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             ChannelPrefix = channelPrefix;
             RedisConnectionString = connectionString;
 
-            _server1 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId1, _heartbeatInterval, _nodeTimeout, out var serverUrl1);
-            _server2 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId2, _heartbeatInterval, _nodeTimeout, out var serverUrl2);
+            _server1 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId1, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl1);
+            _server2 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId2, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl2);
 
             ServerUrl1 = serverUrl1;
             ServerUrl2 = serverUrl2;
@@ -83,6 +85,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             string nodeId,
             TimeSpan? heartbeatInterval,
             TimeSpan? nodeTimeout,
+            TimeSpan? invokeTimeout,
             out string serverUrl) {
             var urlFile = Path.Combine(Path.GetTempPath(), $"signalarrr-test-{Guid.NewGuid()}.url");
 
@@ -106,6 +109,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             }
             if (nodeTimeout.HasValue) {
                 process.StartInfo.Environment["SIGNALARRR_BACKPLANE_NODE_TIMEOUT_MS"] = ((int)nodeTimeout.Value.TotalMilliseconds).ToString();
+            }
+            if (invokeTimeout.HasValue) {
+                process.StartInfo.Environment["SIGNALARRR_BACKPLANE_INVOKE_TIMEOUT_MS"] = ((int)invokeTimeout.Value.TotalMilliseconds).ToString();
             }
             process.Start();
 

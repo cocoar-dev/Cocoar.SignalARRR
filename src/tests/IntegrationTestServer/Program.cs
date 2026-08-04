@@ -72,6 +72,11 @@ if (!string.IsNullOrWhiteSpace(backplaneConnectionString)) {
         if (int.TryParse(nodeTimeoutMs, out var nodeTimeout)) {
             options.WithNodeTimeout(TimeSpan.FromMilliseconds(nodeTimeout));
         }
+
+        var invokeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_INVOKE_TIMEOUT_MS");
+        if (int.TryParse(invokeTimeoutMs, out var invokeTimeout)) {
+            options.WithInvokeTimeout(TimeSpan.FromMilliseconds(invokeTimeout));
+        }
     });
 }
 
