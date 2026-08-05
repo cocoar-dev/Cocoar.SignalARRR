@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -41,7 +41,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             if (clientContext is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
                 var backplane = clusterQuery.ServiceProvider.GetRequiredService<ISignalARRRBackplane>();
                 if (backplane.IsEnabled) {
-                    var message = new ServerRequestMessage(method, arguments);
+                    var message = new ServerRequestMessage(method, arguments).WithTraceContext();
                     IReadOnlyList<SignalARRRBackplaneInvokeResult> results;
                     if (clusterQuery.CanUseDirectBackplaneDispatch) {
                         results = await backplane.InvokeQueryAsync(
@@ -119,7 +119,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             if (clientContext is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
                 var backplane = clusterQuery.ServiceProvider.GetRequiredService<ISignalARRRBackplane>();
                 if (backplane.IsEnabled) {
-                    var message = new ServerRequestMessage(method, arguments);
+                    var message = new ServerRequestMessage(method, arguments).WithTraceContext();
                     SignalARRRBackplaneInvokeResult? firstResult;
                     if (clusterQuery.CanUseDirectBackplaneDispatch) {
                         var results = await backplane.InvokeQueryAsync(

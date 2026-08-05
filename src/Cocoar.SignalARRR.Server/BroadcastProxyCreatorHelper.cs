@@ -32,7 +32,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public override Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
             ValidateNoStreamArguments(methodName, arguments);
-            var msg = new ServerRequestMessage(methodName, arguments.ToList());
+            var msg = new ServerRequestMessage(methodName, arguments.ToList()).WithTraceContext();
             msg.GenericArguments = genericArguments;
             return _clientProxy.SendCoreAsync(MethodNames.InvokeServerMessage, new object[] { msg }, cancellationToken);
         }

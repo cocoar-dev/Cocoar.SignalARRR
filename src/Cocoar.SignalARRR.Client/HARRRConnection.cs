@@ -57,64 +57,89 @@ namespace Cocoar.SignalARRR.Client {
 
         public async Task<object> InvokeCoreAsync(ClientRequestMessage message, Type returnType, CancellationToken cancellationToken = default) {
             message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
-            return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { message }, cancellationToken) ?? null!;
+            using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
+            try {
+                return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { message }, cancellationToken) ?? null!;
+            } catch (Exception ex) {
+                SignalARRRClientTelemetry.RecordFailure(activity, ex);
+                throw;
+            }
         }
 
         public async Task InvokeCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
-            await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageOnServer, new object[] { message }, cancellationToken);
+            using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
+            try {
+                await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageOnServer, new object[] { message }, cancellationToken);
+            } catch (Exception ex) {
+                SignalARRRClientTelemetry.RecordFailure(activity, ex);
+                throw;
+            }
         }
 
-        public async Task<object> InvokeCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
-            return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { msg }, cancellationToken) ?? null!;
+        public Task<object> InvokeCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, args);
+            return InvokeCoreAsync(msg, returnType, cancellationToken);
         }
 
-        public async Task InvokeCoreAsync(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
-            await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageOnServer, new object[] { msg }, cancellationToken);
+        public Task InvokeCoreAsync(string methodName, object[] args, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, args);
+            return InvokeCoreAsync(msg, cancellationToken);
         }
 
         public async Task<TResult> InvokeCoreAsync<TResult>(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
             message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
-            var resultMsg = await HubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
-            return resultMsg;
+            using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
+            try {
+                var resultMsg = await HubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
+                return resultMsg;
+            } catch (Exception ex) {
+                SignalARRRClientTelemetry.RecordFailure(activity, ex);
+                throw;
+            }
         }
-        public async Task<TResult> InvokeCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
-            var resultMsg = await HubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { msg }, cancellationToken);
-            return resultMsg;
+        public Task<TResult> InvokeCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, args);
+            return InvokeCoreAsync<TResult>(msg, cancellationToken);
         }
 
         public async Task SendCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
             message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
-            await HubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
+            using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
+            try {
+                await HubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
+            } catch (Exception ex) {
+                SignalARRRClientTelemetry.RecordFailure(activity, ex);
+                throw;
+            }
         }
 
         public Task SendCoreAsync(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
-            return HubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { msg }, cancellationToken);
+            var msg = new ClientRequestMessage(methodName, args);
+            return SendCoreAsync(msg, cancellationToken);
         }
 
         public IAsyncEnumerable<TResult> StreamAsyncCore<TResult>(ClientRequestMessage message, CancellationToken cancellationToken = default) {
-            message = message.WithAuthorization(_harrrContext.AccessTokenProvider);
+            // No span around a stream: it lives for as long as the consumer reads. The trace
+            // context still travels with the message so the server span joins the caller's trace.
+            message = message.WithAuthorization(_harrrContext.AccessTokenProvider).WithTraceContext();
             return HubConnection.StreamAsyncCore<TResult>(MethodNames.StreamMessageFromServer, new object[] { message }, cancellationToken);
         }
 
         public IAsyncEnumerable<TResult> StreamAsyncCore<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
-            return HubConnection.StreamAsyncCore<TResult>(MethodNames.StreamMessageFromServer, new object[] { msg }, cancellationToken);
+            var msg = new ClientRequestMessage(methodName, args);
+            return StreamAsyncCore<TResult>(msg, cancellationToken);
         }
 
         public async Task<ChannelReader<object>> StreamAsChannelCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
+            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider).WithTraceContext();
             return (await HubConnection.StreamAsChannelCoreAsync(MethodNames.StreamMessageFromServer, returnType, new object[] { msg }, cancellationToken))!;
         }
 
         public async Task<ChannelReader<TResult>> StreamAsChannelCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider);
+            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_harrrContext.AccessTokenProvider).WithTraceContext();
             return await HubConnection.StreamAsChannelCoreAsync<TResult>(MethodNames.StreamMessageFromServer, new object[] { msg }, cancellationToken);
         }
 

@@ -56,12 +56,32 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         internal async Task<TResult> InvokeClientMessageAsync<TResult>(string clientId, string methodName, ServerRequestMessage serverRequestMessage, CancellationToken cancellationToken) {
-            // Uses SignalR's native client results — the client handler returns the value directly
-            return await HubContext.Clients.Client(clientId).InvokeCoreAsync<TResult>(methodName, new object[] { serverRequestMessage }, cancellationToken);
+            using var activity = SignalARRRServerTelemetry.StartClientCall(clientId, serverRequestMessage);
+            try {
+                // Uses SignalR's native client results — the client handler returns the value directly
+                return await HubContext.Clients.Client(clientId).InvokeCoreAsync<TResult>(methodName, new object[] { serverRequestMessage }, cancellationToken);
+            } catch (Exception ex) {
+                RecordFailure(activity, ex);
+                throw;
+            }
         }
 
         internal async Task SendClientMessageAsync(string clientId, string methodName, ServerRequestMessage serverRequestMessage, CancellationToken cancellationToken) {
-            await HubContext.Clients.Client(clientId).SendCoreAsync(methodName, new object[] { serverRequestMessage }, cancellationToken);
+            using var activity = SignalARRRServerTelemetry.StartClientCall(clientId, serverRequestMessage);
+            try {
+                await HubContext.Clients.Client(clientId).SendCoreAsync(methodName, new object[] { serverRequestMessage }, cancellationToken);
+            } catch (Exception ex) {
+                RecordFailure(activity, ex);
+                throw;
+            }
+        }
+
+        private static void RecordFailure(System.Diagnostics.Activity? activity, Exception exception) {
+            // A cancelled call is the caller's choice, not a failure of the client.
+            if (activity != null && exception is not OperationCanceledException) {
+                activity.SetStatus(System.Diagnostics.ActivityStatusCode.Error, exception.Message);
+                activity.SetTag("error.type", exception.GetType().FullName);
+            }
         }
     }
 }

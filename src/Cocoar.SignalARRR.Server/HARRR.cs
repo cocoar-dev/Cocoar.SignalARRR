@@ -80,32 +80,34 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>A task that represents the asynchronous operation.</returns>
         public override async Task OnConnectedAsync() {
             try {
+                var hubName = GetType().Name;
                 var totalStopwatch = Stopwatch.StartNew();
 
                 var registerStopwatch = Stopwatch.StartNew();
                 var client = ClientManager.Register(this, Context);
                 registerStopwatch.Stop();
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionSetupDuration, hubName, "register-local", registerStopwatch.Elapsed.TotalMilliseconds);
 
                 var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
-                var registryType = connectionRegistry.GetType().Name;
-                SignalARRRDiagnostics.Write(
-                    "ConnectionLifecycle",
-                    $"OnConnectedAsync register-local hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={registerStopwatch.ElapsedMilliseconds} registry={registryType}");
 
                 var registryStopwatch = Stopwatch.StartNew();
                 await connectionRegistry.RegisterConnectionAsync(client).ConfigureAwait(false);
                 registryStopwatch.Stop();
-                SignalARRRDiagnostics.Write(
-                    "ConnectionLifecycle",
-                    $"OnConnectedAsync register-registry hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={registryStopwatch.ElapsedMilliseconds} registry={registryType}");
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionSetupDuration, hubName, "register-registry", registryStopwatch.Elapsed.TotalMilliseconds);
 
                 var baseStopwatch = Stopwatch.StartNew();
                 await base.OnConnectedAsync().ConfigureAwait(false);
                 baseStopwatch.Stop();
                 totalStopwatch.Stop();
-                SignalARRRDiagnostics.Write(
-                    "ConnectionLifecycle",
-                    $"OnConnectedAsync completed hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={totalStopwatch.ElapsedMilliseconds} baseElapsedMs={baseStopwatch.ElapsedMilliseconds} registry={registryType}");
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionSetupDuration, hubName, "base", baseStopwatch.Elapsed.TotalMilliseconds);
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionSetupDuration, hubName, "total", totalStopwatch.Elapsed.TotalMilliseconds);
+
+                SignalARRRServerTelemetry.ActiveConnections.Add(1,
+                    new KeyValuePair<string, object?>("signalarrr.hub", hubName));
 
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -133,6 +135,7 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>A task that represents the asynchronous operation.</returns>
         public override async Task OnDisconnectedAsync(Exception? exception) {
             try {
+                var hubName = GetType().Name;
                 var totalStopwatch = Stopwatch.StartNew();
 
                 // Anything this connection was still streaming to us can never complete now. Without
@@ -144,27 +147,28 @@ namespace Cocoar.SignalARRR.Server {
                 var unregisterStopwatch = Stopwatch.StartNew();
                 var client = ClientManager.UnRegister(Context.ConnectionId);
                 unregisterStopwatch.Stop();
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionTeardownDuration, hubName, "unregister-local", unregisterStopwatch.Elapsed.TotalMilliseconds);
+
+                SignalARRRServerTelemetry.ActiveConnections.Add(-1,
+                    new KeyValuePair<string, object?>("signalarrr.hub", hubName));
 
                 var connectionRegistry = ServiceProvider.GetRequiredService<ISignalARRRConnectionRegistry>();
-                var registryType = connectionRegistry.GetType().Name;
-                SignalARRRDiagnostics.Write(
-                    "ConnectionLifecycle",
-                    $"OnDisconnectedAsync unregister-local hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={unregisterStopwatch.ElapsedMilliseconds} registry={registryType}");
 
                 var registryStopwatch = Stopwatch.StartNew();
                 await connectionRegistry.UnregisterConnectionAsync(Context.ConnectionId).ConfigureAwait(false);
                 registryStopwatch.Stop();
-                SignalARRRDiagnostics.Write(
-                    "ConnectionLifecycle",
-                    $"OnDisconnectedAsync unregister-registry hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={registryStopwatch.ElapsedMilliseconds} registry={registryType}");
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionTeardownDuration, hubName, "unregister-registry", registryStopwatch.Elapsed.TotalMilliseconds);
 
                 var baseStopwatch = Stopwatch.StartNew();
                 await base.OnDisconnectedAsync(exception).ConfigureAwait(false);
                 baseStopwatch.Stop();
                 totalStopwatch.Stop();
-                SignalARRRDiagnostics.Write(
-                    "ConnectionLifecycle",
-                    $"OnDisconnectedAsync completed hub={GetType().Name} connectionId={Context.ConnectionId} elapsedMs={totalStopwatch.ElapsedMilliseconds} baseElapsedMs={baseStopwatch.ElapsedMilliseconds} registry={registryType} exception={(exception == null ? "none" : exception.GetType().Name)}");
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionTeardownDuration, hubName, "base", baseStopwatch.Elapsed.TotalMilliseconds);
+                SignalARRRServerTelemetry.RecordConnectionPhase(
+                    SignalARRRServerTelemetry.ConnectionTeardownDuration, hubName, "total", totalStopwatch.Elapsed.TotalMilliseconds);
 
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     if (exception != null) {
@@ -199,6 +203,7 @@ namespace Cocoar.SignalARRR.Server {
         /// <param name="clientMessage">The client request message containing method name and arguments.</param>
         /// <returns>A task that represents the asynchronous operation.</returns>
         public async Task InvokeMessage(ClientRequestMessage clientMessage) {
+            using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -211,6 +216,7 @@ namespace Cocoar.SignalARRR.Server {
                 await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
 
             } catch (Exception ex) {
+                invocation.RecordFailure(ex);
                 Logger.LogError(
                     ex,
                     "Error invoking message '{Method}' from ConnectionId: {ConnectionId}",
@@ -227,6 +233,7 @@ namespace Cocoar.SignalARRR.Server {
         /// <param name="clientMessage">The client request message containing method name and arguments.</param>
         /// <returns>The result of the method invocation.</returns>
         public async Task<object> InvokeMessageResult(ClientRequestMessage clientMessage) {
+            using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -239,6 +246,7 @@ namespace Cocoar.SignalARRR.Server {
                 return await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
 
             } catch (Exception ex) {
+                invocation.RecordFailure(ex);
                 Logger.LogError(
                     ex,
                     "Error invoking message result '{Method}' from ConnectionId: {ConnectionId}",
@@ -255,6 +263,7 @@ namespace Cocoar.SignalARRR.Server {
         /// <param name="clientMessage">The client request message containing method name and arguments.</param>
         /// <returns>A task that completes when the target method has run. The client does not await a result.</returns>
         public async Task SendMessage(ClientRequestMessage clientMessage) {
+            using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -274,6 +283,7 @@ namespace Cocoar.SignalARRR.Server {
                 await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
 
             } catch (Exception ex) {
+                invocation.RecordFailure(ex);
                 Logger.LogError(
                     ex,
                     "Error sending message '{Method}' from ConnectionId: {ConnectionId}",
@@ -292,6 +302,10 @@ namespace Cocoar.SignalARRR.Server {
         /// <param name="cancellationToken">Cancellation token to stop the stream.</param>
         /// <returns>An async enumerable stream of results.</returns>
         public async Task<IAsyncEnumerable<object>> StreamMessage(ClientRequestMessage clientMessage, CancellationToken cancellationToken) {
+            // The scope covers resolution, authorization and the streaming method call itself; the
+            // items then flow for as long as the consumer reads, which no request-shaped span can
+            // honestly represent.
+            using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -304,6 +318,7 @@ namespace Cocoar.SignalARRR.Server {
                 return await messageHandler.InvokeStreamAsync(clientMessage, cancellationToken).ConfigureAwait(false);
 
             } catch (Exception ex) {
+                invocation.RecordFailure(ex);
                 Logger.LogError(
                     ex,
                     "Error streaming message '{Method}' from ConnectionId: {ConnectionId}",
