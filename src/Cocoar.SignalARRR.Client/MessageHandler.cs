@@ -41,14 +41,20 @@ namespace Cocoar.SignalARRR.Client {
 
         public async Task<object?> InvokeServerRequest(ServerRequestMessage message) {
             message = PrepareServerRequestMessage(message);
-            var result = await InvokeAsync(message);
+            using var activity = SignalARRRClientTelemetry.StartIncomingCall(message);
+            try {
+                var result = await InvokeAsync(message);
 
-            // If the result is a Stream, upload it to the server and return a StreamReference
-            if (result is Stream stream) {
-                return await UploadStreamAndReturnReference(stream);
+                // If the result is a Stream, upload it to the server and return a StreamReference
+                if (result is Stream stream) {
+                    return await UploadStreamAndReturnReference(stream);
+                }
+
+                return result;
+            } catch (Exception ex) {
+                SignalARRRClientTelemetry.RecordFailure(activity, ex);
+                throw;
             }
-
-            return result;
         }
 
         private async Task<StreamReference> UploadStreamAndReturnReference(Stream stream) {
@@ -71,10 +77,16 @@ namespace Cocoar.SignalARRR.Client {
 
             try {
                 message = PrepareServerRequestMessage(message);
-                if (message.StreamId.HasValue) {
-                    await InvokeAndStreamBackAsync(message);
-                } else {
-                    await InvokeAsync(message);
+                using var activity = SignalARRRClientTelemetry.StartIncomingCall(message);
+                try {
+                    if (message.StreamId.HasValue) {
+                        await InvokeAndStreamBackAsync(message);
+                    } else {
+                        await InvokeAsync(message);
+                    }
+                } catch (Exception ex) {
+                    SignalARRRClientTelemetry.RecordFailure(activity, ex);
+                    throw;
                 }
             } catch (Exception ex) {
                 // Fire-and-forget methods don't propagate errors to the server,

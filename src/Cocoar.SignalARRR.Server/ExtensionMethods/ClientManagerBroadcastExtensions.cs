@@ -25,7 +25,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             where T : class {
             if (clients is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
                 var (methodName, arguments) = CaptureCall<T>(action);
-                var message = new ServerRequestMessage(methodName, arguments);
+                var message = new ServerRequestMessage(methodName, arguments).WithTraceContext();
                 var backplane = clusterQuery.ServiceProvider.GetRequiredService<ISignalARRRBackplane>();
                 var localDispatcher = clusterQuery.ServiceProvider.GetRequiredService<LocalSignalARRRBackplaneDispatcher>();
 

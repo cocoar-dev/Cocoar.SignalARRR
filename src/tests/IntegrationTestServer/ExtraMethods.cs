@@ -61,6 +61,11 @@ namespace IntegrationTestServer {
             return reader.ReadToEnd();
         }
 
+        // Telemetry propagation probe: what the server observes as its current trace id while
+        // handling this client-to-server call. Non-empty only when the server-side span joined
+        // the caller's trace (or a listener started one).
+        public string GetTraceId() => System.Diagnostics.Activity.Current?.TraceId.ToString() ?? "";
+
         // Overloads resolved by argument count (F-6): same name, told apart by how many
         // arguments the message carries.
         public string PickOverload(int id) => "one";

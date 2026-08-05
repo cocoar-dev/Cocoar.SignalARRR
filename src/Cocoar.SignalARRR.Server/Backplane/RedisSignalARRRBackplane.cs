@@ -722,6 +722,8 @@ namespace Cocoar.SignalARRR.Server {
             } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
                 throw;
             } catch (Exception ex) {
+                SignalARRRServerTelemetry.BackplaneHeartbeatFailures.Add(1);
+
                 // Keep ticking: the next iteration re-registers whatever this one failed to write,
                 // which is what makes a transient Redis outage survivable instead of terminal.
                 _logger.LogError(ex,
@@ -760,6 +762,7 @@ namespace Cocoar.SignalARRR.Server {
             _heartbeatEstablished = true;
 
             if (wasConsideredDead) {
+                SignalARRRServerTelemetry.BackplaneSelfEvictions.Add(1);
                 await ReregisterLocalConnectionsAsync(cancellationToken).ConfigureAwait(false);
             }
         }
@@ -826,6 +829,7 @@ namespace Cocoar.SignalARRR.Server {
                     return;
                 }
 
+                SignalARRRServerTelemetry.BackplaneNodesSwept.Add(1);
                 await CleanupNodeAsync(nodeId).ConfigureAwait(false);
             } finally {
                 _cleanupSemaphore.Release();

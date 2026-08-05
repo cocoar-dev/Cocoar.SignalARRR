@@ -52,7 +52,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private static ServerRequestMessage CreateMessage(string methodName, IEnumerable<object> arguments, string[] genericArguments) {
-            var message = new ServerRequestMessage(methodName, arguments.ToList());
+            var message = new ServerRequestMessage(methodName, arguments.ToList()).WithTraceContext();
             message.GenericArguments = genericArguments;
             return message;
         }

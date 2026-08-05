@@ -30,6 +30,16 @@ void WriteDiagnostics(string message) {
     }
 }
 
+// Observe the library's ActivitySource so server-side spans actually get created — without a
+// listener every StartActivity returns null and the trace-propagation tests would assert against
+// ASP.NET's ambient request activity instead of SignalARRR's own spans.
+var signalArrrActivityListener = new System.Diagnostics.ActivityListener {
+    ShouldListenTo = source => source.Name == Cocoar.SignalARRR.Common.SignalARRRTelemetry.ActivitySourceName,
+    Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _) =>
+        System.Diagnostics.ActivitySamplingResult.AllData,
+};
+System.Diagnostics.ActivitySource.AddActivityListener(signalArrrActivityListener);
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -209,6 +219,23 @@ app.MapSignalARRRTest("/__test/trigger-client-getbygenericid", async (context, c
     var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
     var result = await Task.Run(() => typedClient.GetByGenericId(Guid.Parse(guidStr)));
     return (object)result;
+});
+
+// Trace propagation probe (server→client): starts a span, calls the client's TraceProbe, and
+// returns "<serverTraceId>|<clientTraceId>" so the test can assert both halves saw one trace.
+app.MapSignalARRRTest("/__test/trace-probe", async (context, clientManager) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+
+    if (string.IsNullOrWhiteSpace(connectionId)) {
+        return Results.BadRequest("Missing connectionId");
+    }
+
+    using var activity = Cocoar.SignalARRR.Common.SignalARRRTelemetry.ActivitySource.StartActivity("test-trace-probe");
+    var serverTraceId = activity?.TraceId.ToString() ?? "";
+
+    var typedClient = clientManager.GetTypedMethods<TestShared.ITelemetryProbeMethods>(connectionId);
+    var clientTraceId = await Task.Run(() => typedClient.TraceProbe());
+    return (object)$"{serverTraceId}|{clientTraceId}";
 });
 
 // Returns client's custom attributes (from headers with # prefix and query params with @ prefix)
