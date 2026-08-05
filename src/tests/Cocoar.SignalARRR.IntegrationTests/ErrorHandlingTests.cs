@@ -37,10 +37,13 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         [Fact]
-        public async Task InvokeWithWrongParameterCount_IgnoresExtraParameters() {
-            // SignalR doesn't throw for extra parameters, it just ignores them
-            var result = await _connection.InvokeAsync<string>("GetName", "unexpected parameter", TestContext.Current.CancellationToken);
-            Assert.Equal("MyName", result);
+        public async Task InvokeWithWrongParameterCount_IsRejected() {
+            // Extra parameters used to be silently ignored. Since F-6 the argument count is the
+            // dispatch key — overloads are told apart by it — so a count no registered method
+            // accepts is an error, not something to swallow.
+            await Assert.ThrowsAsync<HubException>(async () => {
+                await _connection.InvokeAsync<string>("GetName", "unexpected parameter", TestContext.Current.CancellationToken);
+            });
         }
 
         [Fact]
