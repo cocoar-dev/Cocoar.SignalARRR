@@ -8,7 +8,16 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Cocoar.SignalARRR.Common {
     public class SignalARRRInterfaceCollection : ISignalARRRInterfaceCollection {
 
+        private readonly WireSlotPolicy _slotPolicy;
+
         private ConcurrentDictionary<Type, ClientInterfaceMethodsCache> RegisteredTypes = new ConcurrentDictionary<Type, ClientInterfaceMethodsCache>();
+
+        public SignalARRRInterfaceCollection() : this(WireSlotPolicy.AllParameters) {
+        }
+
+        public SignalARRRInterfaceCollection(WireSlotPolicy slotPolicy) {
+            _slotPolicy = slotPolicy ?? throw new ArgumentNullException(nameof(slotPolicy));
+        }
 
         /// <summary>
         /// The registered interfaces indexed by the names that may appear on the wire.
@@ -80,13 +89,23 @@ namespace Cocoar.SignalARRR.Common {
 
         public void RegisterInterface(Type interfaceType, Func<IServiceProvider, object> factory, Type? implementationType) {
             var cache = RegisteredTypes.AddOrUpdate(interfaceType,
-                type => new ClientInterfaceMethodsCache(factory, type, implementationType),
-                (type, del) => new ClientInterfaceMethodsCache(factory, type, implementationType));
+                type => new ClientInterfaceMethodsCache(factory, type, implementationType, _slotPolicy),
+                (type, del) => new ClientInterfaceMethodsCache(factory, type, implementationType, _slotPolicy));
 
             // Both proxy flavours put the interface's FullName on the wire (the source generator via
             // its Prefix constant, the DispatchProxy directly). The assembly-qualified name is
             // indexed as well so a caller that sends the more specific form still resolves.
             foreach (var wireName in GetWireNames(interfaceType)) {
+                // Re-registering the same interface (e.g. with a new factory) replaces its cache;
+                // a *different* Type that happens to share the wire name would silently repoint
+                // every call of the first interface at the second — same silent-overwrite class as
+                // the method-level collision (F-6), so it fails here instead.
+                if (_byWireName.TryGetValue(wireName, out var existing) && existing.InterfaceType != interfaceType) {
+                    throw new InvalidOperationException(
+                        $"Cannot register interface '{interfaceType.AssemblyQualifiedName}': " +
+                        $"'{existing.InterfaceType.AssemblyQualifiedName}' is already registered under the wire name '{wireName}'.");
+                }
+
                 _byWireName[wireName] = cache;
             }
         }
@@ -102,7 +121,7 @@ namespace Cocoar.SignalARRR.Common {
         }
 
 
-        public (Delegate Factory, MethodInfo MethodInfo) GetInvokeInformation(string name) {
+        public (Delegate Factory, MethodInfo MethodInfo) GetInvokeInformation(string name, int argumentCount) {
 
             var separator = name.IndexOf('|');
             if (separator < 0) {
@@ -115,7 +134,7 @@ namespace Cocoar.SignalARRR.Common {
             var methodName = name.Substring(separator + 1);
 
             if (_byWireName.TryGetValue(interfaceName, out var methodsCache)) {
-                return methodsCache.GetInvokeInformations(methodName);
+                return methodsCache.GetInvokeInformations(methodName, argumentCount);
             }
 
             throw new Exception($"Interface '{interfaceName}' is not registered.");

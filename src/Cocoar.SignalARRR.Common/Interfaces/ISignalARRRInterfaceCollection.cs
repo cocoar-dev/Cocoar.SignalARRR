@@ -11,6 +11,6 @@ namespace Cocoar.SignalARRR.Common.Interfaces {
         void RegisterInterface(Type interfaceType, object instance);
         void RegisterInterface(Type interfaceType, Func<IServiceProvider, object> factory);
 
-        (Delegate Factory, MethodInfo MethodInfo) GetInvokeInformation(string name);
+        (Delegate Factory, MethodInfo MethodInfo) GetInvokeInformation(string name, int argumentCount);
     }
 }

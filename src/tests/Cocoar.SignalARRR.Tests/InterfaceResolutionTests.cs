@@ -28,7 +28,7 @@ public class InterfaceResolutionTests {
     public void A_registered_interface_resolves_by_its_full_name() {
         var collection = CollectionWithProbe();
 
-        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}");
+        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}", 0);
 
         Assert.Equal(nameof(IResolutionProbe.Ping), methodInfo.Name);
     }
@@ -37,7 +37,7 @@ public class InterfaceResolutionTests {
     public void A_registered_interface_also_resolves_by_its_assembly_qualified_name() {
         var collection = CollectionWithProbe();
 
-        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).AssemblyQualifiedName}|{nameof(IResolutionProbe.Ping)}");
+        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).AssemblyQualifiedName}|{nameof(IResolutionProbe.Ping)}", 0);
 
         Assert.Equal(nameof(IResolutionProbe.Ping), methodInfo.Name);
     }
@@ -57,7 +57,7 @@ public class InterfaceResolutionTests {
         var collection = new SignalARRRInterfaceCollection();
         collection.RegisterInterface<IResolutionProbe, ResolutionProbe>(new ResolutionProbe());
 
-        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}");
+        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}", 0);
 
         Assert.Equal(nameof(IResolutionProbe.Ping), methodInfo.Name);
     }
@@ -67,7 +67,7 @@ public class InterfaceResolutionTests {
         var collection = new SignalARRRInterfaceCollection();
         collection.RegisterInterface<IResolutionProbe, ResolutionProbe>(_ => new ResolutionProbe());
 
-        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}");
+        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}", 0);
 
         Assert.Equal(nameof(IResolutionProbe.Ping), methodInfo.Name);
     }
@@ -77,7 +77,7 @@ public class InterfaceResolutionTests {
         var collection = new SignalARRRInterfaceCollection();
         collection.RegisterInterface(typeof(IResolutionProbe), _ => (object)new ResolutionProbe());
 
-        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}");
+        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|{nameof(IResolutionProbe.Ping)}", 0);
 
         Assert.Equal(nameof(IResolutionProbe.Ping), methodInfo.Name);
     }
@@ -89,7 +89,7 @@ public class InterfaceResolutionTests {
         // The type is perfectly resolvable — it just was not registered. Resolution has to be against
         // what the application exposed, not against whatever happens to be loaded in the process.
         var ex = Assert.Throws<Exception>(() =>
-            collection.GetInvokeInformation($"{typeof(string).FullName}|{nameof(string.Trim)}"));
+            collection.GetInvokeInformation($"{typeof(string).FullName}|{nameof(string.Trim)}", 0));
 
         Assert.Contains("not registered", ex.Message);
     }
@@ -98,14 +98,14 @@ public class InterfaceResolutionTests {
     public void An_unknown_name_is_rejected_without_touching_the_type_cache() {
         var collection = CollectionWithProbe();
 
-        Assert.Throws<Exception>(() => collection.GetInvokeInformation("Totally.Unknown.IThing|DoWork"));
+        Assert.Throws<Exception>(() => collection.GetInvokeInformation("Totally.Unknown.IThing|DoWork", 0));
     }
 
     [Fact]
     public void A_name_without_a_separator_is_rejected() {
         var collection = CollectionWithProbe();
 
-        Assert.Throws<ArgumentException>(() => collection.GetInvokeInformation("NoSeparatorHere"));
+        Assert.Throws<ArgumentException>(() => collection.GetInvokeInformation("NoSeparatorHere", 0));
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class InterfaceResolutionTests {
         var collection = CollectionWithProbe();
 
         Assert.Throws<Exception>(() =>
-            collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|NoSuchMethod"));
+            collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|NoSuchMethod", 0));
     }
 
     /// <summary>
@@ -132,7 +132,7 @@ public class InterfaceResolutionTests {
         collection.RegisterInterface(typeof(IDerivedProbe), typeof(DerivedProbe));
 
         var (_, methodInfo) = collection.GetInvokeInformation(
-            $"{typeof(IDerivedProbe).FullName}|{nameof(IBaseProbe.BaseMethod)}");
+            $"{typeof(IDerivedProbe).FullName}|{nameof(IBaseProbe.BaseMethod)}", 0);
 
         Assert.Equal(nameof(IBaseProbe.BaseMethod), methodInfo.Name);
     }
@@ -150,7 +150,7 @@ public class InterfaceResolutionTests {
         collection.RegisterInterface(typeof(IDerivedProbe), typeof(DerivedProbe));
 
         var (_, methodInfo) = collection.GetInvokeInformation(
-            $"{typeof(IDerivedProbe).FullName}|{nameof(IBaseProbe.BaseMethod)}");
+            $"{typeof(IDerivedProbe).FullName}|{nameof(IBaseProbe.BaseMethod)}", 0);
 
         Assert.Equal(typeof(DerivedProbe), methodInfo.DeclaringType);
     }
@@ -164,7 +164,7 @@ public class InterfaceResolutionTests {
         collection.RegisterInterface(typeof(IDerivedProbe), typeof(DerivedProbe));
 
         var (_, methodInfo) = collection.GetInvokeInformation(
-            $"{typeof(IDerivedProbe).FullName}|{nameof(IDerivedProbe.DerivedMethod)}");
+            $"{typeof(IDerivedProbe).FullName}|{nameof(IDerivedProbe.DerivedMethod)}", 0);
 
         Assert.Equal(nameof(IDerivedProbe.DerivedMethod), methodInfo.Name);
         Assert.Equal(typeof(DerivedProbe), methodInfo.DeclaringType);
