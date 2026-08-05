@@ -65,6 +65,13 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public TimeSpan UploadSlotExpiration { get; set; } = TimeSpan.FromMinutes(10);
 
+        /// <summary>
+        /// Whether client IP addresses appear in log messages. Default: false — an IP address is
+        /// personal data under most privacy regimes, so logging it is a deliberate decision, not a
+        /// side effect of enabling debug logging.
+        /// </summary>
+        public bool LogClientIpAddresses { get; set; }
+
     }
 
     public class SignalARRRServerOptionsBuilder {
@@ -120,6 +127,15 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public SignalARRRServerOptionsBuilder WithCustomCertificateValidator(Func<X509Certificate2, bool> validator) {
             _options.CustomCertificateValidator = validator;
+            return this;
+        }
+
+        /// <summary>
+        /// Opt in to client IP addresses in log messages. Default: off — an IP address is
+        /// personal data.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithClientIpLogging(bool enabled = true) {
+            _options.LogClientIpAddresses = enabled;
             return this;
         }
 

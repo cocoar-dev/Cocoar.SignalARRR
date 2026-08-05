@@ -19,6 +19,9 @@ namespace Cocoar.SignalARRR.Client {
             if (activity != null) {
                 activity.SetTag("rpc.system", "signalarrr");
                 activity.SetTag("rpc.method", message.Method);
+                if (message.InvocationId is { } invocationId) {
+                    activity.SetTag("signalarrr.invocation_id", invocationId);
+                }
             }
 
             message.WithTraceContext();
@@ -38,6 +41,7 @@ namespace Cocoar.SignalARRR.Client {
             if (activity != null) {
                 activity.SetTag("rpc.system", "signalarrr");
                 activity.SetTag("rpc.method", message.Method);
+                activity.SetTag("signalarrr.invocation_id", message.Id);
             }
 
             return activity;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading;
@@ -42,6 +42,21 @@ namespace Cocoar.SignalARRR.Server {
 
         private ClientContext? _clientContext;
 
+        private readonly bool _logClientIpAddresses;
+
+        /// <summary>
+        /// Everything logged while an invocation runs — including by user code inside the invoked
+        /// method — carries the connection, method and invocation id, so two concurrent calls to
+        /// the same method on the same connection stay distinguishable and a server line can be
+        /// matched to the client line that caused it.
+        /// </summary>
+        private IDisposable? BeginInvocationLogScope(ClientRequestMessage clientMessage) =>
+            Logger.BeginScope(new Dictionary<string, object?> {
+                ["SignalARRRConnectionId"] = Context.ConnectionId,
+                ["SignalARRRMethod"] = clientMessage.Method,
+                ["SignalARRRInvocationId"] = clientMessage.InvocationId,
+            });
+
         /// <summary>
         /// Gets the enhanced client context for the current connection.
         /// Provides access to client IP, user claims, authentication state, and custom attributes.
@@ -64,6 +79,9 @@ namespace Cocoar.SignalARRR.Server {
             // to NullLogger: invocation failures, connect/disconnect failures and stream write errors
             // were all invisible unless the consumer happened to set Logger themselves.
             Logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(GetType()) ?? NullLogger.Instance;
+
+            // An IP address is personal data; it only appears in logs when the consumer opted in.
+            _logClientIpAddresses = serviceProvider.GetService<SignalARRRServerOptions>()?.LogClientIpAddresses ?? false;
 
             // Get hub-specific method collections registered via AddSignalARRR
             MethodsCollection = serviceProvider.GetKeyedService<ISignalARRRMethodsCollection>(GetType().FullName)
@@ -113,7 +131,7 @@ namespace Cocoar.SignalARRR.Server {
                     Logger.LogDebug(
                         "HARRR '{HubName}' connected - {ClientIp} (ConnectionId: {ConnectionId})",
                         GetType().Name,
-                        client.RemoteIp,
+                        _logClientIpAddresses ? client.RemoteIp : null,
                         Context.ConnectionId);
                 }
             } catch (Exception ex) {
@@ -121,7 +139,7 @@ namespace Cocoar.SignalARRR.Server {
                     ex,
                     "Error in HARRR '{HubName}' on OnConnectedAsync - {ClientIp} (ConnectionId: {ConnectionId})",
                     GetType().Name,
-                    Context.GetHttpContext()?.Connection.RemoteIpAddress,
+                    _logClientIpAddresses ? Context.GetHttpContext()?.Connection.RemoteIpAddress : null,
                     Context.ConnectionId);
                 throw;
             }
@@ -176,13 +194,13 @@ namespace Cocoar.SignalARRR.Server {
                             exception,
                             "HARRR '{HubName}' disconnected with error - {ClientIp} (ConnectionId: {ConnectionId})",
                             GetType().Name,
-                            client.RemoteIp,
+                            _logClientIpAddresses ? client.RemoteIp : null,
                             Context.ConnectionId);
                     } else {
                         Logger.LogDebug(
                             "HARRR '{HubName}' disconnected - {ClientIp} (ConnectionId: {ConnectionId})",
                             GetType().Name,
-                            client.RemoteIp,
+                            _logClientIpAddresses ? client.RemoteIp : null,
                             Context.ConnectionId);
                     }
                 }
@@ -204,6 +222,7 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>A task that represents the asynchronous operation.</returns>
         public async Task InvokeMessage(ClientRequestMessage clientMessage) {
             using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
+            using var logScope = BeginInvocationLogScope(clientMessage);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -234,6 +253,7 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>The result of the method invocation.</returns>
         public async Task<object> InvokeMessageResult(ClientRequestMessage clientMessage) {
             using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
+            using var logScope = BeginInvocationLogScope(clientMessage);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -264,6 +284,7 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>A task that completes when the target method has run. The client does not await a result.</returns>
         public async Task SendMessage(ClientRequestMessage clientMessage) {
             using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
+            using var logScope = BeginInvocationLogScope(clientMessage);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(
@@ -306,6 +327,7 @@ namespace Cocoar.SignalARRR.Server {
             // items then flow for as long as the consumer reads, which no request-shaped span can
             // honestly represent.
             using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
+            using var logScope = BeginInvocationLogScope(clientMessage);
             try {
                 if (Logger.IsEnabled(LogLevel.Debug)) {
                     Logger.LogDebug(

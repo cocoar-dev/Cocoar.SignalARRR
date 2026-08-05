@@ -39,8 +39,19 @@ namespace Cocoar.SignalARRR.Client {
             return await _harrrContext.AccessTokenProvider();
         }
 
+        /// <summary>
+        /// Everything logged while a server-to-client call runs carries the method and the server's
+        /// invocation id, so a client log line can be matched to the server line that caused it.
+        /// </summary>
+        private IDisposable? BeginServerRequestLogScope(ServerRequestMessage message) =>
+            _logger.BeginScope(new Dictionary<string, object?> {
+                ["SignalARRRMethod"] = message.Method,
+                ["SignalARRRInvocationId"] = message.Id,
+            });
+
         public async Task<object?> InvokeServerRequest(ServerRequestMessage message) {
             message = PrepareServerRequestMessage(message);
+            using var logScope = BeginServerRequestLogScope(message);
             using var activity = SignalARRRClientTelemetry.StartIncomingCall(message);
             try {
                 var result = await InvokeAsync(message);
@@ -77,6 +88,7 @@ namespace Cocoar.SignalARRR.Client {
 
             try {
                 message = PrepareServerRequestMessage(message);
+                using var logScope = BeginServerRequestLogScope(message);
                 using var activity = SignalARRRClientTelemetry.StartIncomingCall(message);
                 try {
                     if (message.StreamId.HasValue) {
