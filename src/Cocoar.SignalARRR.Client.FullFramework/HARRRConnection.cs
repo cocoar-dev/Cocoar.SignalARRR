@@ -235,13 +235,13 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         }
 
         private async Task<object> InvokeMethodAsync(ServerRequestMessage serverRequestMessage) {
-            var methodCallInfo = _methodsCollection.GetMethodInformations(serverRequestMessage.Method);
+            var methodCallInfo = _methodsCollection.GetMethodInformations(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
             var instance = methodCallInfo.Factory.DynamicInvoke(_hubConnection.GetServiceProvider());
             return await InvokeMethodInfoAsync(instance, methodCallInfo.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
         }
 
         private async Task<object> InvokeInterfaceMethodAsync(ServerRequestMessage serverRequestMessage) {
-            var invokeInfos = _interfaceCollection.GetInvokeInformation(serverRequestMessage.Method);
+            var invokeInfos = _interfaceCollection.GetInvokeInformation(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
             var instance = invokeInfos.Factory.DynamicInvoke(_hubConnection.GetServiceProvider());
             return await InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
         }

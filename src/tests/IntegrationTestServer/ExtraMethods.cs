@@ -61,6 +61,14 @@ namespace IntegrationTestServer {
             return reader.ReadToEnd();
         }
 
+        // Overloads resolved by argument count (F-6): same name, told apart by how many
+        // arguments the message carries.
+        public string PickOverload(int id) => "one";
+        public string PickOverload(int id, int count) => "two";
+
+        // Trailing default: callable with one argument (the binder fills the default) or two.
+        public string PageInfo(int index, int size = 25) => $"{index}:{size}";
+
         // Throws a specific exception for error handling tests
         public string ThrowArgumentException(string paramName) =>
             throw new ArgumentException("Invalid value provided", paramName);

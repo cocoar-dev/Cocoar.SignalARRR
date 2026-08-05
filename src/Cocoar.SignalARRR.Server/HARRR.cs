@@ -67,10 +67,10 @@ namespace Cocoar.SignalARRR.Server {
 
             // Get hub-specific method collections registered via AddSignalARRR
             MethodsCollection = serviceProvider.GetKeyedService<ISignalARRRMethodsCollection>(GetType().FullName)
-                ?? new SignalARRRMethodsCollection();
+                ?? new SignalARRRMethodsCollection(ServerWireSlots.Policy);
 
             InterfaceCollection = serviceProvider.GetKeyedService<ISignalARRRInterfaceCollection>(GetType().FullName)
-                ?? new SignalARRRInterfaceCollection();
+                ?? new SignalARRRInterfaceCollection(ServerWireSlots.Policy);
         }
 
         /// <summary>

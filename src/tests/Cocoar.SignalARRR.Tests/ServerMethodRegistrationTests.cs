@@ -27,9 +27,9 @@ public class ServerMethodRegistrationTests {
         return provider.GetRequiredKeyedService<ISignalARRRMethodsCollection>(typeof(THub).FullName);
     }
 
-    private static bool IsRegistered(ISignalARRRMethodsCollection methods, string name) {
+    private static bool IsRegistered(ISignalARRRMethodsCollection methods, string name, int argumentCount = 0) {
         try {
-            methods.GetMethodInformations(name);
+            methods.GetMethodInformations(name, argumentCount);
             return true;
         }
         catch (Exception) {
@@ -39,26 +39,26 @@ public class ServerMethodRegistrationTests {
 
     [Theory]
     // The declared methods are the whole point — these must stay reachable.
-    [InlineData("RegistrationProbeMethods.Ping", true)]
-    [InlineData("RegistrationProbeMethods.Echo", true)]
+    [InlineData("RegistrationProbeMethods.Ping", 0, true)]
+    [InlineData("RegistrationProbeMethods.Echo", 1, true)]
     // Accessors of the ServerMethods base properties: infrastructure, never endpoints.
-    [InlineData("RegistrationProbeMethods.get_ClientContext", false)]
-    [InlineData("RegistrationProbeMethods.set_ClientContext", false)]
-    [InlineData("RegistrationProbeMethods.get_Context", false)]
-    [InlineData("RegistrationProbeMethods.get_Clients", false)]
-    [InlineData("RegistrationProbeMethods.get_Groups", false)]
-    [InlineData("RegistrationProbeMethods.set_Logger", false)]
+    [InlineData("RegistrationProbeMethods.get_ClientContext", 0, false)]
+    [InlineData("RegistrationProbeMethods.set_ClientContext", 1, false)]
+    [InlineData("RegistrationProbeMethods.get_Context", 0, false)]
+    [InlineData("RegistrationProbeMethods.get_Clients", 0, false)]
+    [InlineData("RegistrationProbeMethods.get_Groups", 0, false)]
+    [InlineData("RegistrationProbeMethods.set_Logger", 1, false)]
     // System.Object members.
-    [InlineData("RegistrationProbeMethods.ToString", false)]
-    [InlineData("RegistrationProbeMethods.GetHashCode", false)]
-    [InlineData("RegistrationProbeMethods.GetType", false)]
-    [InlineData("RegistrationProbeMethods.Equals", false)]
+    [InlineData("RegistrationProbeMethods.ToString", 0, false)]
+    [InlineData("RegistrationProbeMethods.GetHashCode", 0, false)]
+    [InlineData("RegistrationProbeMethods.GetType", 0, false)]
+    [InlineData("RegistrationProbeMethods.Equals", 1, false)]
     // A property the user declared on their own class is still a property, not an endpoint.
-    [InlineData("RegistrationProbeMethods.get_OwnProperty", false)]
-    public void ServerMethods_registers_only_declared_methods(string methodName, bool expected) {
+    [InlineData("RegistrationProbeMethods.get_OwnProperty", 0, false)]
+    public void ServerMethods_registers_only_declared_methods(string methodName, int argumentCount, bool expected) {
         var methods = GetMethodsFor<RegistrationProbeHub>();
 
-        Assert.Equal(expected, IsRegistered(methods, methodName));
+        Assert.Equal(expected, IsRegistered(methods, methodName, argumentCount));
     }
 
     [Theory]

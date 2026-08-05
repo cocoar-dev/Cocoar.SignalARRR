@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -178,7 +178,7 @@ namespace Cocoar.SignalARRR.Client {
 
 
 
-            var methodCallInfo = MethodsCollection.GetMethodInformations(serverRequestMessage.Method);
+            var methodCallInfo = MethodsCollection.GetMethodInformations(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
 
             var instance = methodCallInfo.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider())!;
 
@@ -188,7 +188,7 @@ namespace Cocoar.SignalARRR.Client {
 
         private Task<object> InvokeInterfaceMethodAsync(ServerRequestMessage serverRequestMessage) {
 
-            var invokeInfos = InterfaceCollection.GetInvokeInformation(serverRequestMessage.Method);
+            var invokeInfos = InterfaceCollection.GetInvokeInformation(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
             var instance = invokeInfos.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider())!;
             return InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
 

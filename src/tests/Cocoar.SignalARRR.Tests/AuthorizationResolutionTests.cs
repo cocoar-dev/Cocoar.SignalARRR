@@ -75,7 +75,7 @@ public class AuthorizationResolutionTests {
         var collection = new SignalARRRInterfaceCollection();
         collection.RegisterInterface(typeof(IAuthContract), typeof(AuthImplementation));
 
-        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IAuthContract).FullName}|{nameof(IAuthContract.ProtectedByImplementation)}");
+        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IAuthContract).FullName}|{nameof(IAuthContract.ProtectedByImplementation)}", 0);
 
         Assert.Equal(typeof(AuthImplementation), methodInfo.DeclaringType);
         Assert.Contains(methodInfo.GetAuthorizationPlan().AuthorizeData, d => d.Policy == "impl");

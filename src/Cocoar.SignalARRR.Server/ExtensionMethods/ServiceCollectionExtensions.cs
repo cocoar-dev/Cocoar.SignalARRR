@@ -90,7 +90,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                 ass.GetTypes().WhichInheritFromClass(typeof(HARRR)));
 
             foreach (var harrType in harrTypes) {
-                var methodsCollection = new SignalARRRMethodsCollection();
+                var methodsCollection = new SignalARRRMethodsCollection(ServerWireSlots.Policy);
                 // DeclaredOnly keeps the HARRR/Hub infrastructure out; IsSpecialName additionally keeps
                 // the accessors of any property declared on the user's own hub from becoming endpoints.
                 var messageMethodsWithName = harrType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -106,7 +106,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
                 var directInterfaces = harrType.GetDirectInterfaces().ToList();
                 if (directInterfaces.Any()) {
-                    var interfaceCollection = new SignalARRRInterfaceCollection();
+                    var interfaceCollection = new SignalARRRInterfaceCollection(ServerWireSlots.Policy);
                     foreach (var @interface in directInterfaces) {
                         interfaceCollection.RegisterInterface(@interface, harrType);
                     }
@@ -147,7 +147,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                     if (directInterfaces.Any()) {
 
                         if (!interfaceDictionary.TryGetValue(type, out var interfaceCollection))
-                            interfaceCollection = new SignalARRRInterfaceCollection();
+                            interfaceCollection = new SignalARRRInterfaceCollection(ServerWireSlots.Policy);
 
                         foreach (var @interface in directInterfaces) {
                             interfaceCollection.RegisterInterface(@interface, type);

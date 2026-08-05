@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -59,7 +59,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<IAsyncEnumerable<object>> InvokeMethodStreamAsync(ClientRequestMessage clientMessage, CancellationToken cancellationToken) {
 
-            var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method);
+            var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method, clientMessage.Arguments.Length);
 
 
             var authentication = new SignalARRRAuthentication(_serviceProvider);
@@ -87,7 +87,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<IAsyncEnumerable<object>> InvokeInterfaceStreamAsync(ClientRequestMessage clientMessage, CancellationToken cancellationToken) {
 
-            var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method);
+            var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method, clientMessage.Arguments.Length);
 
             var authentication = new SignalARRRAuthentication(_serviceProvider);
             var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, invokeInfos.MethodInfo);
@@ -146,7 +146,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<object> InvokeMethodAsync(ClientRequestMessage clientMessage) {
 
-            var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method);
+            var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method, clientMessage.Arguments.Length);
 
             var authentication = new SignalARRRAuthentication(_serviceProvider);
             var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, methodInformations.MethodInfo);
@@ -168,7 +168,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<object> InvokeInterfaceAsync(ClientRequestMessage clientMessage) {
 
-            var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method);
+            var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method, clientMessage.Arguments.Length);
 
             var authentication = new SignalARRRAuthentication(_serviceProvider);
             var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, invokeInfos.MethodInfo);
@@ -377,6 +377,15 @@ namespace Cocoar.SignalARRR.Server {
                 }
 
                 if (paramsPosition >= @params.Count) {
+                    // Resolution matched the message's argument count against the method's accepted
+                    // range, so running out of arguments here means this parameter has a default the
+                    // caller chose to use. The value comes from the *bound* method's metadata — the
+                    // same declaration the registration computed the range from.
+                    if (p.HasDefaultValue) {
+                        bound[i] = ResolveDefaultParameterValue(p)!;
+                        continue;
+                    }
+
                     throw new ArgumentException(
                         $"Parameter '{p.Name}' (position {paramsPosition}): " +
                         $"not enough arguments provided. Expected at least {paramsPosition + 1}, got {@params.Count}.");
@@ -415,6 +424,31 @@ namespace Cocoar.SignalARRR.Server {
             }
 
             return bound;
+        }
+
+        /// <summary>
+        /// Materializes a parameter's default value for direct invocation.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ParameterInfo.DefaultValue"/> is the raw metadata constant: for
+        /// <c>= default</c> on a struct it is <c>null</c>, and for enums some runtimes surface the
+        /// underlying integral value. Both would make <see cref="MethodBase.Invoke(object, object[])"/>
+        /// throw, so they are normalized here.
+        /// </remarks>
+        private static object? ResolveDefaultParameterValue(ParameterInfo parameter) {
+            var value = parameter.DefaultValue;
+
+            if (value == null) {
+                return parameter.ParameterType.IsValueType
+                    ? Activator.CreateInstance(parameter.ParameterType)
+                    : null;
+            }
+
+            if (parameter.ParameterType.IsEnum && !parameter.ParameterType.IsInstanceOfType(value)) {
+                return Enum.ToObject(parameter.ParameterType, value);
+            }
+
+            return value;
         }
 
 
