@@ -44,17 +44,45 @@ final class CancellationManagerTests: XCTestCase {
 
 final class CancellationTokenReferenceTests: XCTestCase {
 
+    private static let guid = "3F2504E0-4F89-11D3-9A0C-0305E82C3301"
+
+    func testIsCancellationTokenReferenceWithMarker() {
+        let dict: [String: Any] = ["__type": "cancellationToken", "Id": Self.guid]
+        let ref = isCancellationTokenReference(dict)
+        XCTAssertNotNil(ref, "The marker is exact and does not depend on the shape")
+        XCTAssertEqual(ref?.id, Self.guid)
+    }
+
+    func testIsCancellationTokenReferenceWithMarkerIgnoresExtraKeys() {
+        let dict: [String: Any] = ["__type": "cancellationToken", "Id": Self.guid, "Extra": "data"]
+        XCTAssertNotNil(isCancellationTokenReference(dict))
+    }
+
+    func testIsCancellationTokenReferenceRejectsOtherMarker() {
+        // Marked as something else: not a token, however much the rest looks like one.
+        let dict: [String: Any] = ["__type": "stream", "Id": Self.guid]
+        XCTAssertNil(isCancellationTokenReference(dict))
+    }
+
     func testIsCancellationTokenReferenceWithValidDict() {
-        let dict: [String: Any] = ["Id": "abc-123"]
+        // Unmarked: accepted, for a server that predates the marker.
+        let dict: [String: Any] = ["Id": Self.guid]
         let ref = isCancellationTokenReference(dict)
         XCTAssertNotNil(ref)
-        XCTAssertEqual(ref?.id, "abc-123")
+        XCTAssertEqual(ref?.id, Self.guid)
     }
 
     func testIsCancellationTokenReferenceWithExtraKeys() {
-        let dict: [String: Any] = ["Id": "abc-123", "Extra": "data"]
+        let dict: [String: Any] = ["Id": Self.guid, "Extra": "data"]
         let ref = isCancellationTokenReference(dict)
-        XCTAssertNil(ref, "Should not match when extra keys are present")
+        XCTAssertNil(ref, "Should not match when extra keys are present and nothing marks it")
+    }
+
+    func testIsCancellationTokenReferenceRequiresGuidWhenUnmarked() {
+        // Without a marker the id has to look like a GUID. A lone Id string is a shape ordinary
+        // payloads have too, and mistaking one for a token loses the real argument.
+        let dict: [String: Any] = ["Id": "order-7"]
+        XCTAssertNil(isCancellationTokenReference(dict))
     }
 
     func testIsCancellationTokenReferenceWithNonDict() {

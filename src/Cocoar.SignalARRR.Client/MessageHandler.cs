@@ -240,9 +240,16 @@ namespace Cocoar.SignalARRR.Client {
             var argumentList = new List<object>();
 
             foreach (var parameterInfo in methodInfo.GetParameters()) {
-                if (@params.Count < paramsPosition) {
-                    throw new IndexOutOfRangeException();
+                // `<=`, and before the index. The guard used to read `@params.Count < paramsPosition`
+                // *and* sat above the access anyway, so it could never fire: the position advances by
+                // one per parameter, so it reaches Count but never passes it. The bare index threw an
+                // IndexOutOfRangeException with nothing to say about which parameter was missing.
+                if (paramsPosition >= @params.Count) {
+                    throw new ArgumentException(
+                        $"Parameter '{parameterInfo.Name}' (position {paramsPosition}) of '{methodInfo.Name}': " +
+                        $"not enough arguments provided. Expected at least {paramsPosition + 1}, got {@params.Count}.");
                 }
+
                 var par = @params[paramsPosition];
                 paramsPosition++;
 

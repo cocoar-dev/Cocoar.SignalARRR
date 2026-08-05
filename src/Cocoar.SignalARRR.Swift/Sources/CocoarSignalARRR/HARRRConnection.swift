@@ -139,9 +139,12 @@ public final class HARRRConnection: @unchecked Sendable {
     private func buildHandlerArgs(_ req: ServerRequestMessage) async throws -> [Any] {
         var args: [Any] = []
         for anyCodable in (req.arguments ?? []) {
-            if isCancellationTokenReference(anyCodable.value) != nil,
-               let guid = req.cancellationGuid {
-                args.append(guid)
+            if let cancellationRef = isCancellationTokenReference(anyCodable.value) {
+                // Keyed on the reference's own id, not on the request's cancellationGuid. Those are
+                // two different things: the guid cancels the call, the reference cancels this one
+                // parameter. Using the guid meant a cancellation aimed at a parameter never matched
+                // what was registered here, and two token parameters could not be cancelled apart.
+                args.append(cancellationRef.id)
             } else if let streamRef = isStreamReference(anyCodable.value) {
                 let data = try await StreamReferenceResolver.resolve(streamRef)
                 args.append(data)

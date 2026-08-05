@@ -41,13 +41,20 @@ public class ToChannelReaderTests {
         throw failure;
     }
 
+    /// <summary>
+    /// Yields one item and then never ends by itself — only the token can stop it.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately one infinite wait rather than a loop of short delays. A producer ticking every
+    /// few milliseconds keeps waking the thread pool for the whole test, and on a two-core CI runner
+    /// with three target frameworks in flight that is enough to delay the continuation that runs
+    /// after cancellation past any window worth asserting on. This test went red twice that way
+    /// while the code under it was correct.
+    /// </remarks>
     private static async IAsyncEnumerable<int> Forever([EnumeratorCancellation] CancellationToken cancellationToken = default) {
-        var i = 0;
-        while (true) {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return i++;
-            await Task.Delay(5, cancellationToken);
-        }
+        yield return 0;
+        // Qualified: this class has a Timeout(TimeSpan) helper that would shadow the type.
+        await Task.Delay(System.Threading.Timeout.Infinite, cancellationToken);
     }
 
     /// <summary>

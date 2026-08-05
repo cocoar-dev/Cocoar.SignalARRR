@@ -118,6 +118,10 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             if (capturer.CapturedMethodName == null)
                 throw new InvalidOperationException("No method call was captured from the action.");
 
+            // Same rule as the proxy-helper path takes, so which one runs stays an internal detail.
+            BroadcastArgumentRules.RejectCancellationTokens(
+                capturer.CapturedMethodName, capturer.CapturedArguments ?? Array.Empty<object>());
+
             var arguments = capturer.CapturedArguments ?? Array.Empty<object>();
             if (arguments.Any(a => a is System.IO.Stream)) {
                 throw new NotSupportedException(

@@ -63,6 +63,21 @@ namespace Cocoar.SignalARRR.Server {
                     $"Method '{methodName}' has a Stream argument. Stream arguments are not supported for remote backplane client calls.");
             }
 
+            // Rejected rather than quietly dropped. Cancelling would mean reaching the connection's
+            // own node and having it send CancelTokenFromServer, and the backplane has no way to say
+            // that: PublishDispatchAsync always arrives as InvokeServerMessage, so the notification
+            // could not be expressed without extending the backplane protocol.
+            //
+            // Dropping the argument instead is not an option either -- a client with no parameter
+            // types to consult counts positions, so every following argument would shift by one and
+            // be bound to the wrong parameter. Which is what happened before, silently.
+            if (arguments.Any(a => a is CancellationToken)) {
+                throw new NotSupportedException(
+                    $"Method '{methodName}' has a CancellationToken argument. Cancellation is not supported for " +
+                    "remote backplane client calls, because the cancellation notification cannot be routed to the " +
+                    "connection's own node. Call the client from the node that holds the connection.");
+            }
+
             if (resultType != null && typeof(Stream).IsAssignableFrom(resultType)) {
                 throw new NotSupportedException(
                     $"Method '{methodName}' returns a Stream. Stream return values are not supported for remote backplane client calls.");

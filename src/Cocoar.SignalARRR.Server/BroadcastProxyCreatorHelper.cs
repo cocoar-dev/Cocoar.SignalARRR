@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
+using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
 using Cocoar.SignalARRR.ProxyGenerator;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
@@ -63,6 +64,8 @@ namespace Cocoar.SignalARRR.Server {
                 throw new NotSupportedException(
                     $"Method '{methodName}' has a Stream argument. Stream arguments are not supported for broadcast/multi-client operations. Use single-client GetTypedMethods<T>() instead.");
             }
+
+            BroadcastArgumentRules.RejectCancellationTokens(methodName, arguments);
         }
 
         public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {

@@ -123,11 +123,17 @@ app.MapSignalARRRTest("/__test/trigger-client-cancellation", async (context, cli
     await Task.Delay(delayMs);
     cts.Cancel();
 
+    // Reports *why* it ended, not just that it did. Returning a bare "cancelled" for any exception
+    // made the test that reads this pass while the call was in fact failing outright: with the
+    // token missing from the arguments, the client bound one argument too few and threw
+    // IndexOutOfRangeException, which looked exactly like a successful cancellation from here.
     try {
         await waitTask;
         return (object)"completed";
-    } catch (Exception) {
+    } catch (OperationCanceledException) {
         return (object)"cancelled";
+    } catch (Exception ex) {
+        return (object)$"failed: {ex.GetType().Name}: {ex.Message}";
     }
 });
 
@@ -298,6 +304,22 @@ app.MapPost("/__test/broadcast-all-nix", async (HttpContext context) => {
     await clientManager.WithHub<TestHub>()
         .SendAsync<TestShared.ITestClientMethods>(c => c.Nix());
     return Results.Ok("Sent");
+});
+
+// Broadcasting a call that carries a cancellation token is rejected: the cancellation could not be
+// delivered to the recipients, and dropping the argument would shift every following one.
+app.MapPost("/__test/broadcast-wait-with-token", (HttpContext context) => {
+    var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
+    using var cts = new CancellationTokenSource();
+
+    try {
+        clientManager.WithHub<TestHub>()
+            .SendAsync<TestShared.ITestClientMethods>(c => c.Wait(30, cts.Token))
+            .GetAwaiter().GetResult();
+        return Results.Ok("sent");
+    } catch (NotSupportedException ex) {
+        return Results.Ok($"rejected: {ex.Message}");
+    }
 });
 
 // Typed broadcast with attribute filter

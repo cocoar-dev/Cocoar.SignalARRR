@@ -47,10 +47,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         public async Task ServerCallsClient_CancelToken_CancelsOperation() {
             var ct = TestContext.Current.CancellationToken;
             var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
-            connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(new TestClientMethodsImpl());
+            var clientMethods = new TestClientMethodsImpl();
+            connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(clientMethods);
             await connection.StartAsync(ct);
-            // Wait for server to register client in ClientManager (OnConnectedAsync)
-            await Task.Delay(500, ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
 
             try {
                 using var http = new HttpClient();
@@ -62,7 +62,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                     Assert.Fail($"Server returned {response.StatusCode}: {result}");
                 }
 
-                Assert.Contains("cancelled", result);
+                // Asserted on what the client saw, not on how the server-side await ended: SignalR
+                // aborts the pending invocation itself and reports a HubException either way.
+                Assert.Equal(30, clientMethods.LastWaitSeconds);
+                await TestHelper.WaitFor(
+                    () => clientMethods.WaitObservedCancellation,
+                    "the client's cancellation token to fire");
             } finally {
                 await connection.StopAsync(ct);
                 await connection.DisposeAsync();
