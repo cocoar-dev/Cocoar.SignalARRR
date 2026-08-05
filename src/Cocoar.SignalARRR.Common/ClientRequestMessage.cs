@@ -19,6 +19,15 @@ namespace Cocoar.SignalARRR.Common {
         public string[] GenericArguments { get; set; } = Array.Empty<string>();
 
         /// <summary>
+        /// Identifies this invocation across both sides' logs. Without it, two concurrent calls to
+        /// the same method on the same connection are indistinguishable, and a server log line
+        /// cannot be matched to the client line that caused it. Optional and additive: clients
+        /// without one (older SDKs, raw TypeScript/Swift callers) simply leave it unset.
+        /// </summary>
+        [JsonPropertyName("InvocationId")]
+        public Guid? InvocationId { get; set; }
+
+        /// <summary>
         /// W3C trace context of the sender, so the server-side span joins the caller's trace.
         /// Optional and additive: older SDKs and clients without tracing simply leave it unset.
         /// </summary>
@@ -49,6 +58,14 @@ namespace Cocoar.SignalARRR.Common {
 
         public ClientRequestMessage WithAuthorization(Func<Task<string>> authorization) {
             Authorization = authorization?.Invoke().GetAwaiter().GetResult() ?? string.Empty;
+            return this;
+        }
+
+        /// <summary>
+        /// Assigns an invocation id if the caller has not set one already.
+        /// </summary>
+        public ClientRequestMessage WithInvocationId() {
+            InvocationId ??= Guid.NewGuid();
             return this;
         }
 

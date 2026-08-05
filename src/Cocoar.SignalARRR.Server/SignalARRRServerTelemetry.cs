@@ -86,6 +86,9 @@ namespace Cocoar.SignalARRR.Server {
                 activity.SetTag("rpc.service", hub);
                 activity.SetTag("rpc.method", message.Method);
                 activity.SetTag("signalarrr.connection_id", connectionId);
+                if (message.InvocationId is { } invocationId) {
+                    activity.SetTag("signalarrr.invocation_id", invocationId);
+                }
             }
 
             return new ServerInvocationScope(activity, hub, message.Method, Stopwatch.GetTimestamp());
