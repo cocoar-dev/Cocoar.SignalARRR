@@ -1,7 +1,7 @@
 import * as signalR from '@microsoft/signalr';
 import { ClientRequestMessage } from './models/client-request-message.js';
 import { ServerRequestMessage } from './models/server-request-message.js';
-import { isCancellationTokenReference } from './models/cancellation-token-reference.js';
+import { asCancellationTokenReference } from './models/cancellation-token-reference.js';
 import { isStreamReference, resolveStreamReference } from './models/stream-reference.js';
 import { parseHARRRError } from './models/harrr-error.js';
 import { HARRRConnectionOptions } from './harrr-connection-options.js';
@@ -110,8 +110,13 @@ export class HARRRConnection {
   private async _prepareArgs(req: ServerRequestMessage): Promise<unknown[]> {
     const args: unknown[] = [];
     for (const arg of req.Arguments ?? []) {
-      if (isCancellationTokenReference(arg) && req.CancellationGuid) {
-        args.push(this._cancellationManager.create(req.CancellationGuid));
+      const cancellationRef = asCancellationTokenReference(arg);
+      if (cancellationRef) {
+        // Keyed on the reference's own id, not on the request's CancellationGuid. Those are two
+        // different things: the guid cancels the call, the reference cancels this one parameter.
+        // Registering under the guid meant a cancellation aimed at a parameter never found its
+        // token here, and two token parameters could not be cancelled apart.
+        args.push(this._cancellationManager.create(cancellationRef.Id));
       } else if (isStreamReference(arg)) {
         // Download the stream data via HTTP and pass as ArrayBuffer
         args.push(await resolveStreamReference(arg));

@@ -8,6 +8,22 @@ using TestShared;
 namespace Cocoar.SignalARRR.IntegrationTests {
     // Minimal implementation for tests; only used methods return values, others throw if invoked.
     public class TestClientMethodsImpl : ITestClientMethods {
+
+        /// <summary>The <c>seconds</c> argument the last <see cref="Wait"/> call received.</summary>
+        /// <remarks>
+        /// Recorded so a test can tell that the argument arrived <em>as sent</em>. When a token was
+        /// left out of the arguments while the binder still counted a slot for it, every following
+        /// argument shifted — the failure this proves is absent.
+        /// </remarks>
+        public int? LastWaitSeconds { get; private set; }
+
+        /// <summary>Whether the token handed to the last <see cref="Wait"/> call actually fired.</summary>
+        /// <remarks>
+        /// This is the thing worth asserting. What the server-side await throws says little: SignalR
+        /// aborts the pending invocation itself and surfaces a <c>HubException</c>, which looks the
+        /// same whether the client's token worked or the call fell over for an unrelated reason.
+        /// </remarks>
+        public bool WaitObservedCancellation { get; private set; }
         public T Invoke<T>(string command, Dictionary<string, object>? variables = null) {
             throw new NotImplementedException();
         }
@@ -43,7 +59,17 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         public Task<string> Wait(int seconds, CancellationToken cancellationToken) {
-            return Task.Run(async () => { await Task.Delay(TimeSpan.FromSeconds(seconds), cancellationToken); return "done"; }, cancellationToken);
+            LastWaitSeconds = seconds;
+
+            return Task.Run(async () => {
+                try {
+                    await Task.Delay(TimeSpan.FromSeconds(seconds), cancellationToken);
+                    return "done";
+                } catch (OperationCanceledException) {
+                    WaitObservedCancellation = true;
+                    throw;
+                }
+            }, cancellationToken);
         }
 
         public string GetByGenericId(Guid id) {

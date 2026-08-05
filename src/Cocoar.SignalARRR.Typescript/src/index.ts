@@ -3,6 +3,7 @@ export { HARRRConnectionOptions } from './harrr-connection-options.js';
 export type { ClientRequestMessage } from './models/client-request-message.js';
 export type { ServerRequestMessage } from './models/server-request-message.js';
 export type { CancellationTokenReference } from './models/cancellation-token-reference.js';
+export { REMOTE_REFERENCE_PROPERTY, RemoteReferenceKind } from './models/remote-reference.js';
 export type { StreamReference } from './models/stream-reference.js';
 export { isStreamReference, resolveStreamReference, resolveStreamReferenceAsStream } from './models/stream-reference.js';
 export type { HARRRError } from './models/harrr-error.js';

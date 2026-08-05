@@ -47,11 +47,19 @@ internal static class ProxyEmitter {
         var signature = $"    public {method.ReturnTypeFullName} {method.Name}{typeParams}({parameters})";
         sb.AppendLine(signature);
 
-        // Build args array (excluding CancellationToken)
-        var nonCtParams = method.Parameters.Where(p => !p.IsCancellationToken).ToList();
-        var argsExpr = nonCtParams.Count == 0
+        // Every parameter goes into the args array, CancellationToken included.
+        //
+        // It used to be filtered out here, which made the proxy disagree with two of the four
+        // receivers. Worse, it is not something the proxy can decide: whether a token belongs on the
+        // wire depends on the direction, and the proxy is shared by both. Going out to a client the
+        // token has to occupy a slot -- the TypeScript and Swift clients have no parameter types to
+        // consult, so the CancellationTokenReference sitting in that slot is the only thing telling
+        // them which argument is the token. Going in to the server it must not, because the server
+        // binds its own. Each helper now settles that for its own direction; the proxy just reports
+        // what was passed.
+        var argsExpr = method.Parameters.Length == 0
             ? "Array.Empty<object>()"
-            : "new object[] { " + string.Join(", ", nonCtParams.Select(p => p.Name + "!")) + " }";
+            : "new object[] { " + string.Join(", ", method.Parameters.Select(p => p.Name + "!")) + " }";
 
         // CancellationToken: use the last one, or default
         var ctParam = method.Parameters.Where(p => p.IsCancellationToken).LastOrDefault();

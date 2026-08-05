@@ -33,14 +33,7 @@ namespace Cocoar.SignalARRR.Server {
             var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
-            if (cancellationToken != CancellationToken.None) {
-                msg.CancellationGuid = Guid.NewGuid();
-                cancellationToken.Register(() => {
-#pragma warning disable 4014
-                    _clientContext.CancelToken(msg.CancellationGuid.Value);
-#pragma warning restore 4014
-                });
-            }
+            RegisterCallCancellation(msg, arguments, cancellationToken);
 
             msg.GenericArguments = genericArguments;
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
@@ -74,12 +67,7 @@ namespace Cocoar.SignalARRR.Server {
             var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
-            if (cancellationToken != CancellationToken.None) {
-                msg.CancellationGuid = Guid.NewGuid();
-#pragma warning disable 4014
-                cancellationToken.Register(() => _clientContext.CancelToken(msg.CancellationGuid.Value));
-#pragma warning restore 4014
-            }
+            RegisterCallCancellation(msg, arguments, cancellationToken);
             msg.GenericArguments = genericArguments;
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
@@ -100,14 +88,7 @@ namespace Cocoar.SignalARRR.Server {
             msg.GenericArguments = genericArguments;
             msg.StreamId = streamId;
 
-            if (cancellationToken != CancellationToken.None) {
-                msg.CancellationGuid = Guid.NewGuid();
-                cancellationToken.Register(() => {
-#pragma warning disable 4014
-                    _clientContext.CancelToken(msg.CancellationGuid.Value);
-#pragma warning restore 4014
-                });
-            }
+            RegisterCallCancellation(msg, arguments, cancellationToken);
 
             var serverStreamManager = _clientContext.ServiceProvider.GetRequiredService<ServerStreamManager>();
             // Only the client this stream was requested from may feed it.
@@ -126,5 +107,44 @@ namespace Cocoar.SignalARRR.Server {
         }
 
 
+
+        /// <summary>
+        /// Gives the call itself a cancellation id, when it needs one of its own.
+        /// </summary>
+        /// <remarks>
+        /// This is the id for cancelling the invocation as a whole — what a caller needs when it
+        /// passes a token to a method that declares no token parameter. Token <em>parameters</em>
+        /// are handled separately, each with its own id, so that two of them stay independently
+        /// cancellable.
+        /// <para>
+        /// Skipped when this same token already travels as an argument, which is the common case:
+        /// the generated proxy hands the token to the helper and puts it in the arguments. Without
+        /// the check both would fire on cancellation and send two messages for one event.
+        /// </para>
+        /// <para>
+        /// The registration is discarded, which leaks on a long-lived token (DI-6). Tracked
+        /// separately; this change deliberately does not widen into it.
+        /// </para>
+        /// </remarks>
+        private void RegisterCallCancellation(
+            ServerRequestMessage message, IEnumerable<object> originalArguments, CancellationToken cancellationToken) {
+
+            if (cancellationToken == CancellationToken.None) {
+                return;
+            }
+
+            if (originalArguments.Any(a => a is CancellationToken argumentToken && argumentToken == cancellationToken)) {
+                return;
+            }
+
+            var callId = Guid.NewGuid();
+            message.CancellationGuid = callId;
+
+            // Not an async lambda: Register takes an Action, so one would compile to async void and
+            // take the process down when it throws — which is the normal case here, because the
+            // token usually fires precisely because the client has gone. The send is best-effort
+            // and already swallows downstream in HARRRContext.CancelToken.
+            cancellationToken.Register(() => _ = _clientContext.CancelToken(callId));
+        }
     }
 }

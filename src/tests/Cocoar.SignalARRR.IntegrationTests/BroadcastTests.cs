@@ -16,6 +16,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         private readonly HARRRConnection _connection2;
         private int _nixCallCount1;
         private int _nixCallCount2;
+        private NixCounter _client1 = null!;
+        private NixCounter _client2 = null!;
 
         public BroadcastTests(SignalARRRServerInstanceFixture fixture) {
             _fixture = fixture;
@@ -33,8 +35,11 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             _nixCallCount1 = 0;
             _nixCallCount2 = 0;
 
-            _connection1.RegisterInterface<TestShared.ITestClientMethods, NixCounter>(new NixCounter(() => Interlocked.Increment(ref _nixCallCount1)));
-            _connection2.RegisterInterface<TestShared.ITestClientMethods, NixCounter>(new NixCounter(() => Interlocked.Increment(ref _nixCallCount2)));
+            _client1 = new NixCounter(() => Interlocked.Increment(ref _nixCallCount1));
+            _client2 = new NixCounter(() => Interlocked.Increment(ref _nixCallCount2));
+
+            _connection1.RegisterInterface<TestShared.ITestClientMethods, NixCounter>(_client1);
+            _connection2.RegisterInterface<TestShared.ITestClientMethods, NixCounter>(_client2);
 
             await _connection1.StartAsync();
             await _connection2.StartAsync();
@@ -205,16 +210,65 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 "the send-routed server method did not run against a live Hub.");
         }
 
+        /// <summary>
+        /// Broadcasting a call that carries a cancellation token fails loudly.
+        /// </summary>
+        /// <remarks>
+        /// A broadcast cannot deliver the cancellation: telling the recipients means sending
+        /// <c>CancelTokenFromServer</c> to the same set, and the dispatcher sends everything as
+        /// <c>InvokeServerMessage</c> with no way to name another. Making that work needs a protocol
+        /// change, tracked separately.
+        /// <para>
+        /// Until then it is rejected rather than quietly dropped, because dropping the argument
+        /// shifts every following one — a client with no parameter types to consult counts
+        /// positions, and the result is a silent misbinding.
+        /// </para>
+        /// </remarks>
+        [Fact]
+        public async Task BroadcastWithCancellationToken_IsRejectedRatherThanMisbound() {
+            var ct = TestContext.Current.CancellationToken;
+
+            using var http = new HttpClient();
+            var response = await http.PostAsync(
+                $"{_fixture.ServerUrl}/__test/broadcast-wait-with-token", null, ct);
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadAsStringAsync(ct);
+            Assert.StartsWith("\"rejected:", body);
+            Assert.Contains("CancellationToken", body);
+
+            // And nothing reached the clients half-bound.
+            Assert.Null(_client1.LastWaitSeconds);
+            Assert.Null(_client2.LastWaitSeconds);
+        }
+
         private class NixCounter : TestShared.ITestClientMethods {
             private readonly Action _onNix;
             public NixCounter(Action onNix) => _onNix = onNix;
+
+            /// <summary>The <c>seconds</c> the last <see cref="Wait"/> received, to catch a shifted argument.</summary>
+            public int? LastWaitSeconds { get; private set; }
+
+            /// <summary>Whether the token this recipient was given actually fired.</summary>
+            public bool WaitObservedCancellation { get; private set; }
 
             public void Nix() => _onNix();
             public T Invoke<T>(string command, Dictionary<string, object>? variables = null) => default!;
             public List<string> GetContent(int count) => new();
             public string GetById(string id) => $"result-{id}";
             public string GetByGenericId(Guid id) => $"guid-{id}";
-            public Task<string> Wait(int seconds, CancellationToken cancellationToken) => Task.FromResult("");
+            public Task<string> Wait(int seconds, CancellationToken cancellationToken) {
+                LastWaitSeconds = seconds;
+                return Task.Run(async () => {
+                    try {
+                        await Task.Delay(TimeSpan.FromSeconds(seconds), cancellationToken);
+                        return "done";
+                    } catch (OperationCanceledException) {
+                        WaitObservedCancellation = true;
+                        throw;
+                    }
+                }, cancellationToken);
+            }
             public bool CreateObject(string className, Dictionary<string, object> properties) => false;
             public bool CreateObjectFromTemplate(string templateName, Dictionary<string, object> properties) => false;
             public long FileLength(string id, System.IO.Stream filestream) => 0;

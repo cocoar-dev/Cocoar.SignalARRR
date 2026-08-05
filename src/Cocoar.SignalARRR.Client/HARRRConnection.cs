@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.SignalR.Client;
 namespace Cocoar.SignalARRR.Client {
     public partial class HARRRConnection {
         private HubConnection HubConnection { get; }
-        private ConcurrentDictionary<string, Delegate> ServerRequestHandlers { get; } = new ConcurrentDictionary<string, Delegate>();
         private HARRRContext _harrrContext { get; }
 
 
@@ -54,35 +53,6 @@ namespace Cocoar.SignalARRR.Client {
 
         public IDisposable On(string methodName, Type[] parameterTypes, Func<object?[], object, Task> handler, object state) {
             return HubConnection.On(methodName, parameterTypes, handler, state);
-        }
-
-        public void OnServerRequest(string methodName, Delegate handler) {
-
-            ServerRequestHandlers.TryAdd(methodName, handler);
-        }
-
-        public void OnServerRequest(string methodName, Func<object, object> handler) {
-
-            OnServerRequest<object>(methodName, handler);
-        }
-        public void OnServerRequest<TIn>(string methodName, Func<TIn, object> handler) {
-
-            ServerRequestHandlers.TryAdd(methodName, handler);
-        }
-
-        public void OnServerRequest<TIn1, TIn2>(string methodName, Func<TIn1, TIn2, object> handler) {
-
-            ServerRequestHandlers.TryAdd(methodName, handler);
-        }
-
-        public void OnServerRequest<TIn1, TIn2, TIn3>(string methodName, Func<TIn1, TIn2, TIn3, object> handler) {
-
-            ServerRequestHandlers.TryAdd(methodName, handler);
-        }
-
-        public void OnServerRequest<TIn1, TIn2, TIn3, TIn4>(string methodName, Func<TIn1, TIn2, TIn3, TIn4, object> handler) {
-
-            ServerRequestHandlers.TryAdd(methodName, handler);
         }
 
         public async Task<object> InvokeCoreAsync(ClientRequestMessage message, Type returnType, CancellationToken cancellationToken = default) {

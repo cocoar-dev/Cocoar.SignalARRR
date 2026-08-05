@@ -23,6 +23,20 @@ namespace Cocoar.SignalARRR.Server {
             _logger = clientContext.ServiceProvider.GetService<ILogger<MethodArgumentPreperator>>() ?? (ILogger)NullLogger.Instance;
         }
 
+        /// <summary>
+        /// Converts arguments into their wire form for one outgoing call.
+        /// </summary>
+        /// <remarks>
+        /// Each <see cref="CancellationToken"/> argument gets a reference with an id of its own, and
+        /// a cancellation callback bound to that very token. Two token parameters therefore stay
+        /// independently cancellable — which is the only reason to declare two of them.
+        /// <para>
+        /// This is deliberately <em>not</em> collapsed onto the message's <c>CancellationGuid</c>.
+        /// That id means something different: the call as a whole, which is what a caller passing a
+        /// token to a method that has no token parameter needs. Merging them would have made every
+        /// token parameter of a call cancel together.
+        /// </para>
+        /// </remarks>
         internal IEnumerable<object> PrepareArguments(IEnumerable<object> arguments) {
             foreach (var argument in arguments) {
 

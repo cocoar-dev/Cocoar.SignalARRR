@@ -73,8 +73,17 @@ public enum StreamReferenceResolver {
 /// The .NET server serialises the reference as `{ "Uri": "<url>" }`.
 public func isStreamReference(_ value: Any) -> StreamReference? {
     guard let dict = value as? [String: Any],
-          let uri = dict["Uri"] as? String,
-          dict.count == 1 else {
+          let uri = dict["Uri"] as? String else {
+        return nil
+    }
+
+    // The marker is exact; the lone-`Uri` form below it is the fallback for a server that predates
+    // it. The key count cannot simply be `1` any more — a marked reference has two.
+    if remoteReferenceMarker(of: dict) != nil {
+        return isMarked(dict, as: .stream) ? StreamReference(uri: uri) : nil
+    }
+
+    guard dict.count == 1 else {
         return nil
     }
     return StreamReference(uri: uri)

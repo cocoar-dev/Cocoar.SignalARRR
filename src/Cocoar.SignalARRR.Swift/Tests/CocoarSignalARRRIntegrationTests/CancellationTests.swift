@@ -35,17 +35,36 @@ final class CancellationTests: IntegrationTestBase {
     func testServerCancelsClientOperation() async throws {
         let connId = try await getConnectionId()
 
+        // Asserted on what this handler experiences, not on the server's answer. The server stops
+        // waiting the moment it cancels, so SignalR aborts the pending invocation and reports a
+        // HubException — which looks the same whether the token reached us or the call fell over.
+        let observedCancellation = XCTestExpectation(description: "the Wait handler observes cancellation")
+        let receivedSeconds = XCTestExpectation(description: "the Wait handler receives its seconds argument unshifted")
+        // Separate from the one above so a failure names the stage that broke: an unrecognised
+        // reference and a token that never fires look identical from the outside otherwise.
+        let receivedCancellationHandle = XCTestExpectation(description: "the Wait handler receives a cancellation handle in the token slot")
+
         // Register the Wait handler that respects cancellation
         await connection.onServerMethod("TestShared.ITestClientMethods|Wait") { [weak self] args in
             guard let self else { return AnyCodable(Optional<String>.none as Any) }
             let seconds = (args.first as? Int) ?? 30
+            if seconds == 30 { receivedSeconds.fulfill() }
             let cancellationGuid = args.count > 1 ? (args[1] as? String) : nil
+            if cancellationGuid != nil { receivedCancellationHandle.fulfill() }
 
             if let guid = cancellationGuid {
                 // Race between cancellation and actual work
                 return try await withThrowingTaskGroup(of: AnyCodable.self) { group in
                     group.addTask {
-                        try await self.connection.cancellationManager.register(id: guid)
+                        // register(id:) does not return when the server cancels -- the manager
+                        // resumes its continuation *throwing*. Signalling after the call would
+                        // therefore never run.
+                        do {
+                            try await self.connection.cancellationManager.register(id: guid)
+                        } catch {
+                            observedCancellation.fulfill()
+                            throw error
+                        }
                         throw CancellationError()
                     }
                     group.addTask {
@@ -75,8 +94,9 @@ final class CancellationTests: IntegrationTestBase {
             return
         }
 
-        let result = String(data: data, encoding: .utf8) ?? ""
-        XCTAssert(result.contains("cancelled"), "Expected 'cancelled' in result, got: \(result)")
+        // The argument arrived where it was sent, and the token the server passed is a working one.
+        await fulfillment(of: [receivedSeconds, receivedCancellationHandle, observedCancellation], timeout: 5.0)
+
         // Must complete in well under 30s — the cancellation should fire after ~200ms
         XCTAssert(elapsed < 5.0, "Cancellation took \(elapsed)s — expected <5s (cancel after 200ms, not 30s wait)")
     }

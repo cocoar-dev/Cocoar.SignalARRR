@@ -42,13 +42,12 @@ namespace TestClient {
 
 
             connection.On<string>("test", s => Console.WriteLine(s));
-            connection.OnServerRequest("GetDate", (par) => {
-                return new {
-                    Date = DateTime.Now,
-                    Framework = ".Net Core",
-                    Name = "Bernhard"
-                };
-            });
+
+            // Was connection.OnServerRequest("GetDate", ...), which never ran: the handlers it
+            // registered were written to a dictionary nothing ever read, so every server-to-client
+            // call by bare method name ended in "Method 'GetDate' not found!". Contracts are
+            // registered through RegisterInterface / RegisterType, which is the working path — see
+            // ISharedMethods above.
 
 
 

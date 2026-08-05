@@ -6,6 +6,26 @@ using Cocoar.SignalARRR.Client;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
     public static class TestHelper {
+
+        /// <summary>
+        /// Polls until <paramref name="condition"/> holds, rather than asserting at a fixed moment.
+        /// </summary>
+        /// <remarks>
+        /// Anything that crosses the connection completes on its own schedule. Checking once, right
+        /// after the call that set it in motion, is the fixed-moment race that costs a red CI run on
+        /// a loaded machine and passes on a fast one.
+        /// </remarks>
+        public static async Task WaitFor(Func<bool> condition, string description, int attempts = 100) {
+            for (var i = 0; i < attempts; i++) {
+                if (condition()) {
+                    return;
+                }
+
+                await Task.Delay(50);
+            }
+
+            throw new TimeoutException($"Timed out waiting for {description}.");
+        }
         /// <summary>
         /// Wait until the server has registered the client in ClientManager.
         /// Polls the /__test/client-exists endpoint instead of using a fixed delay.
