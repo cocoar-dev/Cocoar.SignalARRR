@@ -47,6 +47,14 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 // The argument arrived where it was sent. With the token missing from the arguments
                 // and the binder still counting a slot for it, this bound the wrong value -- or ran
                 // off the end of the array entirely.
+                //
+                // Waited for, not asserted immediately: the trigger endpoint returns once the
+                // *server-side* await ended (cancelled after delayMs), which does not guarantee the
+                // client has processed the invocation message yet. Under gate load — three TFMs in
+                // parallel on one runner — the client can lose that race.
+                await TestHelper.WaitFor(
+                    () => clientMethods.LastWaitSeconds != null,
+                    "the client to observe the Wait call");
                 Assert.Equal(30, clientMethods.LastWaitSeconds);
 
                 // And the token the server passed is a working one. Asserted here rather than on the

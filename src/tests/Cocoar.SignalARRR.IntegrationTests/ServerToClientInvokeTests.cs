@@ -64,6 +64,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
                 // Asserted on what the client saw, not on how the server-side await ended: SignalR
                 // aborts the pending invocation itself and reports a HubException either way.
+                // The endpoint returning does not guarantee the client has processed the
+                // invocation message yet, so the observation is waited for before its value is
+                // asserted.
+                await TestHelper.WaitFor(
+                    () => clientMethods.LastWaitSeconds != null,
+                    "the client to observe the Wait call");
                 Assert.Equal(30, clientMethods.LastWaitSeconds);
                 await TestHelper.WaitFor(
                     () => clientMethods.WaitObservedCancellation,
