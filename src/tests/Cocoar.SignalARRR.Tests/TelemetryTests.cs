@@ -65,11 +65,24 @@ public class TelemetryTests {
 
     // ---- Server invocation span and metric -------------------------------------------------
 
+    // Test classes run in parallel and the ActivitySource/Meter are process-global statics, so a
+    // capture sees every concurrently running test's telemetry. Each test therefore uses a method
+    // name unique to itself and filters on it — Assert.Single over the raw capture is a race.
     private sealed class Capture : IDisposable {
         public readonly ConcurrentBag<Activity> Started = new();
         public readonly List<(double Value, Dictionary<string, object?> Tags)> Measurements = new();
         private readonly ActivityListener _activityListener;
         private readonly MeterListener _meterListener;
+
+        public Activity SingleActivity(string operationName) =>
+            Assert.Single(Started, a => a.OperationName == operationName);
+
+        public (double Value, Dictionary<string, object?> Tags) SingleMeasurement(string method) {
+            lock (Measurements) {
+                return Assert.Single(Measurements,
+                    m => m.Tags.TryGetValue("signalarrr.method", out var value) && Equals(value, method));
+            }
+        }
 
         public Capture() {
             _activityListener = new ActivityListener {
@@ -110,13 +123,13 @@ public class TelemetryTests {
         using var caller = new Activity("caller");
         caller.SetIdFormat(ActivityIdFormat.W3C);
         caller.Start();
-        var message = new ClientRequestMessage("Ns.IFoo|Do").WithTraceContext();
+        var message = new ClientRequestMessage("Telemetry.JoinsTrace").WithTraceContext();
         caller.Stop();
 
         using (SignalARRRServerTelemetry.StartInvocation("TestHub", message, "conn-1")) {
         }
 
-        var span = Assert.Single(capture.Started, a => a.OperationName == "TestHub/Ns.IFoo|Do");
+        var span = capture.SingleActivity("TestHub/Telemetry.JoinsTrace");
         Assert.Equal(ActivityKind.Server, span.Kind);
         Assert.Equal(caller.TraceId, span.TraceId);
         Assert.Equal("signalarrr", span.GetTagItem("rpc.system"));
@@ -127,27 +140,26 @@ public class TelemetryTests {
     public void A_completed_invocation_records_outcome_ok() {
         using var capture = new Capture();
 
-        using (SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("M"), "conn-1")) {
+        using (SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("Telemetry.Ok"), "conn-1")) {
         }
 
-        var measurement = Assert.Single(capture.Measurements);
+        var measurement = capture.SingleMeasurement("Telemetry.Ok");
         Assert.Equal("ok", measurement.Tags["signalarrr.outcome"]);
         Assert.Equal("TestHub", measurement.Tags["signalarrr.hub"]);
-        Assert.Equal("M", measurement.Tags["signalarrr.method"]);
     }
 
     [Fact]
     public void A_failed_invocation_records_outcome_error_and_the_exception_type() {
         using var capture = new Capture();
 
-        using (var scope = SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("M"), "conn-1")) {
+        using (var scope = SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("Telemetry.Fails"), "conn-1")) {
             scope.RecordFailure(new InvalidOperationException("boom"));
         }
 
-        var measurement = Assert.Single(capture.Measurements);
+        var measurement = capture.SingleMeasurement("Telemetry.Fails");
         Assert.Equal("error", measurement.Tags["signalarrr.outcome"]);
 
-        var span = Assert.Single(capture.Started);
+        var span = capture.SingleActivity("TestHub/Telemetry.Fails");
         Assert.Equal(ActivityStatusCode.Error, span.Status);
         Assert.Equal(typeof(InvalidOperationException).FullName, span.GetTagItem("error.type"));
     }
@@ -156,14 +168,14 @@ public class TelemetryTests {
     public void A_cancelled_invocation_is_an_outcome_not_an_error() {
         using var capture = new Capture();
 
-        using (var scope = SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("M"), "conn-1")) {
+        using (var scope = SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("Telemetry.Cancelled"), "conn-1")) {
             scope.RecordFailure(new OperationCanceledException());
         }
 
-        var measurement = Assert.Single(capture.Measurements);
+        var measurement = capture.SingleMeasurement("Telemetry.Cancelled");
         Assert.Equal("cancelled", measurement.Tags["signalarrr.outcome"]);
 
-        var span = Assert.Single(capture.Started);
+        var span = capture.SingleActivity("TestHub/Telemetry.Cancelled");
         Assert.Equal(ActivityStatusCode.Ok, span.Status);
         Assert.Null(span.GetTagItem("error.type"));
     }
