@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.ProxyGenerator;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -203,10 +204,12 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         private static Exception NoClientResponded(string method, IReadOnlyList<Exception> failures) {
             var message = $"No client responded to the invoke request for '{method}'.";
 
+            // Typed so the wire error carries the no_client_responded code; the collected causes
+            // stay attached as before.
             return failures.Count switch {
-                0 => new InvalidOperationException($"{message} No client matched the query."),
-                1 => new InvalidOperationException(message, failures[0]),
-                _ => new AggregateException(message, failures)
+                0 => new NoClientRespondedException($"{message} No client matched the query."),
+                1 => new NoClientRespondedException(message, failures[0]),
+                _ => new NoClientRespondedException(message, new AggregateException(failures))
             };
         }
 

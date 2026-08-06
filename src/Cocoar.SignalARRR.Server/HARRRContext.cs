@@ -60,6 +60,11 @@ namespace Cocoar.SignalARRR.Server {
             try {
                 // Uses SignalR's native client results — the client handler returns the value directly
                 return await HubContext.Clients.Client(clientId).InvokeCoreAsync<TResult>(methodName, new object[] { serverRequestMessage }, cancellationToken);
+            } catch (HubException hubException) when (hubException is not Common.Exceptions.HARRRRemoteException) {
+                RecordFailure(activity, hubException);
+                // Same structured type as the backplane path rehydrates, so single-node and
+                // multi-node report a failed client call identically.
+                throw Common.Exceptions.HARRRRemoteException.FromReceived(hubException);
             } catch (Exception ex) {
                 RecordFailure(activity, ex);
                 throw;

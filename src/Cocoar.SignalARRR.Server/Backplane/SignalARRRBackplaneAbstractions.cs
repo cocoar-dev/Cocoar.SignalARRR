@@ -41,6 +41,14 @@ namespace Cocoar.SignalARRR.Server {
         public string? ResultType { get; set; }
         public string? ResultJson { get; set; }
         public string? ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Serialized <see cref="Cocoar.SignalARRR.Common.HARRRError"/> of a failed remote invoke.
+        /// Additive: older nodes send only <see cref="ErrorMessage"/>, which then rehydrates
+        /// without a structured envelope. (<see cref="ErrorMessage"/> doubles as the
+        /// single-result flag on request envelopes and stays untouched for that.)
+        /// </summary>
+        public string? ErrorJson { get; set; }
         public SignalARRRBackplaneGroupAction? GroupAction { get; set; }
     }
 

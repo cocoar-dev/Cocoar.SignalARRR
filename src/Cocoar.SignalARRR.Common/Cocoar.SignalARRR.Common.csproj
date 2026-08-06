@@ -24,6 +24,8 @@
   <ItemGroup>
     <PackageReference Include="MessagePack" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <!-- For HubException: HARRRRemoteException derives from it so existing catch blocks keep working. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
