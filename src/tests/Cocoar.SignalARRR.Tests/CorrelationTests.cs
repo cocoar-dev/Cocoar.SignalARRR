@@ -44,11 +44,13 @@ public class CorrelationTests {
         };
         ActivitySource.AddActivityListener(listener);
 
-        var message = new ClientRequestMessage("M").WithInvocationId();
+        // Method name unique to this test: the ActivitySource is process-global and test classes
+        // run in parallel, so the listener also sees other tests' spans.
+        var message = new ClientRequestMessage("Correlation.Tagged").WithInvocationId();
         using (SignalARRRServerTelemetry.StartInvocation("TestHub", message, "conn-1")) {
         }
 
-        var span = Assert.Single(started, a => a.OperationName == "TestHub/M");
+        var span = Assert.Single(started, a => a.OperationName == "TestHub/Correlation.Tagged");
         Assert.Equal(message.InvocationId, span.GetTagItem("signalarrr.invocation_id"));
     }
 
@@ -63,10 +65,10 @@ public class CorrelationTests {
         ActivitySource.AddActivityListener(listener);
 
         // Raw TypeScript/Swift callers send no invocation id at all.
-        using (SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("Bare"), "conn-1")) {
+        using (SignalARRRServerTelemetry.StartInvocation("TestHub", new ClientRequestMessage("Correlation.Bare"), "conn-1")) {
         }
 
-        var span = Assert.Single(started, a => a.OperationName == "TestHub/Bare");
+        var span = Assert.Single(started, a => a.OperationName == "TestHub/Correlation.Bare");
         Assert.Null(span.GetTagItem("signalarrr.invocation_id"));
     }
 }
