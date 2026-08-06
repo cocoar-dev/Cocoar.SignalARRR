@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Server;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
@@ -58,7 +59,7 @@ public class OverloadResolutionTests {
 
         // The server binds its own token from the invocation; the message carries one argument.
         Assert.NotNull(collection.GetMethodInformations("WithToken", 1).MethodInfo);
-        Assert.Throws<Exception>(() => collection.GetMethodInformations("WithToken", 2));
+        Assert.Throws<MethodResolutionException>(() => collection.GetMethodInformations("WithToken", 2));
     }
 
     [Fact]
@@ -67,7 +68,7 @@ public class OverloadResolutionTests {
         collection.AddMethod("WithService", Method(nameof(MethodProbe.WithService)));
 
         Assert.NotNull(collection.GetMethodInformations("WithService", 1).MethodInfo);
-        Assert.Throws<Exception>(() => collection.GetMethodInformations("WithService", 2));
+        Assert.Throws<MethodResolutionException>(() => collection.GetMethodInformations("WithService", 2));
     }
 
     [Fact]
@@ -78,7 +79,7 @@ public class OverloadResolutionTests {
         Assert.NotNull(collection.GetMethodInformations("WithDefaults", 1).MethodInfo);
         Assert.NotNull(collection.GetMethodInformations("WithDefaults", 2).MethodInfo);
         Assert.NotNull(collection.GetMethodInformations("WithDefaults", 3).MethodInfo);
-        Assert.Throws<Exception>(() => collection.GetMethodInformations("WithDefaults", 0));
+        Assert.Throws<MethodResolutionException>(() => collection.GetMethodInformations("WithDefaults", 0));
     }
 
     [Fact]
@@ -97,7 +98,7 @@ public class OverloadResolutionTests {
         var collection = ServerCollection();
         collection.AddMethod("Fetch", Method(nameof(MethodProbe.Fetch), typeof(int)));
 
-        var ex = Assert.Throws<Exception>(() => collection.GetMethodInformations("Fetch", 3));
+        var ex = Assert.Throws<MethodResolutionException>(() => collection.GetMethodInformations("Fetch", 3));
 
         Assert.Contains("3 argument", ex.Message);
         Assert.Contains("1", ex.Message);
@@ -124,7 +125,7 @@ public class OverloadResolutionTests {
         collection.AddMethod("WithToken", Method(nameof(MethodProbe.WithToken)));
 
         Assert.NotNull(collection.GetMethodInformations("WithToken", 2).MethodInfo);
-        Assert.Throws<Exception>(() => collection.GetMethodInformations("WithToken", 1));
+        Assert.Throws<MethodResolutionException>(() => collection.GetMethodInformations("WithToken", 1));
     }
 
     // ---- Interface registration ------------------------------------------------------------
@@ -160,7 +161,7 @@ public class OverloadResolutionTests {
         // entirely — same rule as before: registering a derived contract cannot change what one
         // of its own members means.
         Assert.NotNull(collection.GetInvokeInformation($"{typeof(IHidingContract).FullName}|Do", 2).MethodInfo);
-        Assert.Throws<Exception>(() =>
+        Assert.Throws<MethodResolutionException>(() =>
             collection.GetInvokeInformation($"{typeof(IHidingContract).FullName}|Do", 1));
     }
 
@@ -192,7 +193,7 @@ public class OverloadResolutionTests {
         collection.RegisterInterface(typeof(ITokenContract), typeof(TokenContractImpl));
 
         Assert.NotNull(collection.GetInvokeInformation($"{typeof(ITokenContract).FullName}|Wait", 1).MethodInfo);
-        Assert.Throws<Exception>(() =>
+        Assert.Throws<MethodResolutionException>(() =>
             collection.GetInvokeInformation($"{typeof(ITokenContract).FullName}|Wait", 2));
     }
 

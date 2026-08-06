@@ -9,7 +9,9 @@ using Cocoar.Reflectensions;
 using Cocoar.SignalARRR.Client.ExtensionMethods;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.ProxyGenerator;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Cocoar.SignalARRR.Client {
@@ -60,6 +62,9 @@ namespace Cocoar.SignalARRR.Client {
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
                 return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { message }, cancellationToken) ?? null!;
+            } catch (HubException hubException) when (hubException is not HARRRRemoteException) {
+                SignalARRRClientTelemetry.RecordFailure(activity, hubException);
+                throw HARRRRemoteException.FromReceived(hubException);
             } catch (Exception ex) {
                 SignalARRRClientTelemetry.RecordFailure(activity, ex);
                 throw;
@@ -71,6 +76,9 @@ namespace Cocoar.SignalARRR.Client {
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
                 await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageOnServer, new object[] { message }, cancellationToken);
+            } catch (HubException hubException) when (hubException is not HARRRRemoteException) {
+                SignalARRRClientTelemetry.RecordFailure(activity, hubException);
+                throw HARRRRemoteException.FromReceived(hubException);
             } catch (Exception ex) {
                 SignalARRRClientTelemetry.RecordFailure(activity, ex);
                 throw;
@@ -94,6 +102,9 @@ namespace Cocoar.SignalARRR.Client {
             try {
                 var resultMsg = await HubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
                 return resultMsg;
+            } catch (HubException hubException) when (hubException is not HARRRRemoteException) {
+                SignalARRRClientTelemetry.RecordFailure(activity, hubException);
+                throw HARRRRemoteException.FromReceived(hubException);
             } catch (Exception ex) {
                 SignalARRRClientTelemetry.RecordFailure(activity, ex);
                 throw;
@@ -110,6 +121,9 @@ namespace Cocoar.SignalARRR.Client {
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
                 await HubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
+            } catch (HubException hubException) when (hubException is not HARRRRemoteException) {
+                SignalARRRClientTelemetry.RecordFailure(activity, hubException);
+                throw HARRRRemoteException.FromReceived(hubException);
             } catch (Exception ex) {
                 SignalARRRClientTelemetry.RecordFailure(activity, ex);
                 throw;

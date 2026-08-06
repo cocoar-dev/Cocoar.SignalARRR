@@ -521,13 +521,16 @@ namespace Cocoar.SignalARRR.Server {
                     ResultJson = result == null ? null : JsonSerializer.Serialize(result, resultType, _serializerOptions)
                 });
             } catch (Exception ex) {
+                // The full structured error, not ex.Message: flattening here was why single-node
+                // and multi-node produced different exception types for the same failure.
                 await PublishAsync(GetResponsesChannel(envelope.OriginNodeId), new SignalARRRBackplaneEnvelope {
                     OriginNodeId = NodeId,
                     TargetNodeId = envelope.OriginNodeId,
                     Kind = SignalARRRBackplaneEnvelopeKind.InvokeResponse,
                     HubType = envelope.HubType,
                     RequestId = envelope.RequestId,
-                    ErrorMessage = ex.Message
+                    ErrorMessage = ex.Message,
+                    ErrorJson = HARRRException.Wrap(ex).Message
                 });
             }
         }
@@ -541,8 +544,14 @@ namespace Cocoar.SignalARRR.Server {
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(envelope.ErrorMessage)) {
-                pending.Completion.TrySetException(new InvalidOperationException(envelope.ErrorMessage));
+            if (!string.IsNullOrWhiteSpace(envelope.ErrorMessage) || !string.IsNullOrWhiteSpace(envelope.ErrorJson)) {
+                // Rehydrated as the same type the single-node path throws — previously this was an
+                // InvalidOperationException, so the same failure produced different exception
+                // types depending on whether a backplane was in play.
+                var error = !string.IsNullOrWhiteSpace(envelope.ErrorJson)
+                    ? Cocoar.SignalARRR.Common.HARRRError.Parse(envelope.ErrorJson!)
+                    : Cocoar.SignalARRR.Common.HARRRError.Parse(envelope.ErrorMessage!);
+                pending.Completion.TrySetException(new Cocoar.SignalARRR.Common.Exceptions.HARRRRemoteException(error));
                 return;
             }
 

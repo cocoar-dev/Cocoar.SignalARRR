@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Reflection;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Interfaces;
 
 namespace Cocoar.SignalARRR.Common {
@@ -76,12 +77,12 @@ namespace Cocoar.SignalARRR.Common {
                     return (registration.Factory!, registration.MethodInfo);
                 }
 
-                throw new Exception(
+                throw new MethodResolutionException(HARRRErrorCodes.InvalidArgumentCount,
                     $"Method '{name}' cannot be called with {argumentCount} argument(s). " +
                     $"Registered argument count(s): {string.Join(", ", byCount.Keys.OrderBy(c => c))}.");
             }
 
-            throw new Exception($"Method '{name}' not found!");
+            throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound, $"Method '{name}' not found!");
         }
 
         internal static string Describe(MethodInfo method) =>

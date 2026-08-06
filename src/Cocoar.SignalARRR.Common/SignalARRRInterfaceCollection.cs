@@ -137,7 +137,8 @@ namespace Cocoar.SignalARRR.Common {
                 return methodsCache.GetInvokeInformations(methodName, argumentCount);
             }
 
-            throw new Exception($"Interface '{interfaceName}' is not registered.");
+            throw new Cocoar.SignalARRR.Common.Exceptions.MethodResolutionException(
+                HARRRErrorCodes.MethodNotFound, $"Interface '{interfaceName}' is not registered.");
         }
     }
 }

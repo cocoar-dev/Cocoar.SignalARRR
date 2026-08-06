@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Microsoft.AspNetCore.SignalR;
 using Cocoar.SignalARRR.Tests.SharedModels;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -31,7 +32,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
         [Fact]
         public async Task InvokeNonExistentMethod_ThrowsException() {
-            await Assert.ThrowsAsync<HubException>(async () => {
+            await Assert.ThrowsAsync<HARRRRemoteException>(async () => {
                 await _connection.InvokeAsync<string>("NonExistentMethod", TestContext.Current.CancellationToken);
             });
         }
@@ -41,7 +42,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             // Extra parameters used to be silently ignored. Since F-6 the argument count is the
             // dispatch key — overloads are told apart by it — so a count no registered method
             // accepts is an error, not something to swallow.
-            await Assert.ThrowsAsync<HubException>(async () => {
+            await Assert.ThrowsAsync<HARRRRemoteException>(async () => {
                 await _connection.InvokeAsync<string>("GetName", "unexpected parameter", TestContext.Current.CancellationToken);
             });
         }
@@ -49,12 +50,13 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         [Fact]
         public async Task StructuredError_ArgumentException_ParsesCorrectly() {
             var ct = TestContext.Current.CancellationToken;
-            var ex = await Assert.ThrowsAsync<HubException>(async () => {
+            var ex = await Assert.ThrowsAsync<HARRRRemoteException>(async () => {
                 await _connection.InvokeCoreAsync<string>(
                     new Cocoar.SignalARRR.Common.ClientRequestMessage("ExtraMethods.ThrowArgumentException", new object[] { "testParam" }), ct);
             });
 
-            var error = Cocoar.SignalARRR.Common.HARRRError.Parse(ex);
+            // The structured error is a typed property now; nobody has to parse message strings.
+            var error = ex.Error;
             Assert.Equal("System.ArgumentException", error.Type);
             Assert.Contains("Invalid value provided", error.Message);
         }
@@ -62,12 +64,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         [Fact]
         public async Task StructuredError_InvalidOperationException_ParsesCorrectly() {
             var ct = TestContext.Current.CancellationToken;
-            var ex = await Assert.ThrowsAsync<HubException>(async () => {
+            var ex = await Assert.ThrowsAsync<HARRRRemoteException>(async () => {
                 await _connection.InvokeCoreAsync<string>(
                     new Cocoar.SignalARRR.Common.ClientRequestMessage("ExtraMethods.ThrowInvalidOperation"), ct);
             });
 
-            var error = Cocoar.SignalARRR.Common.HARRRError.Parse(ex);
+            var error = ex.Error;
 
             Assert.Equal("System.InvalidOperationException", error.Type);
             Assert.Equal("This operation is not allowed", error.Message);

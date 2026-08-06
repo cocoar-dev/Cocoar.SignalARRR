@@ -80,5 +80,9 @@ namespace IntegrationTestServer {
 
         public string ThrowInvalidOperation() =>
             throw new InvalidOperationException("This operation is not allowed");
+
+        // Application-defined error code — must reach the client verbatim (O-7).
+        public string ThrowRoomFull() =>
+            throw new Cocoar.SignalARRR.Server.HARRRException("room_full", "The room is full.");
     }
 }

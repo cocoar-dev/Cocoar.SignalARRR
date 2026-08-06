@@ -241,7 +241,7 @@ namespace Cocoar.SignalARRR.Server {
                     "Error invoking message '{Method}' from ConnectionId: {ConnectionId}",
                     clientMessage.Method,
                     Context.ConnectionId);
-                throw new HARRRException(ex);
+                throw HARRRException.Wrap(ex);
             }
         }
 
@@ -272,7 +272,7 @@ namespace Cocoar.SignalARRR.Server {
                     "Error invoking message result '{Method}' from ConnectionId: {ConnectionId}",
                     clientMessage.Method,
                     Context.ConnectionId);
-                throw new HARRRException(ex);
+                throw HARRRException.Wrap(ex);
             }
         }
 
@@ -310,7 +310,7 @@ namespace Cocoar.SignalARRR.Server {
                     "Error sending message '{Method}' from ConnectionId: {ConnectionId}",
                     clientMessage.Method,
                     Context.ConnectionId);
-                throw new HARRRException(ex);
+                throw HARRRException.Wrap(ex);
             }
         }
 
@@ -346,7 +346,7 @@ namespace Cocoar.SignalARRR.Server {
                     "Error streaming message '{Method}' from ConnectionId: {ConnectionId}",
                     clientMessage.Method,
                     Context.ConnectionId);
-                throw new HARRRException(ex);
+                throw HARRRException.Wrap(ex);
             }
         }
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Cocoar.SignalARRR.Common.Exceptions;
 
 namespace Cocoar.SignalARRR.Common {
     public class ClientInterfaceMethodsCache {
@@ -143,12 +144,12 @@ namespace Cocoar.SignalARRR.Common {
                     return (Factory, methodInfo);
                 }
 
-                throw new Exception(
+                throw new MethodResolutionException(HARRRErrorCodes.InvalidArgumentCount,
                     $"Method '{methodName}' cannot be called with {argumentCount} argument(s). " +
                     $"Registered argument count(s): {string.Join(", ", byCount.Keys.OrderBy(c => c))}.");
             }
 
-            throw new Exception($"Method '{methodName}' not found!");
+            throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound, $"Method '{methodName}' not found!");
         }
 
     }

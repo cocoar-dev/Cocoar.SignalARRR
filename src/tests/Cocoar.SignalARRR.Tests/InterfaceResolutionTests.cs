@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Helper;
 using Xunit;
 
@@ -88,7 +89,7 @@ public class InterfaceResolutionTests {
 
         // The type is perfectly resolvable — it just was not registered. Resolution has to be against
         // what the application exposed, not against whatever happens to be loaded in the process.
-        var ex = Assert.Throws<Exception>(() =>
+        var ex = Assert.Throws<MethodResolutionException>(() =>
             collection.GetInvokeInformation($"{typeof(string).FullName}|{nameof(string.Trim)}", 0));
 
         Assert.Contains("not registered", ex.Message);
@@ -98,7 +99,7 @@ public class InterfaceResolutionTests {
     public void An_unknown_name_is_rejected_without_touching_the_type_cache() {
         var collection = CollectionWithProbe();
 
-        Assert.Throws<Exception>(() => collection.GetInvokeInformation("Totally.Unknown.IThing|DoWork", 0));
+        Assert.Throws<MethodResolutionException>(() => collection.GetInvokeInformation("Totally.Unknown.IThing|DoWork", 0));
     }
 
     [Fact]
@@ -112,7 +113,7 @@ public class InterfaceResolutionTests {
     public void A_method_that_is_not_on_the_interface_is_rejected() {
         var collection = CollectionWithProbe();
 
-        Assert.Throws<Exception>(() =>
+        Assert.Throws<MethodResolutionException>(() =>
             collection.GetInvokeInformation($"{typeof(IResolutionProbe).FullName}|NoSuchMethod", 0));
     }
 

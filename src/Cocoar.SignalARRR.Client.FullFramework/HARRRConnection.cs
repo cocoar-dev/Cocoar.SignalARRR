@@ -14,8 +14,10 @@ using Cocoar.Reflectensions.ExtensionMethods;
 using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,19 +88,29 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         public async Task<TResult> InvokeCoreAsync<TResult>(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
-            message = message.WithAuthorization(_accessTokenProvider);
-            return await _hubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
+            message = message.WithAuthorization(_accessTokenProvider).WithInvocationId();
+            try {
+                return await _hubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
+            } catch (HubException hubException) when (!(hubException is HARRRRemoteException)) {
+                // The structured error the server serialized, surfaced as a typed exception — the
+                // message becomes the human-readable remote message instead of raw JSON.
+                throw HARRRRemoteException.FromReceived(hubException);
+            }
         }
 
-        public async Task<TResult> InvokeCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_accessTokenProvider);
-            return await _hubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { msg }, cancellationToken);
+        public Task<TResult> InvokeCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
+            var msg = new ClientRequestMessage(methodName, args);
+            return InvokeCoreAsync<TResult>(msg, cancellationToken);
         }
 
         public async Task SendCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
-            message = message.WithAuthorization(_accessTokenProvider);
-            await _hubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
+            message = message.WithAuthorization(_accessTokenProvider).WithInvocationId();
+            try {
+                await _hubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
+            } catch (HubException hubException) when (!(hubException is HARRRRemoteException)) {
+                throw HARRRRemoteException.FromReceived(hubException);
+            }
         }
 
         public Task SendCoreAsync(string methodName, object[] args, CancellationToken cancellationToken = default) {
