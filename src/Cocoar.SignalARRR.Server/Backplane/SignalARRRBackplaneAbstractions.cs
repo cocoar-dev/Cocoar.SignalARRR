@@ -133,6 +133,28 @@ namespace Cocoar.SignalARRR.Server {
             string groupName,
             SignalARRRBackplaneGroupAction action,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// The nodes currently alive in the cluster, this one included. Empty when the backplane
+        /// is disabled. Previously there was no way to ask (O-8).
+        /// </summary>
+        Task<IReadOnlyList<string>> GetActiveNodesAsync(CancellationToken cancellationToken = default);
+    }
+
+    /// <summary>
+    /// Health surface of a backplane implementation, consumed by the SignalARRR health check.
+    /// </summary>
+    internal interface ISignalARRRBackplaneHealth {
+        TimeSpan HeartbeatInterval { get; }
+
+        /// <summary>When this node last wrote its heartbeat successfully; null before the first.</summary>
+        DateTime? LastSuccessfulHeartbeatUtc { get; }
+
+        /// <summary>The heartbeat loop died — nothing keeps this node registered anymore.</summary>
+        bool HeartbeatLoopFaulted { get; }
+
+        /// <summary>Round-trip to the backing store; null when unreachable.</summary>
+        Task<TimeSpan?> PingAsync(CancellationToken cancellationToken = default);
     }
 
     internal sealed class DisabledSignalARRRBackplane : ISignalARRRBackplane {
@@ -179,6 +201,10 @@ namespace Cocoar.SignalARRR.Server {
             SignalARRRBackplaneGroupAction action,
             CancellationToken cancellationToken = default) {
             return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<string>> GetActiveNodesAsync(CancellationToken cancellationToken = default) {
+            return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
         }
     }
 

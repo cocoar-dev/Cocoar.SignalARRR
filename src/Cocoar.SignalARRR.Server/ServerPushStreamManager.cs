@@ -13,6 +13,12 @@ namespace Cocoar.SignalARRR.Server {
         private readonly Timer _cleanupTimer;
         private readonly TimeSpan _expirationTimeout;
 
+        /// <summary>Downloads stored and not yet taken. Previously not observable (O-8).</summary>
+        public int PendingDownloadCount => _pendingStreams.Count;
+
+        /// <summary>Upload slots waiting for a client. Previously not observable (O-8).</summary>
+        public int PendingUploadSlotCount => _uploadSlots.Count;
+
         public ServerPushStreamManager() : this(TimeSpan.FromMinutes(10)) { }
 
         public ServerPushStreamManager(TimeSpan expirationTimeout) {
@@ -162,6 +168,7 @@ namespace Cocoar.SignalARRR.Server {
             foreach (var key in expiredUploads) {
                 if (_uploadSlots.TryRemove(key, out var slot)) {
                     slot.Completion.TrySetCanceled();
+                    SignalARRRServerTelemetry.UploadSlotsSwept.Add(1);
                 }
             }
         }

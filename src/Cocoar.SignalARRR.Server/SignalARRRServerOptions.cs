@@ -72,6 +72,12 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public bool LogClientIpAddresses { get; set; }
 
+        /// <summary>
+        /// How long a client-to-server stream may exist without ever being consumed before it is
+        /// reaped. Default: 10 minutes. Streams that are actually being read are never reaped.
+        /// </summary>
+        public TimeSpan StreamIdleTimeout { get; set; } = TimeSpan.FromMinutes(10);
+
     }
 
     public class SignalARRRServerOptionsBuilder {
@@ -136,6 +142,15 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public SignalARRRServerOptionsBuilder WithClientIpLogging(bool enabled = true) {
             _options.LogClientIpAddresses = enabled;
+            return this;
+        }
+
+        /// <summary>
+        /// Set how long a never-consumed client-to-server stream may exist before it is reaped.
+        /// Default: 10 minutes.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithStreamIdleTimeout(TimeSpan timeout) {
+            _options.StreamIdleTimeout = timeout;
             return this;
         }
 

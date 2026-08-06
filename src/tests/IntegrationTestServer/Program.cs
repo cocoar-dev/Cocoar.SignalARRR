@@ -57,6 +57,7 @@ builder.Services.AddSignalR()
 builder.Services.AddSingleton<IUserIdProvider, QueryStringUserIdProvider>();
 
 builder.Services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(TestHub).Assembly));
+builder.Services.AddSignalARRRHealthChecks();
 
 var backplaneConnectionString = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CONNECTION_STRING");
 if (!string.IsNullOrWhiteSpace(backplaneConnectionString)) {
@@ -220,6 +221,8 @@ app.MapSignalARRRTest("/__test/trigger-client-getbygenericid", async (context, c
     var result = await Task.Run(() => typedClient.GetByGenericId(Guid.Parse(guidStr)));
     return (object)result;
 });
+
+app.MapHealthChecks("/health");
 
 // Trace propagation probe (server→client): starts a span, calls the client's TraceProbe, and
 // returns "<serverTraceId>|<clientTraceId>" so the test can assert both halves saw one trace.

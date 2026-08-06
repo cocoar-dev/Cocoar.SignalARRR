@@ -24,7 +24,8 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             // SignalR supports both protocols simultaneously — different clients can use different protocols.
             serviceCollection.AddSingleton<Common.Serialization.IProtocolSerializer, Common.Serialization.JsonProtocolSerializer>();
             serviceCollection.AddSingleton<ServerPushStreamManager>();
-            serviceCollection.AddSingleton<ServerStreamManager>();
+            serviceCollection.AddSingleton(sp => new ServerStreamManager(
+                sp.GetRequiredService<SignalARRRServerOptions>().StreamIdleTimeout));
             serviceCollection.AddSingleton<InMemoryHARRRClientManager>();
             serviceCollection.AddSingleton<IHARRRClientManager>(sp => sp.GetRequiredService<InMemoryHARRRClientManager>());
             serviceCollection.TryAddSingleton<LocalSignalARRRBackplaneDispatcher>();
