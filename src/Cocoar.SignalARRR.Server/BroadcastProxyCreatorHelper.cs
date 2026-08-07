@@ -32,7 +32,18 @@ namespace Cocoar.SignalARRR.Server {
 
         public override Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
             ValidateNoStreamArguments(methodName, arguments);
-            var msg = new ServerRequestMessage(methodName, arguments.ToList()).WithTraceContext();
+
+            // Cancellation goes to the same IClientProxy the call went to — the proxy already
+            // names the recipient set (group, all, list of connections).
+            var preparedArguments = BroadcastArgumentRules.PrepareCancellationTokens(
+                arguments as object[] ?? arguments.ToArray(),
+                tokenId => _clientProxy.SendCoreAsync(
+                    MethodNames.CancelTokenFromServer,
+                    new object[] { BroadcastArgumentRules.CancellationMessage(tokenId) },
+                    CancellationToken.None),
+                _logger);
+
+            var msg = new ServerRequestMessage(methodName, preparedArguments).WithTraceContext();
             msg.GenericArguments = genericArguments;
             return _clientProxy.SendCoreAsync(MethodNames.InvokeServerMessage, new object[] { msg }, cancellationToken);
         }
@@ -64,8 +75,6 @@ namespace Cocoar.SignalARRR.Server {
                 throw new NotSupportedException(
                     $"Method '{methodName}' has a Stream argument. Stream arguments are not supported for broadcast/multi-client operations. Use single-client GetTypedMethods<T>() instead.");
             }
-
-            BroadcastArgumentRules.RejectCancellationTokens(methodName, arguments);
         }
 
         public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {

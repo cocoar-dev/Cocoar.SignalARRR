@@ -211,35 +211,40 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         /// <summary>
-        /// Broadcasting a call that carries a cancellation token fails loudly.
+        /// A broadcast call may carry a cancellation token, and cancelling it reaches every
+        /// recipient (N-4, variant C).
         /// </summary>
         /// <remarks>
-        /// A broadcast cannot deliver the cancellation: telling the recipients means sending
-        /// <c>CancelTokenFromServer</c> to the same set, and the dispatcher sends everything as
-        /// <c>InvokeServerMessage</c> with no way to name another. Making that work needs a protocol
-        /// change, tracked separately.
-        /// <para>
-        /// Until then it is rejected rather than quietly dropped, because dropping the argument
-        /// shifts every following one — a client with no parameter types to consult counts
-        /// positions, and the result is a silent misbinding.
-        /// </para>
+        /// Two things must hold. The token argument travels as a reference in its declared slot,
+        /// so the preceding argument binds unshifted — <c>seconds</c> must arrive as 30 on both
+        /// clients, exactly what the earlier rejection protected. And cancelling the server-side
+        /// token sends <c>CancelTokenFromServer</c> to the same set the call went to, so both
+        /// recipients observe the cancellation. The cancel is triggered only after the test has
+        /// seen the call arrive — the timing belongs to the test, not to a fixed server delay.
         /// </remarks>
         [Fact]
-        public async Task BroadcastWithCancellationToken_IsRejectedRatherThanMisbound() {
+        public async Task BroadcastWithCancellationToken_ReachesAllRecipientsAndCancels() {
             var ct = TestContext.Current.CancellationToken;
 
             using var http = new HttpClient();
             var response = await http.PostAsync(
                 $"{_fixture.ServerUrl}/__test/broadcast-wait-with-token", null, ct);
             response.EnsureSuccessStatusCode();
+            var probeId = (await response.Content.ReadAsStringAsync(ct)).Trim('"');
 
-            var body = await response.Content.ReadAsStringAsync(ct);
-            Assert.StartsWith("\"rejected:", body);
-            Assert.Contains("CancellationToken", body);
+            await TestHelper.WaitFor(
+                () => _client1.LastWaitSeconds == 30 && _client2.LastWaitSeconds == 30,
+                "both broadcast recipients receiving Wait with seconds bound to 30");
+            Assert.False(_client1.WaitObservedCancellation);
+            Assert.False(_client2.WaitObservedCancellation);
 
-            // And nothing reached the clients half-bound.
-            Assert.Null(_client1.LastWaitSeconds);
-            Assert.Null(_client2.LastWaitSeconds);
+            var cancelResponse = await http.PostAsync(
+                $"{_fixture.ServerUrl}/__test/broadcast-wait-cancel?probeId={Uri.EscapeDataString(probeId)}", null, ct);
+            cancelResponse.EnsureSuccessStatusCode();
+
+            await TestHelper.WaitFor(
+                () => _client1.WaitObservedCancellation && _client2.WaitObservedCancellation,
+                "both broadcast recipients observing the cancellation");
         }
 
         private class NixCounter : TestShared.ITestClientMethods {

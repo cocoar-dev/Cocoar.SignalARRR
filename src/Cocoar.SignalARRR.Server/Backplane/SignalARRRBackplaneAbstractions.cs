@@ -37,6 +37,16 @@ namespace Cocoar.SignalARRR.Server {
         public string? GroupName { get; set; }
         public string? UserId { get; set; }
         public ServerRequestMessage? Message { get; set; }
+
+        /// <summary>
+        /// The SignalR method the receiving node sends the message under; null means the ordinary
+        /// call path (<c>InvokeServerMessage</c>). Additive: an older node ignores the field and
+        /// delivers a broadcast cancellation as a regular call, which the client then fails to
+        /// resolve — degraded, not corrupted. Needed so a broadcast cancellation (N-4) can reach
+        /// recipients on other nodes as <c>CancelTokenFromServer</c>.
+        /// </summary>
+        public string? SignalRMethod { get; set; }
+
         public Guid? RequestId { get; set; }
         public string? ResultType { get; set; }
         public string? ResultJson { get; set; }
@@ -108,6 +118,7 @@ namespace Cocoar.SignalARRR.Server {
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,
+            string? signalRMethodName = null,
             CancellationToken cancellationToken = default);
 
         Task<object?> InvokeConnectionAsync(
@@ -169,6 +180,7 @@ namespace Cocoar.SignalARRR.Server {
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,
+            string? signalRMethodName = null,
             CancellationToken cancellationToken = default) {
             return Task.CompletedTask;
         }

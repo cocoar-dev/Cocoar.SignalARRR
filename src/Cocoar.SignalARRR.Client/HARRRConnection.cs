@@ -42,9 +42,12 @@ namespace Cocoar.SignalARRR.Client {
             this.On<ServerRequestMessage>(MethodNames.CancelTokenFromServer, (requestMessage) => _harrrContext.MessageHandler.CancelTokenFromServer(requestMessage));
 
             this.On<ServerRequestMessage>(MethodNames.InvokeServerMessage,
-                 async (requestMessage) => {
+                 (requestMessage) => {
                      OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
-                     await _harrrContext.MessageHandler.InvokeServerMessage(requestMessage);
+                     // Queued rather than awaited: an awaited handler occupies the receive loop, so
+                     // a long-running fire-and-forget call would block every later server-to-client
+                     // message — including the cancellation of its own token.
+                     _harrrContext.MessageHandler.QueueServerMessage(requestMessage);
                  });
 
             // Lets every token bound into a running client handler observe the connection's end (N-2).

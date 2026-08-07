@@ -1,7 +1,11 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Cocoar.SignalARRR.Common;
+using Cocoar.SignalARRR.Common.Constants;
+using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
+using Microsoft.Extensions.Logging;
 
 namespace Cocoar.SignalARRR.Server {
 
@@ -17,31 +21,56 @@ namespace Cocoar.SignalARRR.Server {
     internal static class BroadcastArgumentRules {
 
         /// <summary>
-        /// Rejects cancellation tokens, because a broadcast cannot deliver the cancellation.
+        /// Converts each <see cref="CancellationToken"/> argument into a
+        /// <see cref="CancellationTokenReference"/> with an id of its own, wired to deliver the
+        /// cancellation to the same recipients the call went to (N-4, variant C).
         /// </summary>
         /// <remarks>
-        /// Cancelling means telling the recipients, and telling them means sending
-        /// <c>CancelTokenFromServer</c> to the same set the call went to. The dispatcher cannot say
-        /// that: it sends everything as <c>InvokeServerMessage</c>, and the backplane envelope has no
-        /// field for a different one. Delivering a broadcast cancellation therefore needs a protocol
-        /// change, which is a decision of its own rather than a detail of this one.
+        /// Mirrors what <see cref="MethodArgumentPreperator"/> does for single-client calls: each
+        /// token keeps its own id, so two token parameters stay independently cancellable. Until
+        /// the dispatcher and the backplane envelope could name a SignalR method, these arguments
+        /// were rejected outright — delivery was impossible, and dropping the argument would have
+        /// shifted every following one on clients that count positions.
         /// <para>
-        /// Rejected rather than quietly dropped. Dropping the argument shifts every following one,
-        /// because a client with no parameter types to consult counts positions — and that is exactly
-        /// the silent misbinding this whole change is about. A loud, explainable failure is the
-        /// honest interim.
+        /// The delivery callback is best-effort: it typically fires when recipients are already
+        /// disconnecting, so failures are logged, never thrown. The token registration is
+        /// deliberately not disposed, consistent with the cancellation contract (DI-6).
         /// </para>
         /// </remarks>
-        public static void RejectCancellationTokens(string methodName, IEnumerable<object> arguments) {
+        public static object[] PrepareCancellationTokens(object[] arguments, Func<Guid, Task> deliverCancellation, ILogger? logger) {
             if (!arguments.Any(a => a is CancellationToken)) {
-                return;
+                return arguments;
             }
 
-            throw new NotSupportedException(
-                $"Method '{methodName}' has a CancellationToken argument. Cancellation is not supported for " +
-                "broadcast/multi-client operations: the cancellation notification cannot be routed to the " +
-                "recipients. Call the clients individually via GetTypedMethods<T>(connectionId) if you need to " +
-                "cancel them.");
+            var converted = new object[arguments.Length];
+            for (var i = 0; i < arguments.Length; i++) {
+                if (arguments[i] is CancellationToken token) {
+                    var reference = new CancellationTokenReference();
+                    // Not an async lambda: Register takes an Action, so one would compile to
+                    // async void and take the process down when it throws.
+                    token.Register(() => _ = DeliverSafeAsync(deliverCancellation, reference.Id, logger));
+                    converted[i] = reference;
+                } else {
+                    converted[i] = arguments[i];
+                }
+            }
+
+            return converted;
+        }
+
+        /// <summary>
+        /// The wire message a broadcast cancellation travels as — the same shape the single-client
+        /// path sends, so clients cannot tell the difference.
+        /// </summary>
+        public static ServerRequestMessage CancellationMessage(Guid tokenId) =>
+            new ServerRequestMessage(MethodNames.CancelTokenFromServer) { CancellationGuid = tokenId };
+
+        private static async Task DeliverSafeAsync(Func<Guid, Task> deliverCancellation, Guid tokenId, ILogger? logger) {
+            try {
+                await deliverCancellation(tokenId).ConfigureAwait(false);
+            } catch (Exception ex) {
+                logger?.LogDebug(ex, "Could not deliver broadcast cancellation of token {TokenId}.", tokenId);
+            }
         }
     }
 }
