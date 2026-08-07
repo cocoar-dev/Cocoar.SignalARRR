@@ -221,9 +221,11 @@ namespace Cocoar.SignalARRR.Client {
 
         private async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, Guid? cancellationTokenGuid) {
 
-            CancellationToken cancellationToken = default;
+            // Connection lifetime rather than None: the handler notices its caller's world ending
+            // even when the server never sends an explicit cancellation.
+            CancellationToken cancellationToken = _connectionLifetime.Token;
             if (cancellationTokenGuid.HasValue) {
-                var cancellation = new CancellationTokenSource();
+                var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
                 cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cancellation);
                 cancellationToken = cancellation.Token;
             }
@@ -255,6 +257,23 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         private ConcurrentDictionary<Guid, CancellationTokenSource> cancellationTokenSources = new ConcurrentDictionary<Guid, CancellationTokenSource>();
+
+        /// <summary>
+        /// Fires when the underlying connection closes. Every token bound into a client method
+        /// links to it — without this, a handler with a <see cref="CancellationToken"/> parameter
+        /// got <c>CancellationToken.None</c> and kept running into the void after the connection
+        /// died (N-2), while a server method in the same situation observed
+        /// <c>ConnectionAborted</c>. No own abort source: SignalR's Closed event *is* the signal,
+        /// and Stateful Reconnect extends exactly that lifetime.
+        /// </summary>
+        private CancellationTokenSource _connectionLifetime = new CancellationTokenSource();
+
+        internal void OnConnectionClosed() {
+            // A fresh lifetime begins for a potential restart of the same connection object.
+            var previous = Interlocked.Exchange(ref _connectionLifetime, new CancellationTokenSource());
+            previous.Cancel();
+            previous.Dispose();
+        }
 
         private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default) {
 
@@ -355,7 +374,9 @@ namespace Cocoar.SignalARRR.Client {
 
             if (reference == null || reference.Id == Guid.Empty) return null;
 
-            var cts = new CancellationTokenSource();
+            // Linked to the connection lifetime: a per-token cancellation the server can no longer
+            // deliver (the connection is gone) must still fire.
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
             cancellationTokenSources.TryAdd(reference.Id, cts);
             return cts.Token;
         }

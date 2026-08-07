@@ -42,6 +42,17 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         private readonly ISignalARRRMethodsCollection _methodsCollection = new SignalARRRMethodsCollection();
         private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellationTokenSources = new ConcurrentDictionary<Guid, CancellationTokenSource>();
 
+        // Fires when the underlying connection closes; every token bound into a client method
+        // links to it, so a handler notices its caller's world ending even when the server never
+        // sends an explicit cancellation (N-2). Mirrors the .NET client.
+        private CancellationTokenSource _connectionLifetime = new CancellationTokenSource();
+
+        private void OnConnectionClosed() {
+            var previous = Interlocked.Exchange(ref _connectionLifetime, new CancellationTokenSource());
+            previous.Cancel();
+            previous.Dispose();
+        }
+
         public event EventHandler<ServerRequestEventArgs> OnServerRequestMessage;
 
         public HARRRConnection(HubConnection hubConnection, Func<Task<string>> accessTokenProvider = null) {
@@ -74,6 +85,11 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
                     await InvokeServerMessage(requestMessage);
                 });
+
+            _hubConnection.Closed += _ => {
+                OnConnectionClosed();
+                return Task.CompletedTask;
+            };
         }
 
         #region Typed Proxies
@@ -259,9 +275,10 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         }
 
         private async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, Guid? cancellationTokenGuid) {
-            CancellationToken cancellationToken = default;
+            // Connection lifetime rather than None — see _connectionLifetime.
+            CancellationToken cancellationToken = _connectionLifetime.Token;
             if (cancellationTokenGuid.HasValue) {
-                var cts = new CancellationTokenSource();
+                var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
                 _cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cts);
                 cancellationToken = cts.Token;
             }
@@ -363,7 +380,9 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             if (argument == null) return null;
             var reference = _serializer.TryConvertTo<CancellationTokenReference>(argument);
             if (reference == null || reference.Id == Guid.Empty) return null;
-            var cts = new CancellationTokenSource();
+            // Linked to the connection lifetime: a cancellation the server can no longer deliver
+            // (the connection is gone) must still fire.
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
             _cancellationTokenSources.TryAdd(reference.Id, cts);
             return cts.Token;
         }

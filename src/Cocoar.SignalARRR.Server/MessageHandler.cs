@@ -111,7 +111,7 @@ namespace Cocoar.SignalARRR.Server {
                 taskType = methodInfo.ReturnType.GenericTypeArguments[0];
             }
 
-            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, cancellationToken).ConfigureAwait(false);
+            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, cancellationToken, cancellationToken).ConfigureAwait(false);
             SetInvokingInstanceProperties(instance);
 
             if (taskType.IsGenericTypeOf(typeof(ChannelReader<>))) {
@@ -133,18 +133,25 @@ namespace Cocoar.SignalARRR.Server {
 
 
 
-        public async Task<object> InvokeAsync(ClientRequestMessage clientMessage) {
+        /// <param name="parameterCancellation">
+        /// The token bound to the invoked method's <see cref="CancellationToken"/> parameters. The
+        /// entry point chooses it (N-3): the invoke paths pass <c>ConnectionAborted</c> — the
+        /// caller is gone, the answer reaches nobody — while the send path passes
+        /// <c>ApplicationStopping</c>, because a fire-and-forget caller asked for the *work*, and
+        /// "write to the DB" must not stop just because the connection dropped afterwards.
+        /// </param>
+        public async Task<object> InvokeAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation) {
 
             if (clientMessage.Method.Contains("|")) {
-                return await InvokeInterfaceAsync(clientMessage);
+                return await InvokeInterfaceAsync(clientMessage, parameterCancellation);
             }
 
-            return await InvokeMethodAsync(clientMessage);
+            return await InvokeMethodAsync(clientMessage, parameterCancellation);
 
 
         }
 
-        public async Task<object> InvokeMethodAsync(ClientRequestMessage clientMessage) {
+        public async Task<object> InvokeMethodAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation) {
 
             var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method, clientMessage.Arguments.Length);
 
@@ -162,11 +169,11 @@ namespace Cocoar.SignalARRR.Server {
                 instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType!);
             }
 
-            return await InvokeMethodInfoAsync(instance, methodInformations.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments);
+            return await InvokeMethodInfoAsync(instance, methodInformations.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments, parameterCancellation);
 
         }
 
-        public async Task<object> InvokeInterfaceAsync(ClientRequestMessage clientMessage) {
+        public async Task<object> InvokeInterfaceAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation) {
 
             var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method, clientMessage.Arguments.Length);
 
@@ -187,7 +194,7 @@ namespace Cocoar.SignalARRR.Server {
 
 
 
-            return await InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments);
+            return await InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments, parameterCancellation);
 
         }
 
@@ -234,12 +241,13 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
-        public async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments) {
+        public async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, CancellationToken parameterCancellation) {
 
-            // ConnectionAborted rather than None: a server method declaring a CancellationToken now
-            // actually observes the client going away, and an upload wait is released with it
-            // instead of running to its timeout.
-            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, HARRR.Context.ConnectionAborted).ConfigureAwait(false);
+            // The upload wait keeps ConnectionAborted regardless of what the method's own token is
+            // bound to (V-2): waiting for an upload from a client that already disconnected parked
+            // a thread-pool thread permanently — the wait must die with the connection even when
+            // the invoked method deliberately keeps running (the send path).
+            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, parameterCancellation, HARRR.Context.ConnectionAborted).ConfigureAwait(false);
 
             SetInvokingInstanceProperties(instance);
 
@@ -352,7 +360,7 @@ namespace Cocoar.SignalARRR.Server {
         /// client that requested an upload slot and never uploaded parked a thread pool thread
         /// permanently. Repeated, that is a remote denial of service against the whole server.
         /// </remarks>
-        private async Task<object[]> BuildExecuteMethodParametersAsync(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default) {
+        private async Task<object[]> BuildExecuteMethodParametersAsync(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken parameterCancellation, CancellationToken uploadCancellation) {
 
             var @params = parameters as IList<object> ?? parameters.ToList();
             var methodParameters = methodInfo.GetParameters();
@@ -365,7 +373,7 @@ namespace Cocoar.SignalARRR.Server {
                 var p = methodParameters[i];
 
                 if (p.ParameterType == typeof(CancellationToken)) {
-                    bound[i] = cancellation;
+                    bound[i] = parameterCancellation;
                     continue;
                 }
 
@@ -404,7 +412,7 @@ namespace Cocoar.SignalARRR.Server {
                             ?? TimeSpan.FromMinutes(2);
 
                         par = await streamManager
-                            .WaitForUpload(streamRef.Uri, timeout, cancellation)
+                            .WaitForUpload(streamRef.Uri, timeout, uploadCancellation)
                             .ConfigureAwait(false);
                     }
                 } else if (par != null && p.ParameterType != par.GetType()) {

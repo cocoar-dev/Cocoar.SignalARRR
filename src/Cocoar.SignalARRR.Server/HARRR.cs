@@ -232,7 +232,7 @@ namespace Cocoar.SignalARRR.Server {
                 }
 
                 var messageHandler = new MessageHandler(this, ClientContext, MethodsCollection, ServiceProvider, InterfaceCollection);
-                await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
+                await messageHandler.InvokeAsync(clientMessage, Context.ConnectionAborted).ConfigureAwait(false);
 
             } catch (Exception ex) {
                 invocation.RecordFailure(ex);
@@ -263,7 +263,7 @@ namespace Cocoar.SignalARRR.Server {
                 }
 
                 var messageHandler = new MessageHandler(this, ClientContext, MethodsCollection, ServiceProvider, InterfaceCollection);
-                return await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
+                return await messageHandler.InvokeAsync(clientMessage, Context.ConnectionAborted).ConfigureAwait(false);
 
             } catch (Exception ex) {
                 invocation.RecordFailure(ex);
@@ -301,7 +301,16 @@ namespace Cocoar.SignalARRR.Server {
                 // the Hub, so any Context/Groups access (e.g. group joins) silently failed.
                 // The client-side `send` is already non-blocking at the SignalR layer (no invocationId),
                 // so awaiting here is transparent to the caller — it just doesn't return a result.
-                await messageHandler.InvokeAsync(clientMessage).ConfigureAwait(false);
+                //
+                // ApplicationStopping rather than ConnectionAborted for the method's own token
+                // (N-3): a fire-and-forget caller asked for the *work* — "write to the DB", "queue
+                // the job" — and that work must not stop because the connection happened to drop
+                // afterwards. The invoke paths keep ConnectionAborted: there, the answer would
+                // reach nobody.
+                var parameterCancellation = ServiceProvider
+                    .GetService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>()?.ApplicationStopping
+                    ?? CancellationToken.None;
+                await messageHandler.InvokeAsync(clientMessage, parameterCancellation).ConfigureAwait(false);
 
             } catch (Exception ex) {
                 invocation.RecordFailure(ex);
