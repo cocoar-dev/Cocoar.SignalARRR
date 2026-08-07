@@ -1,4 +1,4 @@
-# Roundtrip baseline — before the Block 8 performance findings
+# Roundtrip baseline — before/after the Block 8 performance findings
 
 Measured **before** any of the P-1/P-2/P-4/P-6/P-7 fixes, so their effect can be judged
 against these numbers. Reproduce with:
@@ -29,6 +29,32 @@ dotnet run --project src/benchmarks/Cocoar.SignalARRR.Benchmarks -c Release -- -
 
 `ServerMethodsClass_1Arg` is from a standalone re-run: in the full-suite run its process
 died mid-measurement (see below). The other five values are from the full-suite run.
+
+## After the P-1/P-4/P-6/P-7 fixes (2026-08-07, same machine and environment)
+
+| Method                   | Mean     | StdDev   | Median   | Allocated |
+|------------------------- |---------:|---------:|---------:|----------:|
+| HubMethod_0Args          | 230.3 µs | 28.5 µs  | 225.6 µs |   9.29 KB |
+| HubMethod_1Arg           | 157.9 µs | 74.4 µs  | 118.4 µs |   9.85 KB |
+| HubMethod_3Args          | 135.2 µs | 32.3 µs  | 129.9 µs |  10.47 KB |
+| ServerMethodsClass_0Args | 117.2 µs | 22.9 µs  | 111.9 µs |   9.43 KB |
+| ServerMethodsClass_1Arg  | 113.2 µs | 26.6 µs  | 109.3 µs |   9.98 KB |
+| ServerMethodsClass_3Args | 103.9 µs |  6.8 µs  | 102.8 µs |  10.59 KB |
+
+Reading the delta:
+
+- **ServerMethods roundtrips dropped to ~0.4–0.5× of baseline** (263–287 µs → 104–117 µs) —
+  this is the path that carried all of the removed work: two `CreateLogger` calls, five
+  name-based reflective property sets, and the per-parameter reflection.
+- **Hub-declared methods with arguments halved** (298 µs → 135–158 µs); the 0-args hub
+  method barely moved (241 → 230 µs), consistent with it never having taken the
+  property-set path and binding zero parameters.
+- Allocations fell modestly (up to 0.9 KB per call) — the dominant win was time, not
+  memory: the removed work was lock waits and reflection, not primarily allocation.
+- The full suite now reaches BenchmarkDotNet's target precision in 4 minutes instead of
+  29 — the run-to-run variance itself was largely the removed contention.
+- `HubMethod_1Arg`'s after-mean carries a large StdDev (74 µs, bimodal); its median
+  (118 µs) is the more representative number for that row.
 
 ## How to read these numbers
 
