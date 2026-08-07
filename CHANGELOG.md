@@ -99,6 +99,10 @@ that are server infrastructure rather than application-facing API.
 - **`SignalARRRServerOptions.StreamUploadTimeout`** (default 2 minutes), **`MaxUploadSizeBytes`** (default 100 MB) and **`UploadSlotExpiration`** (default 10 minutes), with matching `WithStreamUploadTimeout`, `WithMaxUploadSize` and `WithUploadSlotExpiration` builder methods.
 - **Regression tests**: coverage for endpoint registration, authorization metadata resolution, transport credential classification, interface name resolution, overload and default-value dispatch, trace propagation across the wire in both directions, invocation-id correlation, error-message hygiene (a value that fails to deserialize is never echoed), upload slot lifetime and stream ownership, plus cluster resilience (a node evicted while still serving connections, and a cluster query whose peer never answers) and the test fixtures' own infrastructure: the server-URL handshake and the transport-auth debug endpoints. The suite grew from 98 to 268 tests.
 
+### Documentation
+
+- **Connection loss semantics are documented** (README): pending invocations fail immediately on any drop and are not safely retryable (at-most-once uncertainty — retry only idempotent operations); SignalR's reconnect features are reachable through the pass-through builders, with the explicit caveat that SignalARRR's connection-bound state under Stateful Reconnect is not yet test-verified; and the stream upload wait and backplane invoke timeout run independently of connection state.
+
 ### Fixed (build and CI)
 
 - **The PR validation matrix could not build the solution**: it passed `--framework` to `dotnet build`, which sets `TargetFramework` as a global property and thereby overrides the framework of every project — including the `netstandard2.0`-only source generator and .NET Framework client, whose restore assets have no such target (`NETSDK1005`). The solution is now built once and the matrix selects the framework for the test run only, which is what it exists for.
