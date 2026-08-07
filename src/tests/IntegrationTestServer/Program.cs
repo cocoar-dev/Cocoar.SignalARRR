@@ -224,6 +224,35 @@ app.MapSignalARRRTest("/__test/trigger-client-getbygenericid", async (context, c
 
 app.MapHealthChecks("/health");
 
+// N-3 probe state: what a server method's CancellationToken observed (see ExtraMethods).
+app.MapSignalARRRTest("/__test/abort-probe", (context, clientManager) => {
+    var probeId = context.Request.Query["probeId"].ToString();
+    return (object)(IntegrationTestServer.AbortProbes.State.TryGetValue(probeId, out var state) ? state : "none");
+});
+
+// N-2 probe: invokes the client's Wait WITHOUT ever cancelling — the client-side token may then
+// only fire through the client's own connection-lifetime binding. Fire-and-forget on purpose:
+// the invocation is expected to die with the connection.
+app.MapSignalARRRTest("/__test/trigger-client-wait-nocancel", (context, clientManager) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    var seconds = int.TryParse(context.Request.Query["seconds"].ToString(), out var s) ? s : 30;
+
+    if (string.IsNullOrWhiteSpace(connectionId)) {
+        return Results.BadRequest("Missing connectionId");
+    }
+
+    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
+    _ = Task.Run(async () => {
+        try {
+            await typedClient.Wait(seconds, CancellationToken.None);
+        } catch {
+            // Expected: the connection is torn down mid-call.
+        }
+    });
+
+    return (object)"started";
+});
+
 // Trace propagation probe (server→client): starts a span, calls the client's TraceProbe, and
 // returns "<serverTraceId>|<clientTraceId>" so the test can assert both halves saw one trace.
 app.MapSignalARRRTest("/__test/trace-probe", async (context, clientManager) => {

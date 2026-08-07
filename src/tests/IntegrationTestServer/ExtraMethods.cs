@@ -84,5 +84,31 @@ namespace IntegrationTestServer {
         // Application-defined error code — must reach the client verbatim (O-7).
         public string ThrowRoomFull() =>
             throw new Cocoar.SignalARRR.Server.HARRRException("room_full", "The room is full.");
+
+        // N-3 probes: what happens to a method's CancellationToken when the caller's connection
+        // dies. The invoke path binds ConnectionAborted (token fires), the send path binds
+        // ApplicationStopping (the work continues). State is polled via /__test/abort-probe.
+        public async Task<string> InvokeAbortProbe(string probeId, int seconds, CancellationToken cancellationToken) {
+            await RunAbortProbe(probeId, seconds, cancellationToken);
+            return "completed";
+        }
+
+        public Task SendAbortProbe(string probeId, int seconds, CancellationToken cancellationToken) =>
+            RunAbortProbe(probeId, seconds, cancellationToken);
+
+        private static async Task RunAbortProbe(string probeId, int seconds, CancellationToken cancellationToken) {
+            AbortProbes.State[probeId] = "running";
+            try {
+                await Task.Delay(TimeSpan.FromSeconds(seconds), cancellationToken);
+                AbortProbes.State[probeId] = "completed";
+            } catch (OperationCanceledException) {
+                AbortProbes.State[probeId] = "cancelled";
+                throw;
+            }
+        }
+    }
+
+    public static class AbortProbes {
+        public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> State = new();
     }
 }

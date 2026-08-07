@@ -45,6 +45,12 @@ namespace Cocoar.SignalARRR.Client {
                      OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
                      await _harrrContext.MessageHandler.InvokeServerMessage(requestMessage);
                  });
+
+            // Lets every token bound into a running client handler observe the connection's end (N-2).
+            HubConnection.Closed += _ => {
+                _harrrContext.MessageHandler.OnConnectionClosed();
+                return Task.CompletedTask;
+            };
         }
 
 
