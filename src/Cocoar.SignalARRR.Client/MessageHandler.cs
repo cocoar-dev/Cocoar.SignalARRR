@@ -84,6 +84,34 @@ namespace Cocoar.SignalARRR.Client {
             return new StreamReference { Uri = uploadUrl };
         }
 
+        private Task _fireAndForgetChain = Task.CompletedTask;
+        private readonly object _fireAndForgetChainLock = new object();
+
+        /// <summary>
+        /// Runs a fire-and-forget server message without occupying SignalR's receive loop.
+        /// </summary>
+        /// <remarks>
+        /// The receive loop awaits an async handler before it processes the next message. With the
+        /// method executed inline, one long-running fire-and-forget call therefore blocked every
+        /// later server-to-client message on the connection — including <c>CancelTokenFromServer</c>
+        /// for its own token, so exactly the calls one wants to cancel were the ones that could
+        /// not be. (The invoke path never had the problem: SignalR dispatches client-result
+        /// invocations off the loop.) Messages are chained, not parallelized: fire-and-forget
+        /// calls keep executing in arrival order, matching SignalR's own sequential default.
+        /// </remarks>
+        internal void QueueServerMessage(ServerRequestMessage message) {
+            lock (_fireAndForgetChainLock) {
+                _fireAndForgetChain = RunAfter(_fireAndForgetChain, message);
+            }
+
+            async Task RunAfter(Task previous, ServerRequestMessage next) {
+                await previous.ConfigureAwait(false);
+                // InvokeServerMessage catches everything (fire-and-forget errors are logged, not
+                // propagated), so the chain cannot fault and stall later messages.
+                await InvokeServerMessage(next).ConfigureAwait(false);
+            }
+        }
+
         public async Task InvokeServerMessage(ServerRequestMessage message) {
 
             try {

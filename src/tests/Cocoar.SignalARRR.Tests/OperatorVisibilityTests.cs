@@ -156,7 +156,7 @@ public class OperatorVisibilityTests {
         public Task<IReadOnlyList<string>> GetActiveNodesAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Nodes);
 
-        public Task PublishDispatchAsync(Type? hubType, SignalARRRBackplaneTargetKind targetKind, Cocoar.SignalARRR.Common.ServerRequestMessage message, IReadOnlyList<string>? connectionIds = null, string? groupName = null, string? userId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task PublishDispatchAsync(Type? hubType, SignalARRRBackplaneTargetKind targetKind, Cocoar.SignalARRR.Common.ServerRequestMessage message, IReadOnlyList<string>? connectionIds = null, string? groupName = null, string? userId = null, string? signalRMethodName = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task<object?> InvokeConnectionAsync(Type? hubType, string connectionId, Cocoar.SignalARRR.Common.ServerRequestMessage message, Type resultType, CancellationToken cancellationToken = default) => Task.FromResult<object?>(null);
 

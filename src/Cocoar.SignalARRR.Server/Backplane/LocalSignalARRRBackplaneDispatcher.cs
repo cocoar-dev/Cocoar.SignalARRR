@@ -40,6 +40,15 @@ namespace Cocoar.SignalARRR.Server {
             return client != null && (hubType == null || client.HARRRType == hubType);
         }
 
+        /// <summary>
+        /// Sends <paramref name="message"/> to the targeted local connections.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="signalRMethodName"/> names the client-side handler; the default is the
+        /// ordinary call path. Broadcast cancellation (N-4) sends the same message shape under
+        /// <c>CancelTokenFromServer</c> to the same target set — which is only possible because
+        /// this is no longer hard-coded.
+        /// </remarks>
         public async Task DispatchAsync(
             Type? hubType,
             SignalARRRBackplaneTargetKind targetKind,
@@ -47,6 +56,7 @@ namespace Cocoar.SignalARRR.Server {
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,
+            string? signalRMethodName = null,
             CancellationToken cancellationToken = default) {
             hubType = ResolveHubType(hubType, connectionIds);
             if (hubType == null) {
@@ -58,7 +68,7 @@ namespace Cocoar.SignalARRR.Server {
                 return;
             }
 
-            await clientProxy.SendCoreAsync(MethodNames.InvokeServerMessage, new object[] { message }, cancellationToken);
+            await clientProxy.SendCoreAsync(signalRMethodName ?? MethodNames.InvokeServerMessage, new object[] { message }, cancellationToken);
         }
 
         public async Task<(bool handled, object? result)> InvokeConnectionAsync(

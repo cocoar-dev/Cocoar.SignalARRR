@@ -111,4 +111,12 @@ namespace IntegrationTestServer {
     public static class AbortProbes {
         public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> State = new();
     }
+
+    /// <summary>
+    /// N-4 probes: cancellation sources behind broadcast calls that carry a token, cancelled on
+    /// request by a second endpoint so the test controls the timing instead of a fixed delay.
+    /// </summary>
+    public static class BroadcastCancelProbes {
+        public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Threading.CancellationTokenSource> Sources = new();
+    }
 }

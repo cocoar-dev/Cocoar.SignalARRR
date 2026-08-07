@@ -365,20 +365,29 @@ app.MapPost("/__test/broadcast-all-nix", async (HttpContext context) => {
     return Results.Ok("Sent");
 });
 
-// Broadcasting a call that carries a cancellation token is rejected: the cancellation could not be
-// delivered to the recipients, and dropping the argument would shift every following one.
-app.MapPost("/__test/broadcast-wait-with-token", (HttpContext context) => {
+// N-4: broadcast a call that carries a cancellation token; the token is cancelled by the
+// companion endpoint below, so the test controls when — after it has seen the call arrive.
+app.MapPost("/__test/broadcast-wait-with-token", async (HttpContext context) => {
     var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
-    using var cts = new CancellationTokenSource();
+    var probeId = Guid.NewGuid().ToString("N");
+    var cts = new CancellationTokenSource();
+    IntegrationTestServer.BroadcastCancelProbes.Sources[probeId] = cts;
 
-    try {
-        clientManager.WithHub<TestHub>()
-            .SendAsync<TestShared.ITestClientMethods>(c => c.Wait(30, cts.Token))
-            .GetAwaiter().GetResult();
-        return Results.Ok("sent");
-    } catch (NotSupportedException ex) {
-        return Results.Ok($"rejected: {ex.Message}");
+    await clientManager.WithHub<TestHub>()
+        .SendAsync<TestShared.ITestClientMethods>(c => c.Wait(30, cts.Token));
+
+    return Results.Ok(probeId);
+});
+
+app.MapPost("/__test/broadcast-wait-cancel", (HttpContext context) => {
+    var probeId = context.Request.Query["probeId"].ToString();
+    if (!IntegrationTestServer.BroadcastCancelProbes.Sources.TryRemove(probeId, out var cts)) {
+        return Results.BadRequest($"No broadcast cancel probe '{probeId}'.");
     }
+
+    cts.Cancel();
+    cts.Dispose();
+    return Results.Ok("cancelled");
 });
 
 // Typed broadcast with attribute filter

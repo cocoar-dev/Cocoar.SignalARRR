@@ -82,9 +82,12 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             _hubConnection.On<ServerRequestMessage>(MethodNames.CancelTokenFromServer, CancelTokenFromServer);
 
             _hubConnection.On<ServerRequestMessage>(MethodNames.InvokeServerMessage,
-                async (requestMessage) => {
+                (requestMessage) => {
                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
-                    await InvokeServerMessage(requestMessage);
+                    // Queued rather than awaited: an awaited handler occupies the receive loop, so
+                    // a long-running fire-and-forget call would block every later server-to-client
+                    // message — including the cancellation of its own token.
+                    QueueServerMessage(requestMessage);
                 });
 
             _hubConnection.Closed += _ => {
@@ -202,6 +205,32 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             }
 
             return result;
+        }
+
+        private Task _fireAndForgetChain = Task.CompletedTask;
+        private readonly object _fireAndForgetChainLock = new object();
+
+        /// <summary>
+        /// Runs a fire-and-forget server message without occupying SignalR's receive loop.
+        /// </summary>
+        /// <remarks>
+        /// The receive loop awaits an async handler before it processes the next message. With the
+        /// method executed inline, one long-running fire-and-forget call therefore blocked every
+        /// later server-to-client message on the connection — including <c>CancelTokenFromServer</c>
+        /// for its own token. Messages are chained, not parallelized: fire-and-forget calls keep
+        /// executing in arrival order.
+        /// </remarks>
+        private void QueueServerMessage(ServerRequestMessage message) {
+            lock (_fireAndForgetChainLock) {
+                _fireAndForgetChain = RunAfter(_fireAndForgetChain, message);
+            }
+        }
+
+        private async Task RunAfter(Task previous, ServerRequestMessage next) {
+            await previous.ConfigureAwait(false);
+            // InvokeServerMessage catches everything (fire-and-forget errors are logged, not
+            // propagated), so the chain cannot fault and stall later messages.
+            await InvokeServerMessage(next).ConfigureAwait(false);
         }
 
         private async Task InvokeServerMessage(ServerRequestMessage message) {

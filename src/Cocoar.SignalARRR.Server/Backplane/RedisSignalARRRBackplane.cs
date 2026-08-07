@@ -102,6 +102,7 @@ namespace Cocoar.SignalARRR.Server {
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,
+            string? signalRMethodName = null,
             CancellationToken cancellationToken = default) {
             string? targetNodeId = null;
             if (targetKind == SignalARRRBackplaneTargetKind.Connections) {
@@ -119,7 +120,8 @@ namespace Cocoar.SignalARRR.Server {
                 ConnectionIds = connectionIds == null ? Array.Empty<string>() : new List<string>(connectionIds).ToArray(),
                 GroupName = groupName,
                 UserId = userId,
-                Message = message
+                Message = message,
+                SignalRMethod = signalRMethodName
             };
 
             await PublishAsync(GetCommandsChannel(), envelope);
@@ -471,7 +473,8 @@ namespace Cocoar.SignalARRR.Server {
                 envelope.Message,
                 envelope.ConnectionIds,
                 envelope.GroupName,
-                envelope.UserId);
+                envelope.UserId,
+                envelope.SignalRMethod);
         }
 
         private async Task HandleGroupCommandAsync(SignalARRRBackplaneEnvelope envelope) {
