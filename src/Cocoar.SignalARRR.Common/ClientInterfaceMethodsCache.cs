@@ -89,6 +89,20 @@ namespace Cocoar.SignalARRR.Common {
         }
 
         private void Add(Type declaringInterface, Type? implementationType, MethodInfo methodInfo, WireSlotPolicy slotPolicy) {
+            // [MessageName] is honoured nowhere on the interface path — not by this registration,
+            // not by either proxy flavour, not by the source generator; the wire name is always
+            // 'Namespace.IInterface|MethodName'. Whoever sets it expects it to work (the attribute
+            // allows the target), so it fails here at startup instead of doing nothing, wordlessly
+            // (N-5). Renaming the wire independently of the C# name is a protocol-level feature of
+            // its own, deliberately not smuggled in here.
+            if (methodInfo.GetCustomAttribute<Attributes.MessageNameAttribute>() != null) {
+                throw new InvalidOperationException(
+                    $"Cannot register interface '{InterfaceType.FullName}': member '{declaringInterface.FullName}.{methodInfo.Name}' " +
+                    "carries [MessageName], which the interface dispatch path does not honour — the name on the wire is always " +
+                    $"'{declaringInterface.FullName}|{methodInfo.Name}'. Remove the attribute (or rename the method); " +
+                    "[MessageName] works on hub and ServerMethods methods only.");
+            }
+
             // The argument counts are computed from the resolved target, not the interface
             // declaration: the binder fills omitted arguments from the *executed* method's default
             // values, so the index must accept exactly what the binder can actually bind.

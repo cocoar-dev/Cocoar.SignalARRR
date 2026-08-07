@@ -200,10 +200,62 @@ public class TypeHelperTests {
     public void An_empty_name_maps_to_void() {
         Assert.Equal(typeof(void), TypeHelper.FindType(string.Empty));
     }
+
+    /// <summary>
+    /// <c>[MessageName]</c> on an interface member is a hard registration error (N-5 interim).
+    /// </summary>
+    /// <remarks>
+    /// Nothing on the interface path honours the attribute — the wire name is always
+    /// <c>Namespace.IInterface|MethodName</c>. Whoever sets it expects it to work, so it fails at
+    /// startup with an explanation instead of doing nothing, wordlessly. Renaming the wire
+    /// independently of the C# name is a protocol feature of its own, tracked separately.
+    /// </remarks>
+    [Fact]
+    public void MessageName_on_an_interface_member_is_rejected_at_registration() {
+        var collection = new SignalARRRInterfaceCollection();
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => collection.RegisterInterface(typeof(IMessageNamedProbe), typeof(MessageNamedProbe)));
+
+        Assert.Contains("MessageName", ex.Message);
+        Assert.Contains(nameof(IMessageNamedProbe.Ping), ex.Message);
+    }
+
+    [Fact]
+    public void MessageName_on_the_implementation_does_not_block_interface_registration() {
+        // The attribute on the class side is meant for that class's hub/ServerMethods
+        // registration, where it works — the interface path only rejects it on the contract.
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IPlainContractProbe), typeof(MessageNamedImplementationProbe));
+
+        var (_, methodInfo) = collection.GetInvokeInformation(
+            $"{typeof(IPlainContractProbe).FullName}|{nameof(IPlainContractProbe.Ping)}", 0);
+        Assert.Equal(nameof(IPlainContractProbe.Ping), methodInfo.Name);
+    }
 }
 
 public interface IResolutionProbe {
     Task Ping();
+}
+
+public interface IMessageNamedProbe {
+    [Cocoar.SignalARRR.Common.Attributes.MessageName("Renamed")]
+    Task Ping();
+}
+
+public class MessageNamedProbe : IMessageNamedProbe {
+    public Task Ping() => Task.CompletedTask;
+}
+
+public interface IPlainContractProbe {
+    Task Ping();
+}
+
+public class MessageNamedImplementationProbe : IPlainContractProbe {
+    // On the implementation, not the contract: meant for this class's ServerMethods/hub
+    // registration, which does honour it — must not block the interface registration.
+    [Cocoar.SignalARRR.Common.Attributes.MessageName("Renamed")]
+    public Task Ping() => Task.CompletedTask;
 }
 
 public class ResolutionProbe : IResolutionProbe {
