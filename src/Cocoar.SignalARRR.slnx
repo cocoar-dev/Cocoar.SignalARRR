@@ -10,4 +10,5 @@
   <Project Path="tests/Cocoar.SignalARRR.Tests/Cocoar.SignalARRR.Tests.csproj" />
   <Project Path="tests/Cocoar.SignalARRR.IntegrationTests/Cocoar.SignalARRR.IntegrationTests.csproj" />
   <Project Path="tests/Cocoar.SignalARRR.DynamicProxy.Tests/Cocoar.SignalARRR.DynamicProxy.Tests.csproj" />
+  <Project Path="benchmarks/Cocoar.SignalARRR.Benchmarks/Cocoar.SignalARRR.Benchmarks.csproj" />
 </Solution>

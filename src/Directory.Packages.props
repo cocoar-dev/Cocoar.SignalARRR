@@ -6,6 +6,7 @@
 
   <!-- Framework-independent packages -->
   <ItemGroup>
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Cocoar.Reflectensions" Version="1.0.2" />
     <PackageVersion Include="Cocoar.Reflectensions.Invoke" Version="1.0.2" />
     <PackageVersion Include="Cocoar.Reflectensions.ExpandableObject" Version="1.0.2" />
