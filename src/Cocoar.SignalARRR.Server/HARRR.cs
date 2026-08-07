@@ -78,7 +78,7 @@ namespace Cocoar.SignalARRR.Server {
             // Nothing else ever assigned this, so every Logger.LogError/LogDebug in this class wrote
             // to NullLogger: invocation failures, connect/disconnect failures and stream write errors
             // were all invisible unless the consumer happened to set Logger themselves.
-            Logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(GetType()) ?? NullLogger.Instance;
+            Logger = LoggerCache.For(serviceProvider, GetType());
 
             // An IP address is personal data; it only appears in logs when the consumer opted in.
             _logClientIpAddresses = serviceProvider.GetService<SignalARRRServerOptions>()?.LogClientIpAddresses ?? false;
