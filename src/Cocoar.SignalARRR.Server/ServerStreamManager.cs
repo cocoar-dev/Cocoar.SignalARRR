@@ -10,7 +10,7 @@ using Cocoar.Reflectensions.ExtensionMethods;
 using Cocoar.SignalARRR.Common.Serialization;
 
 namespace Cocoar.SignalARRR.Server {
-    public class ServerStreamManager {
+    public class ServerStreamManager : IDisposable {
 
         /// <summary>
         /// Default number of items buffered per client-to-server stream before the producer is made
@@ -19,6 +19,61 @@ namespace Cocoar.SignalARRR.Server {
         public const int DefaultBufferSize = 1024;
 
         private readonly ConcurrentDictionary<Guid, PendingStream> _pendingStreams = new();
+        private readonly TimeSpan _idleTimeout;
+        private readonly Timer _reaperTimer;
+
+        /// <summary>
+        /// Streams currently tracked. A stream that grows old here without ever being read is a
+        /// leak — previously invisible, because this count did not exist (O-8).
+        /// </summary>
+        public int ActiveStreamCount => _pendingStreams.Count;
+
+        public ServerStreamManager() : this(TimeSpan.FromMinutes(10)) {
+        }
+
+        public ServerStreamManager(TimeSpan idleTimeout) {
+            _idleTimeout = idleTimeout;
+            // The callback must not throw: an unhandled exception on a timer thread takes the
+            // process down.
+            _reaperTimer = new Timer(_ => {
+                try {
+                    SweepIdleStreams();
+                } catch {
+                    // Never let this escape onto the timer thread.
+                }
+            }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        }
+
+        /// <summary>
+        /// Removes streams that were created but never read. Everything with a reader attached has
+        /// a lifecycle of its own (the read loop's <c>finally</c>, or
+        /// <see cref="CompleteStreamsFor"/> on disconnect) — the leak case is exactly a stream
+        /// nobody ever started consuming.
+        /// </summary>
+        internal int SweepIdleStreams() {
+            var cutoff = DateTime.UtcNow - _idleTimeout;
+            var reaped = 0;
+
+            foreach (var entry in _pendingStreams) {
+                if (entry.Value.ReaderAttached || entry.Value.CreatedAt >= cutoff) {
+                    continue;
+                }
+
+                if (_pendingStreams.TryRemove(entry.Key, out var pending)) {
+                    pending.Channel.Writer.TryComplete(new IOException(
+                        $"The stream was never consumed and was reaped after {_idleTimeout}."));
+                    SignalARRRServerTelemetry.ActiveStreams.Add(-1);
+                    SignalARRRServerTelemetry.StreamsReaped.Add(1);
+                    reaped++;
+                }
+            }
+
+            return reaped;
+        }
+
+        public void Dispose() {
+            _reaperTimer.Dispose();
+        }
 
         /// <summary>
         /// Creates a stream owned by <paramref name="ownerConnectionId"/>.
@@ -41,7 +96,10 @@ namespace Cocoar.SignalARRR.Server {
                 SingleWriter = true
             });
 
-            _pendingStreams.TryAdd(streamId, new PendingStream(channel, ownerConnectionId));
+            if (_pendingStreams.TryAdd(streamId, new PendingStream(channel, ownerConnectionId))) {
+                SignalARRRServerTelemetry.ActiveStreams.Add(1);
+            }
+
             return channel;
         }
 
@@ -104,6 +162,7 @@ namespace Cocoar.SignalARRR.Server {
 
                 if (_pendingStreams.TryRemove(entry.Key, out var pending)) {
                     pending.Channel.Writer.TryComplete(new IOException(reason));
+                    SignalARRRServerTelemetry.ActiveStreams.Add(-1);
                 }
             }
         }
@@ -112,6 +171,10 @@ namespace Cocoar.SignalARRR.Server {
             if (!_pendingStreams.TryGetValue(streamId, out var pending)) {
                 yield break;
             }
+
+            // From here on the read loop's finally owns the entry's removal; the idle reaper must
+            // not touch a stream that is actually being consumed.
+            pending.ReaderAttached = true;
 
             try {
                 await foreach (var item in pending.Channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false)) {
@@ -124,7 +187,9 @@ namespace Cocoar.SignalARRR.Server {
                     }
                 }
             } finally {
-                _pendingStreams.TryRemove(streamId, out _);
+                if (_pendingStreams.TryRemove(streamId, out _)) {
+                    SignalARRRServerTelemetry.ActiveStreams.Add(-1);
+                }
             }
         }
 
@@ -139,6 +204,16 @@ namespace Cocoar.SignalARRR.Server {
             return false;
         }
 
-        private sealed record PendingStream(Channel<object> Channel, string OwnerConnectionId);
+        private sealed class PendingStream {
+            public PendingStream(Channel<object> channel, string ownerConnectionId) {
+                Channel = channel;
+                OwnerConnectionId = ownerConnectionId;
+            }
+
+            public Channel<object> Channel { get; }
+            public string OwnerConnectionId { get; }
+            public DateTime CreatedAt { get; } = DateTime.UtcNow;
+            public bool ReaderAttached { get; set; }
+        }
     }
 }

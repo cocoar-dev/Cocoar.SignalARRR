@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 namespace Cocoar.SignalARRR.Server {
-    internal sealed class RedisSignalARRRBackplane : ISignalARRRBackplane, ISignalARRRConnectionRegistry, IHostedService, IDisposable {
+    internal sealed class RedisSignalARRRBackplane : ISignalARRRBackplane, ISignalARRRConnectionRegistry, ISignalARRRBackplaneHealth, IHostedService, IDisposable {
         private readonly SignalARRRRedisBackplaneOptions _options;
         private readonly LocalSignalARRRBackplaneDispatcher _localDispatcher;
         private readonly ILogger<RedisSignalARRRBackplane> _logger;
@@ -769,6 +769,7 @@ namespace Cocoar.SignalARRR.Server {
             await _database.SetAddAsync(GetNodesKey(), NodeId).ConfigureAwait(false);
             await _database.StringSetAsync(GetNodeHeartbeatKey(NodeId), "1", _options.NodeTimeout).ConfigureAwait(false);
             _heartbeatEstablished = true;
+            _lastSuccessfulHeartbeatUtc = DateTime.UtcNow;
 
             if (wasConsideredDead) {
                 SignalARRRServerTelemetry.BackplaneSelfEvictions.Add(1);
@@ -861,6 +862,34 @@ namespace Cocoar.SignalARRR.Server {
 
                 await CleanupNodeIfDeadAsync(nodeId, cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private DateTime? _lastSuccessfulHeartbeatUtc;
+
+        // --- Health surface (O-8) ---
+
+        public TimeSpan HeartbeatInterval => _options.HeartbeatInterval;
+
+        public DateTime? LastSuccessfulHeartbeatUtc => _lastSuccessfulHeartbeatUtc;
+
+        public bool HeartbeatLoopFaulted => _heartbeatTask?.IsFaulted == true;
+
+        public async Task<TimeSpan?> PingAsync(CancellationToken cancellationToken = default) {
+            if (_database == null) {
+                return null;
+            }
+
+            try {
+                return await _database.PingAsync().ConfigureAwait(false);
+            } catch {
+                return null;
+            }
+        }
+
+        public async Task<IReadOnlyList<string>> GetActiveNodesAsync(CancellationToken cancellationToken = default) {
+            var nodes = await GetActiveRemoteNodeIdsAsync(cancellationToken).ConfigureAwait(false);
+            nodes.Insert(0, NodeId);
+            return nodes;
         }
 
         private async Task<List<string>> GetActiveRemoteNodeIdsAsync(CancellationToken cancellationToken) {

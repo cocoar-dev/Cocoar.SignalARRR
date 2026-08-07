@@ -28,6 +28,18 @@ namespace Cocoar.SignalARRR.Server {
             "signalarrr.server.connection.teardown.duration", unit: "ms",
             description: "Duration of the connection teardown phases (unregister-local, unregister-registry, base, total).");
 
+        public static readonly UpDownCounter<long> ActiveStreams = SignalARRRTelemetry.Meter.CreateUpDownCounter<long>(
+            "signalarrr.server.active_streams",
+            description: "Client-to-server streams currently tracked. Grows without shrinking when streams leak.");
+
+        public static readonly Counter<long> StreamsReaped = SignalARRRTelemetry.Meter.CreateCounter<long>(
+            "signalarrr.server.streams.reaped",
+            description: "Streams that were created but never consumed and got reaped. Near zero in a healthy application.");
+
+        public static readonly Counter<long> UploadSlotsSwept = SignalARRRTelemetry.Meter.CreateCounter<long>(
+            "signalarrr.server.upload_slots.swept",
+            description: "Upload slots that expired unused. A sustained rate points at clients requesting slots and never uploading.");
+
         public static readonly Counter<long> BackplaneHeartbeatFailures = SignalARRRTelemetry.Meter.CreateCounter<long>(
             "signalarrr.backplane.heartbeat.failures",
             description: "Failed heartbeat iterations. A sustained non-zero rate is the signal that used to be invisible: the node keeps serving while the cluster is about to declare it dead.");
