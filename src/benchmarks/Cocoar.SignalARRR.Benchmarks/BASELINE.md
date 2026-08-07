@@ -69,6 +69,39 @@ Reading the delta:
 - Per-benchmark processes each start their own server and connection, so the six rows are
   independent measurements.
 
+## P-5 (compiled invokers) — measured, then deliberately not taken
+
+The report ordered P-5 last, "only with numbers". `InvokerBenchmarks` isolates exactly the
+slice P-5 would change — one method invocation, no server, no transport (2026-08-07, same
+machine):
+
+| Invocation path                        | Mean     | Allocated |
+|--------------------------------------- |---------:|----------:|
+| Reflectensions `InvokeHelper`, sync    | 2 033 ns |   1 032 B |
+| Reflectensions `InvokeHelper`, async   | 1 160 ns |   1 024 B |
+| Raw `MethodInfo.Invoke`, sync          |    80 ns |     112 B |
+| Raw `MethodInfo.Invoke`, async + await |   136 ns |     256 B |
+| Compiled delegate, sync                |    37 ns |     112 B |
+| Compiled delegate, async + await       |    60 ns |     256 B |
+| Direct call (includes a `Guid.Parse`)  |    50 ns |     112 B |
+
+What the numbers say:
+
+- The current path (Reflectensions) costs **~1–2 µs and ~1 KB per invocation**; the sync row
+  carries its documented `Task.Run` wrap. Compiled invokers would remove nearly all of it.
+- But the roundtrip this sits in measures **104–230 µs with 7–28 µs StdDev** — a 2 µs
+  improvement is an order of magnitude below the noise floor. The roundtrip benchmark could
+  never verify the fix it is supposed to justify.
+- Notable: on modern .NET, raw `MethodInfo.Invoke` is only ~80 ns — the runtime grew invoke
+  fast paths. If this is ever revisited, replacing `InvokeHelper` with plain
+  `MethodInfo.Invoke` plus an own Task-unwrap captures ~96 % of the win without any
+  compiled-invoker machinery.
+
+**Decision: not taken.** Per the report's own rule ("only with numbers"), the numbers do not
+justify a rewrite of the dispatch core today. Revisit if a profile ever shows invocation
+overhead or the per-call ~1 KB mattering at real load — the micro-benchmark stays in the
+suite as the measuring stick.
+
 ## Observed once, not reproducible
 
 In the full-suite run, `ServerMethodsClass_1Arg` failed at measurement iteration 73 (after
