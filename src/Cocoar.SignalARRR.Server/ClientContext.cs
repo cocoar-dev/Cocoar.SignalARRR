@@ -25,7 +25,9 @@ namespace Cocoar.SignalARRR.Server {
         public IPAddress? RemoteIp { get; }
         public ClaimsPrincipal User { get; private set; } = null!;
         public string? UserIdentifier { get; private set; }
-        internal DateTime UserValidUntil { get; set; } = DateTime.Now;
+        // UTC throughout: DateTime.Now converts through the local time zone on every read, and
+        // this value is compared on the per-message (and per-stream-element) hot path.
+        internal DateTime UserValidUntil { get; set; } = DateTime.UtcNow;
 
         /// <summary>
         /// The authentication mode for this client (message-level token vs transport-level credentials).
@@ -65,7 +67,7 @@ namespace Cocoar.SignalARRR.Server {
             // If the user was already authenticated during SignalR negotiate (hub has [Authorize]),
             // initialize the cache so the first method call doesn't trigger an unnecessary challenge.
             if (User.Identity?.IsAuthenticated == true) {
-                UserValidUntil = DateTime.Now.Add(_authCacheDuration);
+                UserValidUntil = DateTime.UtcNow.Add(_authCacheDuration);
             }
 
             // Capture client certificate for transport-level auth revalidation
@@ -108,9 +110,9 @@ namespace Cocoar.SignalARRR.Server {
             UserIdentifier = ResolveUserIdentifier(UserIdentifier, this.User);
 
             if (this.User.Identity?.IsAuthenticated == true) {
-                this.UserValidUntil = DateTime.Now.Add(_authCacheDuration);
+                this.UserValidUntil = DateTime.UtcNow.Add(_authCacheDuration);
             } else {
-                this.UserValidUntil = DateTime.Now;
+                this.UserValidUntil = DateTime.UtcNow;
             }
         }
 
@@ -125,10 +127,13 @@ namespace Cocoar.SignalARRR.Server {
 
         public async Task<PolicyAuthorizationResult> TryAuthenticate(MethodInfo methodInfo) {
 
-            if (!methodInfo.GetAuthorizeData().Any())
+            // Runs per streamed element (P-7): both checks must stay allocation-free. The plan is
+            // cached per MethodInfo, and RequiresAuthorization folds [AllowAnonymous] in, so an
+            // anonymous-permitted method exits here instead of after a full policy evaluation.
+            if (!methodInfo.GetAuthorizationPlan().RequiresAuthorization)
                 return PolicyAuthorizationResult.Success();
 
-            if (UserValidUntil >= DateTime.Now)
+            if (UserValidUntil >= DateTime.UtcNow)
                 return PolicyAuthorizationResult.Success();
 
             // Transport-level auth: re-validate server-side without challenging the client
@@ -171,7 +176,7 @@ namespace Cocoar.SignalARRR.Server {
 
             if (await revalidationService.RevalidateAsync(this)) {
                 // Revalidation succeeded — extend cache
-                UserValidUntil = DateTime.Now.Add(_authCacheDuration);
+                UserValidUntil = DateTime.UtcNow.Add(_authCacheDuration);
 
                 // Run policy evaluation with the existing principal
                 var authentication = new SignalARRRAuthentication(ServiceProvider);

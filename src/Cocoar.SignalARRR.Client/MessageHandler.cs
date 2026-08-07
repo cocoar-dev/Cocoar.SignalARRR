@@ -275,14 +275,20 @@ namespace Cocoar.SignalARRR.Client {
             previous.Dispose();
         }
 
+        // GetParameters() clones a fresh ParameterInfo[] on every call; the registry's MethodInfo
+        // instances live for the process, so the clone is cached per method (P-6).
+        private static readonly ConcurrentDictionary<MethodInfo, ParameterInfo[]> ParameterCache = new();
+
         private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default) {
 
             int paramsPosition = 0;
-            var @params = parameters.ToList();
+            var @params = parameters as IList<object> ?? parameters.ToList();
 
-            var argumentList = new List<object>();
+            var methodParameters = ParameterCache.GetOrAdd(methodInfo, static m => m.GetParameters());
+            var bound = new object[methodParameters.Length];
 
-            foreach (var parameterInfo in methodInfo.GetParameters()) {
+            for (var i = 0; i < methodParameters.Length; i++) {
+                var parameterInfo = methodParameters[i];
                 // `<=`, and before the index. The guard used to read `@params.Count < paramsPosition`
                 // *and* sat above the access anyway, so it could never fire: the position advances by
                 // one per parameter, so it reaches Count but never passes it. The bare index threw an
@@ -299,18 +305,14 @@ namespace Cocoar.SignalARRR.Client {
                 if (parameterInfo.ParameterType == typeof(CancellationToken)) {
                     // Check if the argument is a CancellationTokenReference (per-parameter cancellation from server)
                     var tokenFromRef = TryGetCancellationTokenFromReference(par);
-                    if (tokenFromRef.HasValue) {
-                        argumentList.Add(tokenFromRef.Value);
-                        continue;
-                    }
-                    argumentList.Add(cancellation);
+                    bound[i] = tokenFromRef ?? cancellation;
                     continue;
                 }
 
                 par = await PrepareArgumentForType(parameterInfo.ParameterType, par);
 
                 if (par == null) {
-                    argumentList.Add(null!);
+                    bound[i] = null!;
                     continue;
                 }
 
@@ -322,11 +324,10 @@ namespace Cocoar.SignalARRR.Client {
                     }
                 }
 
-                argumentList.Add(par!);
-
+                bound[i] = par!;
             }
 
-            return argumentList.ToArray();
+            return bound;
         }
 
         private async Task<object?> PrepareArgumentForType(Type type, object argument) {

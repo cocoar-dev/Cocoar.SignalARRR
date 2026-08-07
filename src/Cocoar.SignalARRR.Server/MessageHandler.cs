@@ -41,7 +41,7 @@ namespace Cocoar.SignalARRR.Server {
             InterfaceCollection = signalARRRInterfaceCollection;
             ClientContext = clientContext;
             _serviceProvider = serviceProvider;
-            Logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(GetType().FullName!) ?? NullLogger.Instance;
+            Logger = LoggerCache.For(_serviceProvider, GetType());
         }
 
 
@@ -267,47 +267,31 @@ namespace Cocoar.SignalARRR.Server {
 
 
 
-        private object BuildInvokeTypeInstance(MethodInfo methodInfo) {
-
-            object instance;
-            if (methodInfo.DeclaringType == HARRR.GetType()) {
-                instance = HARRR;
-            } else {
-                instance = _serviceProvider.GetRequiredService(methodInfo.ReflectedType!);
-            }
-
-            // See SetInvokingInstanceProperties: the hub is already fully populated.
-            if (ReferenceEquals(instance, HARRR)) {
-                return instance;
-            }
-
-            var reflectInstance = instance.Reflect();
-            reflectInstance.SetPropertyValue("ClientContext", ClientContext);
-            reflectInstance.SetPropertyValue("Context", HARRR.Context);
-            reflectInstance.SetPropertyValue("Clients", HARRR.Clients);
-            reflectInstance.SetPropertyValue("Groups", HARRR.Groups);
-            var logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(instance.GetType().FullName!) ?? NullLogger.Instance;
-            reflectInstance.SetPropertyValue("Logger", logger);
-
-            return instance;
-        }
-
         private object SetInvokingInstanceProperties(object instance) {
 
             // The hub already has all of these -- SignalR populated Context/Clients/Groups, and the
-            // ctor wired ClientContext and Logger. Re-setting them reflectively would be five
-            // pointless lookups per message and would replace the hub's own logger.
+            // ctor wired ClientContext and Logger. Re-setting them would replace the hub's own logger.
             if (ReferenceEquals(instance, HARRR)) {
                 return instance;
             }
 
+            if (instance is ServerMethods serverMethods) {
+                serverMethods.ClientContext = ClientContext;
+                serverMethods.Context = HARRR.Context;
+                serverMethods.Clients = HARRR.Clients;
+                serverMethods.Groups = HARRR.Groups;
+                serverMethods.Logger = LoggerCache.For(_serviceProvider, instance.GetType());
+                return instance;
+            }
+
+            // Interface-dispatch instances are arbitrary user classes; whether each property exists
+            // is only known at runtime, so this path stays reflective.
             var reflectInstance = instance.Reflect();
             reflectInstance.SetPropertyValue("ClientContext", ClientContext);
             reflectInstance.SetPropertyValue("Context", HARRR.Context);
             reflectInstance.SetPropertyValue("Clients", HARRR.Clients);
             reflectInstance.SetPropertyValue("Groups", HARRR.Groups);
-            var logger = _serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(instance.GetType().FullName!) ?? NullLogger.Instance;
-            reflectInstance.SetPropertyValue("Logger", logger);
+            reflectInstance.SetPropertyValue("Logger", LoggerCache.For(_serviceProvider, instance.GetType()));
 
             return instance;
         }
@@ -363,23 +347,22 @@ namespace Cocoar.SignalARRR.Server {
         private async Task<object[]> BuildExecuteMethodParametersAsync(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken parameterCancellation, CancellationToken uploadCancellation) {
 
             var @params = parameters as IList<object> ?? parameters.ToList();
-            var methodParameters = methodInfo.GetParameters();
-            var bound = new object[methodParameters.Length];
+            var plan = MethodParameterPlan.For(methodInfo).Entries;
+            var bound = new object[plan.Length];
 
             var paramsPosition = 0;
             Common.Serialization.IProtocolSerializer? serializer = null;
 
-            for (var i = 0; i < methodParameters.Length; i++) {
-                var p = methodParameters[i];
+            for (var i = 0; i < plan.Length; i++) {
+                var kind = plan[i].Kind;
+                var p = plan[i].Parameter;
 
-                if (p.ParameterType == typeof(CancellationToken)) {
+                if (kind == MethodParameterPlan.ParameterKind.CancellationToken) {
                     bound[i] = parameterCancellation;
                     continue;
                 }
 
-                var fromServices = p.GetCustomAttribute<FromServicesAttribute>();
-
-                if (fromServices != null) {
+                if (kind == MethodParameterPlan.ParameterKind.FromServices) {
                     bound[i] = _serviceProvider.GetRequiredService(p.ParameterType);
                     continue;
                 }
@@ -404,7 +387,7 @@ namespace Cocoar.SignalARRR.Server {
                 serializer ??= _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>();
 
                 // If the parameter type is Stream, resolve StreamReference via HTTP upload
-                if (typeof(Stream).IsAssignableFrom(p.ParameterType) && par != null) {
+                if (kind == MethodParameterPlan.ParameterKind.Stream && par != null) {
                     var streamRef = serializer.TryConvertTo<StreamReference>(par);
                     if (streamRef != null && !string.IsNullOrEmpty(streamRef.Uri)) {
                         var streamManager = _serviceProvider.GetRequiredService<ServerPushStreamManager>();

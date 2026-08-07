@@ -104,7 +104,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             var clientsMethod = hubClients.GetType().GetMethod("Clients", new[] { typeof(IReadOnlyList<string>) })!;
             var clientProxy = (IClientProxy)clientsMethod.Invoke(hubClients, new object[] { connectionIds })!;
 
-            var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger("SignalARRR.Broadcast");
+            var logger = LoggerCache.For(serviceProvider, "SignalARRR.Broadcast");
             var helper = new BroadcastProxyCreatorHelper(clientProxy, logger);
             var proxy = ProxyCreator.CreateInstanceFromInterface<T>(helper);
             action(proxy);

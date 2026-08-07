@@ -47,7 +47,7 @@ namespace Cocoar.SignalARRR.Server {
             ctx.RequestServices = _serviceProvider;
 
             AuthenticateResult authenticateResult = AuthenticateResult.NoResult();
-            if (clientContext.UserValidUntil < DateTime.Now) {
+            if (clientContext.UserValidUntil < DateTime.UtcNow) {
                 // Token cache expired — need to re-authenticate
 
                 if (String.IsNullOrWhiteSpace(authorization)) {
