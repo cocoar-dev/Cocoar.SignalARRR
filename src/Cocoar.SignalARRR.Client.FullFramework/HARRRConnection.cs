@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
@@ -104,7 +105,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         public async Task<TResult> InvokeCoreAsync<TResult>(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
-            message = message.WithAuthorization(_accessTokenProvider).WithInvocationId();
+            message = (await message.WithAuthorizationAsync(_accessTokenProvider)).WithInvocationId();
             try {
                 return await _hubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
             } catch (HubException hubException) when (!(hubException is HARRRRemoteException)) {
@@ -121,7 +122,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         public async Task SendCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
-            message = message.WithAuthorization(_accessTokenProvider).WithInvocationId();
+            message = (await message.WithAuthorizationAsync(_accessTokenProvider)).WithInvocationId();
             try {
                 await _hubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
             } catch (HubException hubException) when (!(hubException is HARRRRemoteException)) {
@@ -130,22 +131,24 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         }
 
         public Task SendCoreAsync(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_accessTokenProvider);
-            return _hubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { msg }, cancellationToken);
+            var msg = new ClientRequestMessage(methodName, args);
+            return SendCoreAsync(msg, cancellationToken);
         }
 
-        public IAsyncEnumerable<TResult> StreamAsyncCore<TResult>(ClientRequestMessage message, CancellationToken cancellationToken = default) {
-            message = message.WithAuthorization(_accessTokenProvider);
-            return _hubConnection.StreamAsyncCore<TResult>(MethodNames.StreamMessageFromServer, new object[] { message }, cancellationToken);
+        public async IAsyncEnumerable<TResult> StreamAsyncCore<TResult>(ClientRequestMessage message, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+            message = await message.WithAuthorizationAsync(_accessTokenProvider);
+            await foreach (var item in _hubConnection.StreamAsyncCore<TResult>(MethodNames.StreamMessageFromServer, new object[] { message }, cancellationToken)) {
+                yield return item;
+            }
         }
 
         public IAsyncEnumerable<TResult> StreamAsyncCore<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_accessTokenProvider);
-            return _hubConnection.StreamAsyncCore<TResult>(MethodNames.StreamMessageFromServer, new object[] { msg }, cancellationToken);
+            var msg = new ClientRequestMessage(methodName, args);
+            return StreamAsyncCore<TResult>(msg, cancellationToken);
         }
 
         public async Task<ChannelReader<TResult>> StreamAsChannelCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = new ClientRequestMessage(methodName, args).WithAuthorization(_accessTokenProvider);
+            var msg = await new ClientRequestMessage(methodName, args).WithAuthorizationAsync(_accessTokenProvider);
             return await _hubConnection.StreamAsChannelCoreAsync<TResult>(MethodNames.StreamMessageFromServer, new object[] { msg }, cancellationToken);
         }
 
