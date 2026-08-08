@@ -7,8 +7,6 @@ For multi-node deployments, enable the built-in Redis-compatible backplane.
 ## Setup
 
 ```csharp
-using Cocoar.SignalARRR.Server.ExtensionMethods;
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSignalR();

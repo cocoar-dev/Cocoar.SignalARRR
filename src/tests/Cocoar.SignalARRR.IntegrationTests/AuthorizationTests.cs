@@ -8,7 +8,6 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
 using Cocoar.SignalARRR.Server;
-using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Cocoar.SignalARRR.Tests.SharedModels;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -114,7 +113,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                             app.UseAuthentication();
                             app.UseAuthorization();
                             app.UseEndpoints(endpoints => {
-                                endpoints.MapHARRRController<AuthTestHub>("/signalr/authtesthub");
+                                endpoints.MapSignalARRRHub<AuthTestHub>("/signalr/authtesthub");
 
                                 // Test trigger: expire a client's auth cache to force challenge on next call
                                 endpoints.MapPost("/__test/expire-auth-cache", async context => {

@@ -66,7 +66,7 @@ builder.Services.AddSignalARRR(options => options
     .AddServerMethodsFrom(typeof(Program).Assembly));
 
 app.UseRouting();
-app.MapHARRRController<ChatHub>("/chathub");
+app.MapSignalARRRHub<ChatHub>("/chathub");
 ```
 
 Create an empty hub — the actual method implementations go into `ServerMethods<T>` classes:

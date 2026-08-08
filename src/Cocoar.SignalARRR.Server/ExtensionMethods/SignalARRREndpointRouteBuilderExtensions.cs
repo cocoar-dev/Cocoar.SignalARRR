@@ -5,18 +5,18 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.Reflectensions;
+using Cocoar.SignalARRR.Server;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cocoar.SignalARRR.Server.ExtensionMethods {
-    public static class HubEndpointConventionBuilderExtensions {
+namespace Microsoft.AspNetCore.Builder {
+    public static class SignalARRREndpointRouteBuilderExtensions {
 
-        public static HubEndpointConventionBuilder MapHARRRController<THub>(
+        public static HubEndpointConventionBuilder MapSignalARRRHub<THub>(
             this IEndpointRouteBuilder endpoints, string pattern) where THub : HARRR {
 
             var ret = endpoints.MapHub<THub>(pattern);
@@ -25,7 +25,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
         }
 
-        public static HubEndpointConventionBuilder MapHARRRController<THub>(
+        public static HubEndpointConventionBuilder MapSignalARRRHub<THub>(
             this IEndpointRouteBuilder endpoints, string pattern,
             Action<HttpConnectionDispatcherOptions> configureOptions) where THub : HARRR {
 

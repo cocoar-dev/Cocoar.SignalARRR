@@ -5,7 +5,6 @@ using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Server;
-using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;

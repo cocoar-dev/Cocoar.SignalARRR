@@ -17,8 +17,8 @@ services.AddSignalARRRRedisBackplane(options => options
     .WithNodeId("node-1"));
 
 // IEndpointRouteBuilder extension
-app.MapHARRRController<THub>(path);
-app.MapHARRRController<THub>(path, configureOptions);
+app.MapSignalARRRHub<THub>(path);
+app.MapSignalARRRHub<THub>(path, configureOptions);
 ```
 
 ### HARRR (Hub base class)

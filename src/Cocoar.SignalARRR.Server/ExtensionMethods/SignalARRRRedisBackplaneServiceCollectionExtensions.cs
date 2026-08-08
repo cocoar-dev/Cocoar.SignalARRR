@@ -1,9 +1,9 @@
 using System;
-using Microsoft.Extensions.DependencyInjection;
+using Cocoar.SignalARRR.Server;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
-namespace Cocoar.SignalARRR.Server.ExtensionMethods {
+namespace Microsoft.Extensions.DependencyInjection {
     public static class SignalARRRRedisBackplaneServiceCollectionExtensions {
         public static IServiceCollection AddSignalARRRRedisBackplane(
             this IServiceCollection serviceCollection,

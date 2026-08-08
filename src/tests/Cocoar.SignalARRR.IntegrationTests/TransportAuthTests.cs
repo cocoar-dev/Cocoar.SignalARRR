@@ -13,7 +13,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
 using Cocoar.SignalARRR.Server;
-using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Cocoar.SignalARRR.Tests.SharedModels;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -230,8 +229,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                             app.UseAuthentication();
                             app.UseAuthorization();
                             app.UseEndpoints(endpoints => {
-                                endpoints.MapHARRRController<CertAuthTestHub>("/signalr/certauthhub");
-                                endpoints.MapHARRRController<MixedAuthTestHub>("/signalr/mixedauthhub");
+                                endpoints.MapSignalARRRHub<CertAuthTestHub>("/signalr/certauthhub");
+                                endpoints.MapSignalARRRHub<MixedAuthTestHub>("/signalr/mixedauthhub");
 
                                 // Test trigger: expire a client's auth cache
                                 endpoints.MapPost("/__test/expire-cert-auth-cache", async context => {

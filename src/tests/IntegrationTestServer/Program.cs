@@ -95,7 +95,7 @@ var app = builder.Build();
 app.Lifetime.ApplicationStarted.Register(() => WriteDiagnostics("application-started"));
 app.Lifetime.ApplicationStopping.Register(() => WriteDiagnostics("application-stopping"));
 
-app.MapHARRRController<TestHub>("/signalr/testhub");
+app.MapSignalARRRHub<TestHub>("/signalr/testhub");
 
 // Test trigger endpoints for server→client calls (used by .NET, TS, and Swift integration tests)
 
