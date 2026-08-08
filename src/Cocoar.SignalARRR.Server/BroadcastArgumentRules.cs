@@ -26,7 +26,7 @@ namespace Cocoar.SignalARRR.Server {
         /// cancellation to the same recipients the call went to (N-4, variant C).
         /// </summary>
         /// <remarks>
-        /// Mirrors what <see cref="MethodArgumentPreperator"/> does for single-client calls: each
+        /// Mirrors what <see cref="MethodArgumentPreparer"/> does for single-client calls: each
         /// token keeps its own id, so two token parameters stay independently cancellable. Until
         /// the dispatcher and the backplane envelope could name a SignalR method, these arguments
         /// were rejected outright — delivery was impossible, and dropping the argument would have

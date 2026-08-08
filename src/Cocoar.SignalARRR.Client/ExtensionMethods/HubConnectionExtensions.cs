@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Cocoar.SignalARRR.Client.ExtensionMethods {
-    public static class HubConnectionExtensions {
+    internal static class HubConnectionExtensions {
 
         public static IServiceProvider GetServiceProvider(this HubConnection hubConnection) {
 

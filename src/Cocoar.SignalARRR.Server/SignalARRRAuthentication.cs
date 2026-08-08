@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cocoar.SignalARRR.Server {
-    public class SignalARRRAuthentication {
+    internal class SignalARRRAuthentication {
 
         private IServiceProvider _serviceProvider;
 

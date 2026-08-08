@@ -5,14 +5,14 @@ using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
 
 namespace Cocoar.SignalARRR.Client {
-    public class StreamReferenceResolver {
+    internal class StreamReferenceResolver {
 
         private readonly StreamReference _streamReference;
-        private readonly HARRRContext _harrrContext;
+        private readonly ClientConnectionContext _connectionContext;
 
-        public StreamReferenceResolver(StreamReference streamReference, HARRRContext harrrContext) {
+        public StreamReferenceResolver(StreamReference streamReference, ClientConnectionContext connectionContext) {
             _streamReference = streamReference;
-            _harrrContext = harrrContext;
+            _connectionContext = connectionContext;
         }
 
         /// <summary>

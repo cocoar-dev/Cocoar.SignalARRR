@@ -10,17 +10,17 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cocoar.SignalARRR.Server {
-    public class MethodArgumentPreperator {
+    internal class MethodArgumentPreparer {
 
 
         private readonly ClientContext _clientContext;
         private readonly ServerPushStreamManager _pushStreamManager;
         private readonly ILogger _logger;
 
-        public MethodArgumentPreperator(ClientContext clientContext) {
+        public MethodArgumentPreparer(ClientContext clientContext) {
             _clientContext = clientContext;
             _pushStreamManager = clientContext.ServiceProvider.GetRequiredService<ServerPushStreamManager>();
-            _logger = clientContext.ServiceProvider.GetService<ILogger<MethodArgumentPreperator>>() ?? (ILogger)NullLogger.Instance;
+            _logger = clientContext.ServiceProvider.GetService<ILogger<MethodArgumentPreparer>>() ?? (ILogger)NullLogger.Instance;
         }
 
         /// <summary>
