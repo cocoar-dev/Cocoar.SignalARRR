@@ -7,11 +7,12 @@ using Cocoar.Reflectensions.ExtensionMethods;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Attributes;
 using Cocoar.SignalARRR.Common.Interfaces;
-using Microsoft.Extensions.DependencyInjection;
+using Cocoar.SignalARRR.Common.Serialization;
+using Cocoar.SignalARRR.Server;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace Cocoar.SignalARRR.Server.ExtensionMethods {
-    public static class ServiceCollectionExtensions {
+namespace Microsoft.Extensions.DependencyInjection {
+    public static class SignalARRRServiceCollectionExtensions {
         public static IServiceCollection AddSignalARRR(this IServiceCollection serviceCollection, Action<SignalARRRServerOptionsBuilder>? options = null) {
 
             SignalARRRServerOptions serverOptions = options?.InvokeAction() ?? new SignalARRRServerOptionsBuilder();
@@ -22,7 +23,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             // JsonProtocolSerializer handles JsonElement natively, and its JSON round-trip
             // fallback works for MessagePack-deserialized values (plain .NET objects) too.
             // SignalR supports both protocols simultaneously — different clients can use different protocols.
-            serviceCollection.AddSingleton<Common.Serialization.IProtocolSerializer, Common.Serialization.JsonProtocolSerializer>();
+            serviceCollection.AddSingleton<IProtocolSerializer, JsonProtocolSerializer>();
             serviceCollection.AddSingleton<ServerPushStreamManager>();
             serviceCollection.AddSingleton(sp => new ServerStreamManager(
                 sp.GetRequiredService<SignalARRRServerOptions>().StreamIdleTimeout));

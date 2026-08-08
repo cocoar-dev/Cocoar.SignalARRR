@@ -1,7 +1,6 @@
 using System;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Server;
-using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 

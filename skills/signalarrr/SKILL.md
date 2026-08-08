@@ -75,7 +75,7 @@ services.AddSignalARRR(options => options
 app.UseRouting();
 app.UseAuthentication();  // if using auth
 app.UseAuthorization();   // if using auth
-app.MapHARRRController<ChatHub>("/chathub");
+app.MapSignalARRRHub<ChatHub>("/chathub");
 ```
 
 ```csharp

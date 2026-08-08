@@ -25,7 +25,7 @@ builder.Services.AddSignalARRR(options => options
 var app = builder.Build();
 
 app.UseRouting();
-app.MapHARRRController<AppHub>("/apphub");
+app.MapSignalARRRHub<AppHub>("/apphub");
 ```
 
 ### MessagePack support
@@ -41,7 +41,7 @@ Both protocols run simultaneously — JSON clients and MessagePack clients conne
 
 `AddServerMethodsFrom()` scans the assembly for all `ServerMethods<T>` classes and registers them in DI.
 
-`MapHARRRController<T>()` maps the hub at the specified path and also registers a download endpoint at `{path}/download/{id}` for file stream references.
+`MapSignalARRRHub<T>()` maps the hub at the specified path and also registers a download endpoint at `{path}/download/{id}` for file stream references.
 
 ## Multiple hubs
 
@@ -60,8 +60,8 @@ public class AdminHub : HARRR
 ```
 
 ```csharp
-app.MapHARRRController<ChatHub>("/chathub");
-app.MapHARRRController<AdminHub>("/adminhub");
+app.MapSignalARRRHub<ChatHub>("/chathub");
+app.MapSignalARRRHub<AdminHub>("/adminhub");
 ```
 
 ServerMethods classes are scoped to a specific hub type via the generic parameter:
@@ -73,10 +73,10 @@ public class AdminMethods : ServerMethods<AdminHub>, IAdminHub { ... } // only o
 
 ## Connection options
 
-`MapHARRRController` accepts SignalR's `HttpConnectionDispatcherOptions` for configuring transports, buffer sizes, and authorization:
+`MapSignalARRRHub` accepts SignalR's `HttpConnectionDispatcherOptions` for configuring transports, buffer sizes, and authorization:
 
 ```csharp
-app.MapHARRRController<AppHub>("/apphub", options =>
+app.MapSignalARRRHub<AppHub>("/apphub", options =>
 {
     options.Transports = HttpTransportType.WebSockets;
     options.ApplicationMaxBufferSize = 64 * 1024;

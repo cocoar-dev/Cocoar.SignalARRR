@@ -198,7 +198,7 @@ Manages both download streams (server → client) and upload slots (client → s
 
 ## Endpoints
 
-`MapHARRRController<T>()` registers the hub and two HTTP endpoints:
+`MapSignalARRRHub<T>()` registers the hub and two HTTP endpoints:
 
 ```
 /apphub                ← SignalR hub

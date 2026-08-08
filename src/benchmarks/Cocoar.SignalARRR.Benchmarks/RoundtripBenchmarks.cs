@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
 using BenchmarkDotNet.Attributes;
 using Cocoar.SignalARRR.Client;
-using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -43,7 +42,7 @@ public class RoundtripBenchmarks {
         builder.Services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(BenchmarkHub).Assembly));
 
         _app = builder.Build();
-        _app.MapHARRRController<BenchmarkHub>("/signalr/benchmarkhub");
+        _app.MapSignalARRRHub<BenchmarkHub>("/signalr/benchmarkhub");
         await _app.StartAsync();
 
         var address = _app.Services.GetRequiredService<IServer>()
