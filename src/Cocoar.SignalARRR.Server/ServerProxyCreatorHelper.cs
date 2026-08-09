@@ -75,7 +75,8 @@ namespace Cocoar.SignalARRR.Server {
             var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
             await dispatcher.SendClientAsync(_clientContext.Id, msg, cancellationToken);
             if (_httpContext != null) {
-                await _httpContext.Ok();
+                _httpContext.Response.StatusCode = StatusCodes.Status200OK;
+                await _httpContext.Response.Body.FlushAsync();
             }
 
         }
