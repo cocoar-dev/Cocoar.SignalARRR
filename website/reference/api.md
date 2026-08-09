@@ -76,10 +76,26 @@ app.MapSignalARRRHub<THub>(path, configureOptions);
 
 | Method | Description |
 |--------|-------------|
-| `WithHub<THub>()` | Select hub — primary entry point for queries |
+| `WithHub<THub>()` | Select hub — primary entry point for queries. Returns `IClientQuery` |
 | `GetClientById(string)` | Get client by connection ID |
-| `GetAllClients()` | All connected clients (across all hubs) |
-| `GetAllClients(predicate)` | Filter clients |
+| `GetAllClients()` | All connected clients across all hubs — **this node only** |
+| `GetAllClients(predicate)` | Filter those clients |
+
+### IClientQuery
+
+Returned by `WithHub<THub>()`. Describes a target set; with a backplane enabled, the filters and the
+send/invoke methods resolve across the whole cluster.
+
+| Method | Description |
+|--------|-------------|
+| `WithGroup(string)` | Narrow to a SignalR group — cluster-wide |
+| `WithUser(string)` | Narrow to a user's connections — cluster-wide |
+| `WithAttribute(string, string?)` | Narrow by connection attribute — cluster-wide |
+| `WithLocalFilter(predicate)` | Narrow by any predicate — confines the query to this node |
+| `SendAsync<T>(action)` | Fire-and-forget to the whole target set |
+| `InvokeAllAsync<T, TResult>(func)` | Invoke each client, collect all results |
+| `InvokeOneAsync<T, TResult>(func)` | Invoke until the first success |
+| `LocalClients()` | The matching `ClientContext`s owned by this node |
 | `AddToGroupAsync(connectionId, groupName)` | Add client to SignalR group (tracked in `ClientContext.Groups`) |
 | `RemoveFromGroupAsync(connectionId, groupName)` | Remove client from group |
 | `GetConnectionsAsync<THub>()` | Connection snapshots for the selected hub |

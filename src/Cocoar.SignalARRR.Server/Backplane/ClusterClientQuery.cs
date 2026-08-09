@@ -1,7 +1,9 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Cocoar.SignalARRR.Server.ExtensionMethods;
 
 namespace Cocoar.SignalARRR.Server {
     internal interface IClusterClientQueryMetadata {
@@ -15,7 +17,7 @@ namespace Cocoar.SignalARRR.Server {
         bool CanUseDirectBackplaneDispatch { get; }
     }
 
-    internal sealed class ClusterClientQuery : IEnumerable<ClientContext>, IClusterClientQueryMetadata {
+    internal sealed class ClusterClientQuery : IClientQuery, IClusterClientQueryMetadata {
         private readonly IEnumerable<ClientContext> _clients;
 
         public ClusterClientQuery(
@@ -123,8 +125,38 @@ namespace Cocoar.SignalARRR.Server {
                 distributedDispatchSupported: false);
         }
 
-        public IEnumerator<ClientContext> GetEnumerator() => _clients.GetEnumerator();
+        public IReadOnlyCollection<ClientContext> LocalClients() => _clients.ToArray();
 
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        // The concrete With* methods above return ClusterClientQuery, because the fallback branches
+        // chain on them internally. C# does not allow a covariant return type to satisfy an interface
+        // member, so the interface face is implemented explicitly and simply forwards.
+        IClientQuery IClientQuery.WithGroup(string groupName) => WithGroup(groupName);
+
+        IClientQuery IClientQuery.WithUser(string userId) => WithUser(userId);
+
+        IClientQuery IClientQuery.WithAttribute(string key, string? value) => WithAttribute(key, value);
+
+        IClientQuery IClientQuery.WithLocalFilter(Func<ClientContext, bool> predicate) => WithLocalFilter(predicate);
+
+        public Task SendAsync<T>(Action<T> action, CancellationToken cancellationToken = default) where T : class =>
+            ClientManagerBroadcastExtensions.SendAsync(_clients, this, action, cancellationToken);
+
+        public Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TResult>(string method, object[] arguments, CancellationToken cancellationToken) =>
+            ClientContextExtensions.InvokeAllAsync<TResult>(_clients, this, method, arguments, cancellationToken);
+
+        public Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(Func<TInterface, TResult> action, CancellationToken cancellationToken = default) where TInterface : class =>
+            ClientContextExtensions.InvokeAllAsync<TInterface, TResult>(_clients, this, action, cancellationToken);
+
+        public Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(Func<TInterface, Task<TResult>> action, CancellationToken cancellationToken = default) where TInterface : class =>
+            ClientContextExtensions.InvokeAllAsync<TInterface, TResult>(_clients, this, action, cancellationToken);
+
+        public Task<ClientResult<TResult>> InvokeOneAsync<TResult>(string method, object[] arguments, CancellationToken cancellationToken) =>
+            ClientContextExtensions.InvokeOneAsync<TResult>(_clients, this, method, arguments, cancellationToken);
+
+        public Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(Func<TInterface, TResult> action, CancellationToken cancellationToken = default) where TInterface : class =>
+            ClientContextExtensions.InvokeOneAsync<TInterface, TResult>(_clients, this, action, cancellationToken);
+
+        public Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(Func<TInterface, Task<TResult>> action, CancellationToken cancellationToken = default) where TInterface : class =>
+            ClientContextExtensions.InvokeOneAsync<TInterface, TResult>(_clients, this, action, cancellationToken);
     }
 }

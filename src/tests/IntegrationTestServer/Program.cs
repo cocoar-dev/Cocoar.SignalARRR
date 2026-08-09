@@ -582,7 +582,7 @@ app.MapSignalARRRTest("/__test/config-updated", (context, clientManager) => {
 app.MapSignalARRRTest("/__test/push-notification-all", (context, clientManager) => {
     var message = context.Request.Query["message"].ToString();
 
-    foreach (var client in clientManager.WithHub<TestHub>()) {
+    foreach (var client in clientManager.WithHub<TestHub>().LocalClients()) {
         var typedClient = client.GetTypedMethods<Cocoar.SignalARRR.Tests.SharedModels.ITestServerPushClient>();
         typedClient.PushNotification(message);
     }

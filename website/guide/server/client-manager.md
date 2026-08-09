@@ -31,19 +31,49 @@ _clients.WithHub<AlertHub>()
 _clients.WithHub<AlertHub>().WithGroup("dashboard")
 _clients.WithHub<AlertHub>().WithAttribute("role", "oncall")
 _clients.WithHub<AlertHub>().WithGroup("dashboard").WithAttribute("region", "eu")
-
-// Standard LINQ works too
-_clients.WithHub<AlertHub>().Where(c => c.User.IsInRole("Admin"))
 ```
+
+`WithHub<T>()` returns an **`IClientQuery`**. That is a *description* of a target set, not a list of
+clients: with a [backplane](/guide/server/backplane) enabled, the filters and the send/invoke methods
+below are resolved across every node in the cluster.
 
 | Method | On | Description |
 |--------|---|-------------|
 | `WithHub<THub>()` | `ClientManager` | Select hub — always start here |
-| `.WithGroup(groupName)` | `IEnumerable<ClientContext>` | Filter by SignalR group |
-| `.WithAttribute(key)` | `IEnumerable<ClientContext>` | Filter by attribute existence |
-| `.WithAttribute(key, value)` | `IEnumerable<ClientContext>` | Filter by attribute key-value match |
-| `.Where(predicate)` | `IEnumerable<ClientContext>` | Standard LINQ |
+| `.WithGroup(groupName)` | `IClientQuery` | Filter by SignalR group — cluster-wide |
+| `.WithAttribute(key)` | `IClientQuery` | Filter by attribute existence — cluster-wide |
+| `.WithAttribute(key, value)` | `IClientQuery` | Filter by attribute key-value match — cluster-wide |
+| `.WithLocalFilter(predicate)` | `IClientQuery` | Filter by any predicate — **this node only** |
+| `.LocalClients()` | `IClientQuery` | The matching `ClientContext`s owned by this node |
 | `GetClientById(id)` | `ClientManager` | Single client by connection ID |
+
+### Why predicates are node-local
+
+A predicate is a delegate over `ClientContext` objects. It cannot be shipped to another node, and the
+other nodes' `ClientContext` instances do not exist in this process to run it against — the connection
+registry stores snapshots, not live contexts. So `WithLocalFilter` narrows the query to this node, and
+everything chained after it stays local as well:
+
+```csharp
+// This node's admins only — the name says so
+_clients.WithHub<AppHub>().WithLocalFilter(c => c.User.IsInRole("Admin"))
+```
+
+To narrow a query that should still reach the whole cluster, filter on something the registry can
+answer for every node — group, user, or a connection attribute:
+
+```csharp
+// Every admin on every node
+_clients.WithHub<AppHub>().WithAttribute("role", "admin")
+```
+
+::: warning Changed in 5.0
+`WithHub<T>()` used to return `IEnumerable<ClientContext>`, so `.Where(...)` compiled — and silently
+turned a cluster-wide broadcast into a node-local one, because the LINQ result no longer carried the
+query's cluster scope. Enumerating the result had never shown clients from other nodes either. Both
+gaps are now closed by the type: `.Where(...)` no longer compiles, `WithLocalFilter` says what it
+does, and `LocalClients()` is the one way to get at `ClientContext` objects.
+:::
 
 ## Single-client calls
 
@@ -56,17 +86,19 @@ var methods = client.GetTypedMethods<IChatClient>();
 methods.ReceiveMessage("System", "Hello!");
 string name = await methods.GetClientName();      // ← with return value
 
-// Or: filter down to one, then call with return value
+// Or: filter down, then pick one of this node's matches
 var primary = _clients.WithHub<AlertHub>()
     .WithGroup("dashboard")
     .WithAttribute("role", "primary")
+    .LocalClients()
     .First();
 string status = await primary.GetTypedMethods<IDeviceClient>().GetStatus();
 ```
 
 ## Multi-client operations
 
-All broadcast and multi-client operations are extension methods on `IEnumerable<ClientContext>`.
+All broadcast and multi-client operations are methods on `IClientQuery`, so they are only reachable
+from a query — which is what keeps them cluster-aware.
 
 ::: info Return values are discarded on broadcasts
 When using `SendAsync`, methods with return values still work — the client executes the method — but the return value is discarded since there's no single caller to send it back to. A warning is logged. Use `InvokeAllAsync` if you need return values.
@@ -81,8 +113,8 @@ Collects ConnectionIds and sends a **single** `Clients.Clients(ids).SendCoreAsyn
 await _clients.WithHub<AlertHub>().WithGroup("dashboard")
     .SendAsync<IAlertClient>(c => c.AlertUpdated(alertId));
 
-// Notify all admins
-await _clients.WithHub<AppHub>().Where(c => c.User.IsInRole("Admin"))
+// Notify all admins, on every node
+await _clients.WithHub<AppHub>().WithAttribute("role", "admin")
     .SendAsync<IAlertClient>(c => c.SecurityAlert(details));
 
 // Notify iOS users
