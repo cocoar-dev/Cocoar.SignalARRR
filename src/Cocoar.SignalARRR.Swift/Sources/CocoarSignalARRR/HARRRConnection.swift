@@ -337,7 +337,7 @@ public final class HARRRConnection: @unchecked Sendable {
     /// `"MyApp.IClient|Changed"`. Those calls arrive wrapped in a SignalARRR envelope
     /// (`InvokeServerMessage`/`InvokeServerRequest`); the real contract name lives *inside* the
     /// envelope, so a raw `on(...)` registration for the same string never fires.
-    /// This is the Swift equivalent of the .NET client's `OnServerRequest`.
+    /// This is the Swift equivalent of the .NET client's `RegisterInterface`.
     public func onServerMethod(
         _ name: String,
         handler: @escaping @Sendable ([Any]) async throws -> AnyCodable
@@ -361,7 +361,7 @@ public final class HARRRConnection: @unchecked Sendable {
     // These register handlers for **raw SignalR hub method names** sent with a plain
     // `Clients.X.SendAsync("methodName", ...)`. They do NOT receive SignalARRR server→client
     // contracts (e.g. "MyApp.IClient|Changed") — use ``onServerMethod(_:handler:)`` for those.
-    // The equivalent split exists in the .NET client (`On` vs `OnServerRequest`).
+    // The equivalent split exists in the .NET client (`On` vs `RegisterInterface`).
 
     // Void return, 0–8 params
 

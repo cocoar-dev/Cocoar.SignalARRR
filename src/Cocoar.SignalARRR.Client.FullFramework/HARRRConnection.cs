@@ -38,7 +38,6 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         private readonly Common.Serialization.IProtocolSerializer _serializer;
         private readonly ILogger _logger;
 
-        private readonly ConcurrentDictionary<string, Delegate> _serverRequestHandlers = new ConcurrentDictionary<string, Delegate>();
         private readonly ISignalARRRInterfaceCollection _interfaceCollection = new SignalARRRInterfaceCollection();
         private readonly ISignalARRRMethodsCollection _methodsCollection = new SignalARRRMethodsCollection();
         private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellationTokenSources = new ConcurrentDictionary<Guid, CancellationTokenSource>();
@@ -161,14 +160,6 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         public IDisposable On(string methodName, Type[] parameterTypes, Func<object[], object, Task> handler, object state) {
             return _hubConnection.On(methodName, parameterTypes, handler, state);
-        }
-
-        public void OnServerRequest(string methodName, Delegate handler) {
-            _serverRequestHandlers.TryAdd(methodName, handler);
-        }
-
-        public void OnServerRequest<TIn>(string methodName, Func<TIn, object> handler) {
-            _serverRequestHandlers.TryAdd(methodName, handler);
         }
 
         public void RegisterInterface<TInterface, TClass>() where TClass : class, TInterface {
