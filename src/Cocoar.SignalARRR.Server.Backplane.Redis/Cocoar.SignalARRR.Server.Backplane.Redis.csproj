@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>Cocoar.SignalARRR.Server.Backplane.Redis</AssemblyName>
+    <RootNamespace>Cocoar.SignalARRR.Server</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>Bernhard Windisch</Authors>
+    <Company>-</Company>
+    <Description>Redis backplane for SignalARRR — multi-node broadcasts, cluster-wide client queries and a distributed connection registry. Add this package only when running more than one server node.</Description>
+    <PackageTags>signalr;rpc;signalarrr;server;backplane;redis;scaleout</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageId>Cocoar.SignalARRR.Server.Backplane.Redis</PackageId>
+    <Product>Cocoar.SignalARRR.Server.Backplane.Redis</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cocoar.Reflectensions" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
+  </ItemGroup>
+
+</Project>

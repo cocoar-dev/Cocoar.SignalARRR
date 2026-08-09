@@ -11,6 +11,7 @@ This page lists the public API surface of SignalARRR across all packages.
 services.AddSignalARRR(options => options
     .AddServerMethodsFrom(assembly));
 
+// Requires the Cocoar.SignalARRR.Server.Backplane.Redis package
 services.AddSignalARRRRedisBackplane(options => options
     .WithConnectionString("localhost:6379,abortConnect=false")
     .WithChannelPrefix("my-app")

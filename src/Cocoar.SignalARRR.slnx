@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Cocoar.SignalARRR.Server/Cocoar.SignalARRR.Server.csproj" />
+  <Project Path="Cocoar.SignalARRR.Server.Backplane.Redis/Cocoar.SignalARRR.Server.Backplane.Redis.csproj" />
   <Project Path="Cocoar.SignalARRR.Client/Cocoar.SignalARRR.Client.csproj" />
   <Project Path="Cocoar.SignalARRR.Common/Cocoar.SignalARRR.Common.csproj" />
   <Project Path="Cocoar.SignalARRR.ProxyGenerator/Cocoar.SignalARRR.ProxyGenerator.csproj" />
