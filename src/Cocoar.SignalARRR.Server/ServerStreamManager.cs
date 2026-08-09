@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -51,11 +52,10 @@ namespace Cocoar.SignalARRR.Server {
         /// nobody ever started consuming.
         /// </summary>
         internal int SweepIdleStreams() {
-            var cutoff = DateTime.UtcNow - _idleTimeout;
             var reaped = 0;
 
             foreach (var entry in _pendingStreams) {
-                if (entry.Value.ReaderAttached || entry.Value.CreatedAt >= cutoff) {
+                if (entry.Value.ReaderAttached || Stopwatch.GetElapsedTime(entry.Value.CreatedAt) < _idleTimeout) {
                     continue;
                 }
 
@@ -212,7 +212,18 @@ namespace Cocoar.SignalARRR.Server {
 
             public Channel<object> Channel { get; }
             public string OwnerConnectionId { get; }
-            public DateTime CreatedAt { get; } = DateTime.UtcNow;
+
+            /// <summary>
+            /// A monotonic timestamp, not a wall-clock time.
+            /// </summary>
+            /// <remarks>
+            /// Age used to be <c>DateTime.UtcNow</c> minus <c>DateTime.UtcNow</c>, which is neither
+            /// monotonic nor guaranteed to advance between two adjacent statements. A clock
+            /// correction backwards kept leaked streams alive and one forwards reaped live ones —
+            /// and with a zero idle timeout, "old enough" came down to whether the clock happened
+            /// to tick in between, which is how this reached CI as an intermittent failure.
+            /// </remarks>
+            public long CreatedAt { get; } = Stopwatch.GetTimestamp();
             public bool ReaderAttached { get; set; }
         }
     }
