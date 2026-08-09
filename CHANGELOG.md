@@ -109,6 +109,8 @@ that are server infrastructure rather than application-facing API.
 ### Documentation
 
 - **Connection loss semantics are documented** (README): pending invocations fail immediately on any drop and are not safely retryable (at-most-once uncertainty — retry only idempotent operations); SignalR's reconnect features are reachable through the pass-through builders, with the explicit caveat that SignalARRR's connection-bound state under Stateful Reconnect is not yet test-verified; and the stream upload wait and backplane invoke timeout run independently of connection state.
+- **The website no longer documents `OnServerRequest`**: an entire chapter of the .NET client guide, plus the cancellation and HTTP stream guides and the API reference, still taught an API this release removes — and which never worked in the first place. Those examples are rewritten onto `RegisterInterface` and contract interfaces. The removal is called out where the chapter used to be, rather than silently dropped, since anyone arriving from an older version needs to know the method is gone and that there is no ad-hoc replacement.
+- **`On()` is documented as what it is**: the .NET client guide showed `connection.On<string, string>("ReceiveMessage", ...)` in a chapter about receiving server-to-client contract calls, which reads as if it handles them. It does not: `On()` passes through to `HubConnection.On` and matches raw SignalR method names, while a contract call arrives inside an `InvokeServerRequest`/`InvokeServerMessage` envelope with the real name (`MyApp.IChatClient|ReceiveMessage`) nested in it. A registration for the bare name never fires, silently. The section now says so and uses an example that actually matches a raw `SendAsync`.
 
 ### Fixed (build and CI)
 

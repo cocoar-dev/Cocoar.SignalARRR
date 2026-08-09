@@ -81,15 +81,20 @@ public class FileController : ControllerBase
 The client handler receives a regular `Stream` — no awareness of the HTTP transfer needed:
 
 ```csharp
-connection.OnServerRequest("ProcessFile", (string filename, Stream fileStream) =>
+public class FileClientHandler : IFileClient
 {
-    using (fileStream)
+    public long ProcessFile(string filename, Stream fileStream)
     {
-        // Process the stream — even multi-GB files work
-        var length = fileStream.Length;
-        return length;
+        using (fileStream)
+        {
+            // Process the stream — even multi-GB files work
+            return fileStream.Length;
+        }
     }
-});
+}
+
+// Before StartAsync()
+connection.RegisterInterface<IFileClient, FileClientHandler>();
 ```
 
 ::: tip Streaming vs Buffered
