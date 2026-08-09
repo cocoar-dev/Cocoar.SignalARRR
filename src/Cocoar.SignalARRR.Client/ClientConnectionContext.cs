@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Cocoar.SignalARRR.Client {
-    public class HARRRContext {
+    internal class ClientConnectionContext {
         private readonly IServiceProvider _serviceProvider;
 
         public Uri BaseUrl { get; }
@@ -20,7 +20,7 @@ namespace Cocoar.SignalARRR.Client {
 
         public MessageHandler MessageHandler { get; }
 
-        public HARRRContext(IServiceProvider serviceProvider, HARRRConnectionOptions options) {
+        internal ClientConnectionContext(IServiceProvider serviceProvider, HARRRConnectionOptions options) {
             _serviceProvider = serviceProvider;
 
             BaseUrl = GetBaseUrl();

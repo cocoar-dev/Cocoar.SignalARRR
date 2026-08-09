@@ -16,11 +16,11 @@ namespace Cocoar.SignalARRR.Server {
     public class ServerProxyCreatorHelper : ProxyCreatorHelper {
         private readonly ClientContext _clientContext;
         private readonly HttpContext? _httpContext;
-        private readonly MethodArgumentPreperator _methodArgumentPreperator;
+        private readonly MethodArgumentPreparer _methodArgumentPreparer;
 
         public ServerProxyCreatorHelper(ClientContext clientContext, HttpContext? httpContext) {
             _clientContext = clientContext;
-            _methodArgumentPreperator = new MethodArgumentPreperator(_clientContext);
+            _methodArgumentPreparer = new MethodArgumentPreparer(_clientContext);
             _httpContext = httpContext;
         }
 
@@ -30,7 +30,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public override async Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
 
-            var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
+            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
             RegisterCallCancellation(msg, arguments, cancellationToken);
@@ -39,12 +39,12 @@ namespace Cocoar.SignalARRR.Server {
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
-            var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
 
             // If the return type is Stream, the client sends a StreamReference instead.
             // We need to invoke as StreamReference and then resolve the upload.
             if (typeof(T) == typeof(Stream)) {
-                var streamRef = await harrrContext.InvokeClientAsync<StreamReference>(_clientContext.Id, msg, cancellationToken);
+                var streamRef = await dispatcher.InvokeClientAsync<StreamReference>(_clientContext.Id, msg, cancellationToken);
                 if (streamRef != null && !string.IsNullOrEmpty(streamRef.Uri)) {
                     var streamManager = _clientContext.ServiceProvider.GetRequiredService<ServerPushStreamManager>();
                     var timeout = _clientContext.ServiceProvider.GetService<SignalARRRServerOptions>()?.StreamUploadTimeout
@@ -56,7 +56,7 @@ namespace Cocoar.SignalARRR.Server {
                 return default!;
             }
 
-            return await harrrContext.InvokeClientAsync<T>(_clientContext.Id, msg, cancellationToken);
+            return await dispatcher.InvokeClientAsync<T>(_clientContext.Id, msg, cancellationToken);
         }
 
         public override void Send(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
@@ -64,7 +64,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override async Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
+            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
             RegisterCallCancellation(msg, arguments, cancellationToken);
@@ -72,8 +72,8 @@ namespace Cocoar.SignalARRR.Server {
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
-            var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
-            await harrrContext.SendClientAsync(_clientContext.Id, msg, cancellationToken);
+            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            await dispatcher.SendClientAsync(_clientContext.Id, msg, cancellationToken);
             if (_httpContext != null) {
                 await _httpContext.Ok();
             }
@@ -81,7 +81,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            var preparedArguments = _methodArgumentPreperator.PrepareArguments(arguments).ToList();
+            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments).ToList();
 
             var streamId = Guid.NewGuid();
             var msg = new ServerRequestMessage(methodName, preparedArguments);
@@ -97,9 +97,9 @@ namespace Cocoar.SignalARRR.Server {
             // Send in background — scope must outlive the send
             var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
-            var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
 
-            _ = harrrContext.SendClientAsync(_clientContext.Id, msg, cancellationToken)
+            _ = dispatcher.SendClientAsync(_clientContext.Id, msg, cancellationToken)
                 .ContinueWith(_ => serviceProviderScope.Dispose());
 
             var serializer = _clientContext.ServiceProvider.GetService<Common.Serialization.IProtocolSerializer>();
@@ -143,7 +143,7 @@ namespace Cocoar.SignalARRR.Server {
             // Not an async lambda: Register takes an Action, so one would compile to async void and
             // take the process down when it throws — which is the normal case here, because the
             // token usually fires precisely because the client has gone. The send is best-effort
-            // and already swallows downstream in HARRRContext.CancelToken.
+            // and already swallows downstream in ClientContextExtensions.CancelToken.
             cancellationToken.Register(() => _ = _clientContext.CancelToken(callId));
         }
     }

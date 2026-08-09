@@ -17,7 +17,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ObservableExtensions = Cocoar.SignalARRR.Server.ExtensionMethods.ObservableExtensions;
+using SignalARRRObservableExtensions = Cocoar.SignalARRR.Server.ExtensionMethods.SignalARRRObservableExtensions;
 using TypeHelper = Cocoar.SignalARRR.Common.Helper.TypeHelper;
 
 namespace Cocoar.SignalARRR.Server {
@@ -324,7 +324,7 @@ namespace Cocoar.SignalARRR.Server {
 
             var obsGenType = taskType.GenericTypeArguments[0];
             // ReSharper disable once PossibleNullReferenceException
-            var convMethod = typeof(ObservableExtensions).GetMethod("AsChannelReaderInternal", BindingFlags.Static | BindingFlags.NonPublic)!.MakeGenericMethod(obsGenType);
+            var convMethod = typeof(SignalARRRObservableExtensions).GetMethod("AsChannelReaderInternal", BindingFlags.Static | BindingFlags.NonPublic)!.MakeGenericMethod(obsGenType);
             var channelReader = convMethod.Invoke(null, new[] { ch, cancellationToken });
 
             var convType = typeof(StreamingResult<>).MakeGenericType(taskType.GenericTypeArguments[0]);

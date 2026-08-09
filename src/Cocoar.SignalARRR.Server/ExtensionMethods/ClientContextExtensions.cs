@@ -13,16 +13,16 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
     public static class ClientContextExtensions {
 
-        public static async Task<ClientCollectionResult<TResult>> Invoke<TResult>(this ClientContext clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
+        public static async Task<ClientResult<TResult>> Invoke<TResult>(this ClientContext clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
 
             using var serviceProviderScope = clientContext.ServiceProvider.CreateScope();
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(clientContext.HARRRType);
-            var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
 
             var msg = new ServerRequestMessage(method, arguments);
-            var res = await harrrContext.InvokeClientAsync<TResult>(clientContext.Id, msg, cancellationToken);
-            return new ClientCollectionResult<TResult>(clientContext.Id, res);
+            var res = await dispatcher.InvokeClientAsync<TResult>(clientContext.Id, msg, cancellationToken);
+            return new ClientResult<TResult>(clientContext.Id, res);
 
         }
 
@@ -31,14 +31,14 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             using var serviceProviderScope = clientContext.ServiceProvider.CreateScope();
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(clientContext.HARRRType);
-            var harrrContext = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
 
             var msg = new ServerRequestMessage(MethodNames.CancelTokenFromServer, tokenReference);
 
-            await harrrContext.CancelToken(clientContext.Id, tokenReference);
+            await dispatcher.CancelToken(clientContext.Id, tokenReference);
         }
 
-        public static async Task<IEnumerable<ClientCollectionResult<TResult>>> InvokeAllAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
+        public static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
             if (clientContext is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
                 var backplane = clusterQuery.ServiceProvider.GetRequiredService<ISignalARRRBackplane>();
                 if (backplane.IsEnabled) {
@@ -96,11 +96,11 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                             .ToArray();
                     }
 
-                    return results.Select(r => new ClientCollectionResult<TResult>(r.ConnectionId, (TResult)r.Value!));
+                    return results.Select(r => new ClientResult<TResult>(r.ConnectionId, (TResult)r.Value!));
                 }
             }
 
-            var tasks = new List<Task<ClientCollectionResult<TResult>>>();
+            var tasks = new List<Task<ClientResult<TResult>>>();
 
             foreach (var context in clientContext) {
                 tasks.Add(context.Invoke<TResult>(method, arguments, cancellationToken));
@@ -111,7 +111,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             return result;
         }
 
-        public static async Task<ClientCollectionResult<TResult>> InvokeOneAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
+        public static async Task<ClientResult<TResult>> InvokeOneAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
             // Every candidate that fails contributes its exception here. Without them the caller only
             // ever saw "No client responded", which says nothing about *why* -- authorization denied,
             // deserialization failure and client timeout all looked identical.
@@ -172,12 +172,12 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                         throw NoClientResponded(method, failures);
                     }
 
-                    return new ClientCollectionResult<TResult>(firstResult.ConnectionId, (TResult)firstResult.Value!);
+                    return new ClientResult<TResult>(firstResult.ConnectionId, (TResult)firstResult.Value!);
                 }
             }
 
 
-            ClientCollectionResult<TResult>? result = default;
+            ClientResult<TResult>? result = default;
             foreach (var context in clientContext) {
 
                 try {
@@ -218,7 +218,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         /// Typed invoke on all clients in the collection. Calls each client individually via InvokeCoreAsync,
         /// awaits all in parallel, and returns results per client.
         /// </summary>
-        public static async Task<IEnumerable<ClientCollectionResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
+        public static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
             this IEnumerable<ClientContext> clientContexts,
             Func<TInterface, TResult> action,
             CancellationToken cancellationToken = default)
@@ -232,7 +232,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         /// <summary>
         /// Typed invoke on all clients (async method overload).
         /// </summary>
-        public static async Task<IEnumerable<ClientCollectionResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
+        public static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
             this IEnumerable<ClientContext> clientContexts,
             Func<TInterface, Task<TResult>> action,
             CancellationToken cancellationToken = default)
@@ -246,7 +246,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         /// <summary>
         /// Typed invoke — calls clients one by one until the first succeeds.
         /// </summary>
-        public static async Task<ClientCollectionResult<TResult>> InvokeOneAsync<TInterface, TResult>(
+        public static async Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(
             this IEnumerable<ClientContext> clientContexts,
             Func<TInterface, TResult> action,
             CancellationToken cancellationToken = default)
@@ -260,7 +260,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         /// <summary>
         /// Typed invoke one (async method overload).
         /// </summary>
-        public static async Task<ClientCollectionResult<TResult>> InvokeOneAsync<TInterface, TResult>(
+        public static async Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(
             this IEnumerable<ClientContext> clientContexts,
             Func<TInterface, Task<TResult>> action,
             CancellationToken cancellationToken = default)
@@ -331,13 +331,13 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
     }
 
-    public class ClientCollectionResult<TResult> {
+    public class ClientResult<TResult> {
 
         public string ClientId { get; }
 
         public TResult Value { get; }
 
-        public ClientCollectionResult(string clientId, TResult value) {
+        public ClientResult(string clientId, TResult value) {
             ClientId = clientId;
             Value = value;
         }

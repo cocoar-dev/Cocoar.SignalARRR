@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 
 namespace Cocoar.SignalARRR.Common.Helper {
-    public class TypeHelper {
+    public static class TypeHelper {
 
         /// <summary>
         /// Upper bound for the resolution cache.

@@ -21,22 +21,22 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cocoar.SignalARRR.Client {
-    public class MessageHandler {
-        private readonly HARRRContext _harrrContext;
+    internal class MessageHandler {
+        private readonly ClientConnectionContext _connectionContext;
         private readonly Common.Serialization.IProtocolSerializer _serializer;
         private readonly ILogger _logger;
         private ISignalARRRMethodsCollection MethodsCollection { get; set; } = new SignalARRRMethodsCollection();
 
         private ISignalARRRInterfaceCollection InterfaceCollection { get; set; } = new SignalARRRInterfaceCollection();
 
-        public MessageHandler(HARRRContext harrrContext, Common.Serialization.IProtocolSerializer? serializer = null, ILogger? logger = null) {
-            _harrrContext = harrrContext;
+        public MessageHandler(ClientConnectionContext connectionContext, Common.Serialization.IProtocolSerializer? serializer = null, ILogger? logger = null) {
+            _connectionContext = connectionContext;
             _serializer = serializer ?? new Common.Serialization.JsonProtocolSerializer();
             _logger = logger ?? NullLogger.Instance;
         }
 
         public async Task<string?> ChallengeAuthentication(ServerRequestMessage message) {
-            return await _harrrContext.AccessTokenProvider();
+            return await _connectionContext.AccessTokenProvider();
         }
 
         /// <summary>
@@ -69,7 +69,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         private async Task<StreamReference> UploadStreamAndReturnReference(Stream stream) {
-            var hubConnection = _harrrContext.GetHubConnection();
+            var hubConnection = _connectionContext.GetHubConnection();
 
             // Ask server for an upload URL
             var uploadUrl = await hubConnection.InvokeCoreAsync<string>("RequestUploadSlot", Array.Empty<object>(), default);
@@ -137,7 +137,7 @@ namespace Cocoar.SignalARRR.Client {
 
         private async Task InvokeAndStreamBackAsync(ServerRequestMessage message) {
             var streamId = message.StreamId!.Value;
-            var hubConnection = _harrrContext.GetHubConnection();
+            var hubConnection = _connectionContext.GetHubConnection();
             try {
                 var result = await InvokeAsync(message);
                 await StreamResultToServer(hubConnection, streamId, result);
@@ -232,7 +232,7 @@ namespace Cocoar.SignalARRR.Client {
 
             var methodCallInfo = MethodsCollection.GetMethodInformations(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
 
-            var instance = methodCallInfo.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider())!;
+            var instance = methodCallInfo.Factory.DynamicInvoke(_connectionContext.GetHubConnection().GetServiceProvider())!;
 
             return InvokeMethodInfoAsync(instance, methodCallInfo.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
 
@@ -241,7 +241,7 @@ namespace Cocoar.SignalARRR.Client {
         private Task<object> InvokeInterfaceMethodAsync(ServerRequestMessage serverRequestMessage) {
 
             var invokeInfos = InterfaceCollection.GetInvokeInformation(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
-            var instance = invokeInfos.Factory.DynamicInvoke(_harrrContext.GetHubConnection().GetServiceProvider())!;
+            var instance = invokeInfos.Factory.DynamicInvoke(_connectionContext.GetHubConnection().GetServiceProvider())!;
             return InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
 
         }
@@ -373,7 +373,7 @@ namespace Cocoar.SignalARRR.Client {
             if (type == typeof(Stream)) {
                 var streamReference = _serializer.TryConvertTo<StreamReference>(argument);
                 if (streamReference != null && !string.IsNullOrEmpty(streamReference.Uri)) {
-                    var resolver = new StreamReferenceResolver(streamReference, _harrrContext);
+                    var resolver = new StreamReferenceResolver(streamReference, _connectionContext);
                     return await resolver.ProcessStreamArgument();
                 }
             }

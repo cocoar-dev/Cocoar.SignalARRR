@@ -18,28 +18,28 @@ using Microsoft.AspNetCore.SignalR.Client;
 namespace Cocoar.SignalARRR.Client {
     public partial class HARRRConnection {
         private HubConnection HubConnection { get; }
-        private HARRRContext _harrrContext { get; }
+        private ClientConnectionContext _connectionContext { get; }
 
 
 
-        public HARRRConnection(HARRRContext harrrContext) {
+        internal HARRRConnection(ClientConnectionContext connectionContext) {
 
-            _harrrContext = harrrContext;
-            HubConnection = harrrContext.GetHubConnection();
+            _connectionContext = connectionContext;
+            HubConnection = connectionContext.GetHubConnection();
 
 
             // Native client results — return values are sent back to the server automatically by SignalR
             HubConnection.On<ServerRequestMessage, string?>(MethodNames.ChallengeAuthentication,
-                (requestMessage) => _harrrContext.MessageHandler.ChallengeAuthentication(requestMessage));
+                (requestMessage) => _connectionContext.MessageHandler.ChallengeAuthentication(requestMessage));
 
             HubConnection.On<ServerRequestMessage, object?>(MethodNames.InvokeServerRequest,
                 async (requestMessage) => {
                     OnServerRequestMessage?.Invoke(null, new ServerRequestEventArgs(requestMessage));
-                    return await _harrrContext.MessageHandler.InvokeServerRequest(requestMessage);
+                    return await _connectionContext.MessageHandler.InvokeServerRequest(requestMessage);
                 });
 
             // Fire-and-forget — no return value
-            this.On<ServerRequestMessage>(MethodNames.CancelTokenFromServer, (requestMessage) => _harrrContext.MessageHandler.CancelTokenFromServer(requestMessage));
+            this.On<ServerRequestMessage>(MethodNames.CancelTokenFromServer, (requestMessage) => _connectionContext.MessageHandler.CancelTokenFromServer(requestMessage));
 
             this.On<ServerRequestMessage>(MethodNames.InvokeServerMessage,
                  (requestMessage) => {
@@ -47,12 +47,12 @@ namespace Cocoar.SignalARRR.Client {
                      // Queued rather than awaited: an awaited handler occupies the receive loop, so
                      // a long-running fire-and-forget call would block every later server-to-client
                      // message — including the cancellation of its own token.
-                     _harrrContext.MessageHandler.QueueServerMessage(requestMessage);
+                     _connectionContext.MessageHandler.QueueServerMessage(requestMessage);
                  });
 
             // Lets every token bound into a running client handler observe the connection's end (N-2).
             HubConnection.Closed += _ => {
-                _harrrContext.MessageHandler.OnConnectionClosed();
+                _connectionContext.MessageHandler.OnConnectionClosed();
                 return Task.CompletedTask;
             };
         }
@@ -68,7 +68,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task<object> InvokeCoreAsync(ClientRequestMessage message, Type returnType, CancellationToken cancellationToken = default) {
-            message = (await message.WithAuthorizationAsync(_harrrContext.AccessTokenProvider)).WithInvocationId();
+            message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId();
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
                 return await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageResultOnServer, returnType, new object[] { message }, cancellationToken) ?? null!;
@@ -82,7 +82,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task InvokeCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
-            message = (await message.WithAuthorizationAsync(_harrrContext.AccessTokenProvider)).WithInvocationId();
+            message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId();
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
                 await HubConnection.InvokeCoreAsync(MethodNames.InvokeMessageOnServer, new object[] { message }, cancellationToken);
@@ -107,7 +107,7 @@ namespace Cocoar.SignalARRR.Client {
 
         public async Task<TResult> InvokeCoreAsync<TResult>(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
-            message = (await message.WithAuthorizationAsync(_harrrContext.AccessTokenProvider)).WithInvocationId();
+            message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId();
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
                 var resultMsg = await HubConnection.InvokeCoreAsync<TResult>(MethodNames.InvokeMessageResultOnServer, new object[] { message }, cancellationToken);
@@ -127,7 +127,7 @@ namespace Cocoar.SignalARRR.Client {
 
         public async Task SendCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
             await PrepareStreamArguments(message);
-            message = (await message.WithAuthorizationAsync(_harrrContext.AccessTokenProvider)).WithInvocationId();
+            message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId();
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
                 await HubConnection.SendCoreAsync(MethodNames.SendMessageToServer, new object[] { message }, cancellationToken);
@@ -148,7 +148,7 @@ namespace Cocoar.SignalARRR.Client {
         public async IAsyncEnumerable<TResult> StreamAsyncCore<TResult>(ClientRequestMessage message, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
             // No span around a stream: it lives for as long as the consumer reads. The trace
             // context still travels with the message so the server span joins the caller's trace.
-            message = (await message.WithAuthorizationAsync(_harrrContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
+            message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
             await foreach (var item in HubConnection.StreamAsyncCore<TResult>(MethodNames.StreamMessageFromServer, new object[] { message }, cancellationToken)) {
                 yield return item;
             }
@@ -160,12 +160,12 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task<ChannelReader<object>> StreamAsChannelCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
-            var msg = (await new ClientRequestMessage(methodName, args).WithAuthorizationAsync(_harrrContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
+            var msg = (await new ClientRequestMessage(methodName, args).WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
             return (await HubConnection.StreamAsChannelCoreAsync(MethodNames.StreamMessageFromServer, returnType, new object[] { msg }, cancellationToken))!;
         }
 
         public async Task<ChannelReader<TResult>> StreamAsChannelCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = (await new ClientRequestMessage(methodName, args).WithAuthorizationAsync(_harrrContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
+            var msg = (await new ClientRequestMessage(methodName, args).WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
             return await HubConnection.StreamAsChannelCoreAsync<TResult>(MethodNames.StreamMessageFromServer, new object[] { msg }, cancellationToken);
         }
 
@@ -219,8 +219,8 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public static HARRRConnection Create(HubConnection hubConnection, Action<HARRRConnectionOptionsBuilder>? optionsBuilder = null) {
-            var harrrContext = new HARRRContext(hubConnection.GetServiceProvider(), optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder());
-            return new HARRRConnection(harrrContext);
+            var connectionContext = new ClientConnectionContext(hubConnection.GetServiceProvider(), optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder());
+            return new HARRRConnection(connectionContext);
         }
 
         #region HubConnectionDecorator

@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.SignalR;
 
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
-    public static class EndpointExtensions {
+    internal static class EndpointExtensions {
 
         public static bool IsSignalREndpoint(this Endpoint endpoint) {
 

@@ -95,12 +95,9 @@ connection.OnServerRequest("ProcessFile", (string filename, Stream fileStream) =
 ::: tip Streaming vs Buffered
 By default, the resolved stream is buffered in memory. For large files, use the streaming API directly:
 
-```csharp
-// .NET — already streaming by default (ReadAsStreamAsync with ResponseHeadersRead)
-var resolver = new StreamReferenceResolver(streamRef, context);
-var stream = await resolver.ProcessStreamArgument();        // Stream (not buffered)
-var bytes = await resolver.ProcessStreamArgumentBuffered(); // byte[] (buffered)
-```
+On **.NET** there is nothing to call: the client resolves the reference before it invokes your
+handler, and the `Stream` you receive is already unbuffered (`ReadAsStreamAsync` with
+`ResponseHeadersRead`). The other SDKs hand you the reference and let you choose:
 
 ```ts
 // TypeScript

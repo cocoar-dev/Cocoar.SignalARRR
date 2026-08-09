@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Channels;
 
 namespace Cocoar.SignalARRR.Server.ExtensionMethods {
-    internal static class ObservableExtensions {
+    internal static class SignalARRRObservableExtensions {
         public static ChannelReader<T> AsChannelReader<T>(this IObservable<T> observable, int? maxBufferSize = null, CancellationToken cancellationToken = default) {
             // This sample shows adapting an observable to a ChannelReader without 
             // back pressure, if the connection is slower than the producer, memory will

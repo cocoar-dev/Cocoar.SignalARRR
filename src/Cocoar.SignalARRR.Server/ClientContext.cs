@@ -81,13 +81,13 @@ namespace Cocoar.SignalARRR.Server {
 
             foreach (var (key, value) in httpContext.Request.Headers) {
                 if (key.StartsWith("#")) {
-                    Attributes[key.Substring(1)] = value;
+                    Attributes.Set(key.Substring(1), value);
                 }
             }
 
             foreach (var (key, value) in httpContext.Request.Query) {
                 if (key.StartsWith("@")) {
-                    Attributes[key.Substring(1)] = value;
+                    Attributes.Set(key.Substring(1), value);
                 }
             }
         }
@@ -228,35 +228,6 @@ namespace Cocoar.SignalARRR.Server {
             var instance = ProxyCreator.CreateInstanceFromInterface<T>(new ServerProxyCreatorHelper(this, httpContext));
             action(instance);
         }
-    }
-
-
-    public class ClientAttributes : Dictionary<string, StringValues> {
-
-        public ClientAttributes() : base(StringComparer.OrdinalIgnoreCase) {
-
-        }
-
-        public new string? this[string key] {
-            get => TryGetValue(key, out var val) ? val : default;
-            set {
-
-                base[key] = value;
-            }
-        }
-
-        public bool Has(string key) {
-            return ContainsKey(key);
-        }
-
-        public bool Has(string key, string value) {
-            if (TryGetValue(key, out var val)) {
-                return val.Any(v => v != null && v.Match(value));
-            }
-
-            return false;
-        }
-
     }
 
 }

@@ -72,7 +72,7 @@ namespace Microsoft.AspNetCore.Builder {
         /// <summary>
         /// Serves a previously stored stream for download (server → client file transfer).
         /// </summary>
-        public static async Task InvokeDownload(HttpContext context) {
+        internal static async Task InvokeDownload(HttpContext context) {
             var streamManager = context.RequestServices.GetRequiredService<ServerPushStreamManager>();
 
             var uri = context.Request.GetDisplayUrl().ToLower();
@@ -101,7 +101,7 @@ namespace Microsoft.AspNetCore.Builder {
         /// The client first calls RequestUploadSlot() to get the upload URL,
         /// then POSTs the stream data to this endpoint.
         /// </summary>
-        public static async Task InvokeUpload(HttpContext context) {
+        internal static async Task InvokeUpload(HttpContext context) {
             var streamManager = context.RequestServices.GetRequiredService<ServerPushStreamManager>();
             var options = context.RequestServices.GetService<SignalARRRServerOptions>() ?? new SignalARRRServerOptions();
 
