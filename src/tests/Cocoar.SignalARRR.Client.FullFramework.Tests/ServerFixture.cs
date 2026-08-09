@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Threading;
 using Cocoar.SignalARRR.TestInfrastructure;
 using Xunit;
@@ -9,6 +10,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework.Tests {
     public class ServerFixture : IDisposable {
 
         private Process _serverProcess;
+        private readonly StringBuilder _serverOutput = new StringBuilder();
         public string ServerUrl { get; private set; }
 
         public ServerFixture() {
@@ -32,7 +34,16 @@ namespace Cocoar.SignalARRR.Client.FullFramework.Tests {
                 },
             };
             _serverProcess.StartInfo.Environment["SERVER_URL_FILE"] = urlFile;
+
+            // Both pipes have to be drained while the child runs. `dotnet run` writes its restore
+            // and build output to stdout long before the server starts listening, and once the
+            // pipe buffer is full the child blocks in its own write — it never reaches the line
+            // that publishes SERVER_URL, so every test in the collection times out below.
+            _serverProcess.OutputDataReceived += AppendOutput;
+            _serverProcess.ErrorDataReceived += AppendOutput;
             _serverProcess.Start();
+            _serverProcess.BeginOutputReadLine();
+            _serverProcess.BeginErrorReadLine();
 
             var deadline = DateTime.UtcNow.AddSeconds(120);
             while (DateTime.UtcNow < deadline) {
@@ -42,15 +53,31 @@ namespace Cocoar.SignalARRR.Client.FullFramework.Tests {
                     return;
                 }
                 if (_serverProcess.HasExited) {
-                    var stderr = _serverProcess.StandardError.ReadToEnd();
+                    // Lets the asynchronous readers flush what the child wrote before exiting.
+                    _serverProcess.WaitForExit();
                     throw new InvalidOperationException(
-                        "IntegrationTestServer exited with code " + _serverProcess.ExitCode + ":\n" + stderr);
+                        "IntegrationTestServer exited with code " + _serverProcess.ExitCode + ":\n" + SnapshotOutput());
                 }
                 Thread.Sleep(500);
             }
 
             try { _serverProcess.Kill(); } catch { }
-            throw new TimeoutException("IntegrationTestServer did not start within 120 seconds.");
+            throw new TimeoutException(
+                "IntegrationTestServer did not start within 120 seconds. Output so far:\n" + SnapshotOutput());
+        }
+
+        private void AppendOutput(object sender, DataReceivedEventArgs e) {
+            if (e.Data == null)
+                return;
+            lock (_serverOutput) {
+                _serverOutput.AppendLine(e.Data);
+            }
+        }
+
+        private string SnapshotOutput() {
+            lock (_serverOutput) {
+                return _serverOutput.Length == 0 ? "(no output)" : _serverOutput.ToString();
+            }
         }
 
         private static string FindServerProjectDir() {
