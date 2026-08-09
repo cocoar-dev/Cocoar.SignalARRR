@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -41,7 +42,7 @@ namespace Cocoar.SignalARRR.Server {
             var uri = new Uri($"{baseUrl}/download/{Guid.NewGuid()}".ToLower());
             var key = uri.ToString();
 
-            _pendingStreams.TryAdd(key, new PendingStream(stream, DateTime.UtcNow, contentType));
+            _pendingStreams.TryAdd(key, new PendingStream(stream, Stopwatch.GetTimestamp(), contentType));
             return key;
         }
 
@@ -62,7 +63,7 @@ namespace Cocoar.SignalARRR.Server {
             var id = Guid.NewGuid().ToString().ToLowerInvariant();
             var uri = new Uri($"{baseUrl}/upload/{id}");
             var tcs = new TaskCompletionSource<Stream>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _uploadSlots.TryAdd(Normalize(uri.ToString()), new UploadSlot(tcs, DateTime.UtcNow));
+            _uploadSlots.TryAdd(Normalize(uri.ToString()), new UploadSlot(tcs, Stopwatch.GetTimestamp()));
             return uri.ToString();
         }
 
@@ -149,10 +150,8 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private void CleanupExpired() {
-            var cutoff = DateTime.UtcNow - _expirationTimeout;
-
             var expiredDownloads = _pendingStreams
-                .Where(kvp => kvp.Value.CreatedAt < cutoff)
+                .Where(kvp => Stopwatch.GetElapsedTime(kvp.Value.CreatedAt) >= _expirationTimeout)
                 .Select(kvp => kvp.Key)
                 .ToList();
             foreach (var key in expiredDownloads) {
@@ -162,7 +161,7 @@ namespace Cocoar.SignalARRR.Server {
             // Upload slots were never swept: RequestUploadSlot is a plain hub method, so a client
             // calling it in a loop grew this dictionary without bound for the process lifetime.
             var expiredUploads = _uploadSlots
-                .Where(kvp => kvp.Value.CreatedAt < cutoff)
+                .Where(kvp => Stopwatch.GetElapsedTime(kvp.Value.CreatedAt) >= _expirationTimeout)
                 .Select(kvp => kvp.Key)
                 .ToList();
             foreach (var key in expiredUploads) {
@@ -185,8 +184,11 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
-        private sealed record PendingStream(Stream Stream, DateTime CreatedAt, string? ContentType);
+        // CreatedAt is a monotonic Stopwatch timestamp rather than a wall-clock time: a clock
+        // correction must not decide whether a pending transfer is expired. Same reasoning as in
+        // ServerStreamManager, where it additionally showed up as an intermittent CI failure.
+        private sealed record PendingStream(Stream Stream, long CreatedAt, string? ContentType);
 
-        private sealed record UploadSlot(TaskCompletionSource<Stream> Completion, DateTime CreatedAt);
+        private sealed record UploadSlot(TaskCompletionSource<Stream> Completion, long CreatedAt);
     }
 }
