@@ -8,6 +8,7 @@ SignalARRR is distributed as multiple NuGet packages and one npm package. Choose
 |---------|--------|---------|
 | `Cocoar.SignalARRR.Contracts` | net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute + Roslyn source generator. Reference from shared interface projects. |
 | `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. |
+| `Cocoar.SignalARRR.Server.Backplane.Redis` | net8.0 / net9.0 / net10.0 | Multi-node scale-out: `AddSignalARRRRedisBackplane`. Add only when running more than one node — this is where the `StackExchange.Redis` dependency lives. |
 | `Cocoar.SignalARRR.Client` | net8.0 / net9.0 / net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. |
 | `Cocoar.SignalARRR.Client.FullFramework` | netstandard2.0 (.NET Framework 4.6.2+) | Client for .NET Framework — typed proxies via `DispatchProxy`, streaming via polyfills. |
 | `Cocoar.SignalARRR.DynamicProxy` | net8.0 / net9.0 / net10.0 | Optional runtime proxy fallback via `DispatchProxy`. For plugin/dynamic scenarios. |
@@ -91,7 +92,14 @@ targets: [
 </ItemGroup>
 ```
 
-Optional multi-node scale-out:
+Optional multi-node scale-out — a separate package, so single-node applications do not pull in
+`StackExchange.Redis`:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Redis" Version="5.*" />
+</ItemGroup>
+```
 
 ```csharp
 builder.Services.AddSignalARRRRedisBackplane(options => options

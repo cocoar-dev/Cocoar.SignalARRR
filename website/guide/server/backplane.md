@@ -2,9 +2,22 @@
 
 SignalARRR runs in pure in-memory single-node mode by default. If you never configure a backplane, all client tracking, groups, and filters stay local to the current process.
 
-For multi-node deployments, enable the built-in Redis-compatible backplane.
+For multi-node deployments, add the Redis-compatible backplane package.
 
 ## Setup
+
+The backplane ships separately, so that single-node applications — the majority — do not carry
+`StackExchange.Redis` and its transitive closure for a feature they never switch on:
+
+```xml
+<PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Redis" Version="5.*" />
+```
+
+::: warning Moved out of the server package in 5.0
+In 4.x this came with `Cocoar.SignalARRR.Server`. If you use `AddSignalARRRRedisBackplane`, add the
+package reference above — nothing else changes, the method and its options are unchanged and stay in
+the same namespace.
+:::
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);

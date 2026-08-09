@@ -83,7 +83,8 @@ For full setup guides, streaming, authorization, and server-to-client calls, see
 
 SignalARRR stays pure in-memory by default. If you do **not** configure a backplane, behavior remains single-node and process-local exactly as before.
 
-For multi-node scale-out, opt in with the built-in Redis-compatible backplane:
+For multi-node scale-out, add the `Cocoar.SignalARRR.Server.Backplane.Redis` package and opt in.
+It is a separate package as of 5.0, so single-node applications do not carry `StackExchange.Redis`:
 
 ```csharp
 builder.Services.AddSignalARRR(b =>

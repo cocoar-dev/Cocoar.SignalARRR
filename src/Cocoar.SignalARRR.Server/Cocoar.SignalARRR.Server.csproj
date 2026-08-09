@@ -9,6 +9,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The backplane contracts (ISignalARRRBackplane, ISignalARRRConnectionRegistry,
+         LocalSignalARRRBackplaneDispatcher, the envelope types) are internal on purpose: they are
+         not a supported extension point yet. The Redis backplane ships as its own package so that
+         single-node consumers do not carry StackExchange.Redis, and it reaches those contracts
+         from here. Promoting them to public API is a separate decision (review finding AF-3). -->
+    <InternalsVisibleTo Include="Cocoar.SignalARRR.Server.Backplane.Redis" />
     <InternalsVisibleTo Include="Cocoar.SignalARRR.IntegrationTests" />
     <InternalsVisibleTo Include="Cocoar.SignalARRR.Tests" />
     <InternalsVisibleTo Include="IntegrationTestServer" />
@@ -35,8 +41,6 @@
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="MessagePack" />
-    <PackageReference Include="StackExchange.Redis" />
-
     <PackageReference Include="System.Reactive.Linq" />
   </ItemGroup>
 
