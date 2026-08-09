@@ -121,7 +121,7 @@ app.MapSignalARRRHub<THub>(path, configureOptions);
 | `InvokeCoreAsync<T>(message, ct)` | Call server, await typed result |
 | `SendCoreAsync(message, ct)` | Fire-and-forget |
 | `StreamAsyncCore<T>(message, ct)` | Server-to-client stream |
-| `OnServerRequest(name, handler)` | Register server-to-client handler |
+| `RegisterInterface<TInterface, TClass>(...)` | Register a server-to-client contract handler (instance, factory or type) |
 | `StartAsync(ct)` | Connect |
 | `StopAsync(ct)` | Disconnect |
 | `DisposeAsync()` | Dispose |

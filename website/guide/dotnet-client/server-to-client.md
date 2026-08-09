@@ -64,52 +64,41 @@ var name = await client.GetClientName();               // awaits response
 `RegisterInterface` must be called **before** `StartAsync()`. The server may invoke client methods immediately after connection.
 :::
 
-## Register ad-hoc handlers
+::: danger Removed in 5.0: `OnServerRequest`
+Earlier versions documented `connection.OnServerRequest("MethodName", handler)` for registering
+handlers by bare method name. It never worked: the handlers went into a registry that nothing read,
+so a server call either failed with `Method 'X' not found!` or, on the fire-and-forget path, was
+swallowed into a client-side log line and did nothing at all. It is removed from both .NET clients
+in 5.0.
 
-Use `OnServerRequest()` to register handlers by method name:
+There is no ad-hoc replacement — `RegisterInterface` with a contract interface, as shown above, is
+the way to receive server-to-client calls, and always was.
+:::
 
-```csharp
-// Handle a void method (fire-and-forget from server)
-connection.OnServerRequest("ReceiveMessage", (string user, string message) =>
-{
-    Console.WriteLine($"{user}: {message}");
-    return null;
-});
+## `On()` is for raw SignalR calls, not contracts
 
-// Handle a method with a return value (server awaits response)
-connection.OnServerRequest<string>("GetClientName", name =>
-{
-    return Environment.MachineName;
-});
-```
-
-## Typed overloads
-
-`OnServerRequest` supports up to 4 typed parameters:
+`HARRRConnectionExtensions` provides `On<T>()` overloads for up to 16 parameters. These register
+against **raw SignalR method names** — they pass straight through to `HubConnection.On`:
 
 ```csharp
-// 1 parameter
-connection.OnServerRequest<string>("Echo", input => input.ToUpper());
-
-// 2 parameters
-connection.OnServerRequest<string, int>("Repeat", (text, count) =>
-    string.Concat(Enumerable.Repeat(text, count)));
-
-// 3 parameters
-connection.OnServerRequest<string, string, bool>("Compare", (a, b, ignoreCase) =>
-    string.Equals(a, b, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
-```
-
-## Extension method overloads
-
-The `HARRRConnectionExtensions` class provides `On<T>()` overloads for up to 16 parameters:
-
-```csharp
-connection.On<string, string>("ReceiveMessage", (user, message) =>
+// Fires for Clients.Client(id).SendAsync("StatusChanged", "online")
+// — i.e. the plain SignalR API on the hub, bypassing SignalARRR
+connection.On<string>("StatusChanged", status =>
 {
-    Console.WriteLine($"{user}: {message}");
+    Console.WriteLine(status);
 });
 ```
+
+::: warning `On()` does not receive contract calls
+A call made through a typed proxy — `clientContext.GetTypedMethods<IChatClient>().ReceiveMessage(...)` —
+does **not** arrive as a SignalR message named `ReceiveMessage`. It arrives wrapped in an
+`InvokeServerRequest` or `InvokeServerMessage` envelope, with the contract name
+(`MyApp.IChatClient|ReceiveMessage`) *inside* the envelope. So `connection.On("ReceiveMessage", ...)`
+never fires for it, and does so silently.
+
+Use `RegisterInterface` for anything the server sends through a contract, and `On()` only for
+messages the hub sends with plain `SendAsync`.
+:::
 
 ## How it works
 

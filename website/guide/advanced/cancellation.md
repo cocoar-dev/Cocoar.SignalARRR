@@ -27,18 +27,34 @@ When `cts.Cancel()` is called, the server sends a `CancelTokenFromServer` messag
 
 ## .NET client
 
-On the .NET client, the `CancellationToken` is received as a standard `CancellationToken`:
+Declare the `CancellationToken` on the contract, and the handler receives a standard
+`CancellationToken`:
 
 ```csharp
-connection.OnServerRequest("ProcessData", (string data, CancellationToken ct) =>
+[SignalARRRContract]
+public interface IWorkerClient
 {
-    while (!ct.IsCancellationRequested)
+    Task<string> ProcessData(string data, CancellationToken ct);
+}
+
+public class WorkerClientHandler : IWorkerClient
+{
+    public Task<string> ProcessData(string data, CancellationToken ct)
     {
-        // Process chunks...
+        while (!ct.IsCancellationRequested)
+        {
+            // Process chunks...
+        }
+        return Task.FromResult("completed");
     }
-    return "completed";
-});
+}
+
+// Before StartAsync()
+connection.RegisterInterface<IWorkerClient, WorkerClientHandler>();
 ```
+
+The token is also cancelled when the connection itself drops, so a handler notices its caller's
+world ending even if the server never sends an explicit cancellation.
 
 ## TypeScript client
 
