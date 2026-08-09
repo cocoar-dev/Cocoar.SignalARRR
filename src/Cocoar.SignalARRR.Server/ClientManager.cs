@@ -118,16 +118,6 @@ namespace Cocoar.SignalARRR.Server {
             return snapshots.Count > 0;
         }
 
-        [Obsolete("Use WithHub<T>() instead. Will be removed in v5.0.")]
-        public IEnumerable<ClientContext> GetHARRRClients<T>() {
-            return HARRRClientManager.GetClients().Where(c => c.HARRRType == typeof(T));
-        }
-
-        [Obsolete("Use WithHub<T>().Where(predicate) instead. Will be removed in v5.0.")]
-        public IEnumerable<ClientContext> GetHARRRClients<T>(Func<ClientContext, bool> predicate) {
-            return GetHARRRClients<T>().Where(predicate);
-        }
-
         /// <summary>
         /// Adds a client to a SignalR group AND tracks it in ClientContext.Groups.
         /// </summary>
