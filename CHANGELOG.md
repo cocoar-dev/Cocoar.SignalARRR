@@ -50,9 +50,10 @@ that are server infrastructure rather than application-facing API.
 - **Resolving the access token could deadlock a UI client**: both .NET clients resolved the token provider with a blocking wait on every outgoing call. On a single-threaded `SynchronizationContext` — WPF, WinForms, MAUI — the provider's continuation is posted back to the very thread that sits in that wait, so the first call with an asynchronous token provider hung the UI thread permanently, before anything touched the wire. On servers it pinned a thread-pool thread per call. `ClientRequestMessage` gains `WithAuthorizationAsync`, and every send path awaits it.
 - **Stream expiry was decided by the wall clock**: both stream managers stored `DateTime.UtcNow` at creation and compared it against `DateTime.UtcNow` minus the timeout. That clock is not monotonic and is not guaranteed to advance between two adjacent statements, so a correction backwards kept expired transfers and leaked streams alive, one forwards disposed live ones early, and a zero idle timeout came down to whether the clock happened to tick. Ages are measured with `Stopwatch` timestamps now.
 
-### Deprecated
+### Removed
 
-- **`ClientRequestMessage.WithAuthorization(Func<Task<string>>)`**: the blocking overload behind the deadlock above. It remains for binary compatibility but is `[Obsolete]`; use `WithAuthorizationAsync`, or `WithAuthorization(string)` for a token that is already at hand.
+- **BREAKING — `ClientRequestMessage.WithAuthorization(Func<Task<string>>)`**: the blocking overload behind the deadlock above. Keeping it for binary compatibility would keep the deadlock reachable, and this release breaks compatibility anyway. Use `WithAuthorizationAsync`, or `WithAuthorization(string)` for a token that is already at hand — that overload is untouched.
+- **BREAKING — `ClientManager.GetHARRRClients<T>()` and `GetHARRRClients<T>(Func<ClientContext, bool>)`**: `[Obsolete]` since 4.x, with a message that already named this release. `WithHub<T>()` replaces the first and additionally reaches the whole cluster rather than the local node's clients alone. For the second, be aware that a LINQ `.Where(...)` chained onto `WithHub<T>()` enumerates locally, exactly like the removed overload did; to filter across the cluster use the query's own filters (`WithGroup`, `WithUser`, `WithAttribute`).
 
 ### Changed
 

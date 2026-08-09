@@ -56,16 +56,8 @@ namespace Cocoar.SignalARRR.Common {
             return this;
         }
 
-        [Obsolete("Blocks the calling thread until the token provider completes and deadlocks on a UI SynchronizationContext. Use WithAuthorizationAsync instead; this overload only remains for already-available token strings via WithAuthorization(string).")]
-        public ClientRequestMessage WithAuthorization(Func<Task<string>> authorization) {
-            Authorization = authorization?.Invoke().GetAwaiter().GetResult() ?? string.Empty;
-            return this;
-        }
-
         /// <summary>
-        /// Resolves the token provider without blocking the calling thread. The blocking overload
-        /// deadlocks when the provider's continuation needs the very thread that is waiting on it
-        /// (any single-threaded SynchronizationContext — WPF, WinForms, MAUI).
+        /// Resolves the token provider without blocking the calling thread.
         /// </summary>
         public async Task<ClientRequestMessage> WithAuthorizationAsync(Func<Task<string>> authorization) {
             Authorization = authorization != null ? await authorization().ConfigureAwait(false) ?? string.Empty : string.Empty;
