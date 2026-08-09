@@ -23,10 +23,15 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         /// <summary>
-        /// Primary entry point — select the hub first, then chain filters.
-        /// Returns all clients connected to the specified hub type.
+        /// Primary entry point — select the hub first, then chain filters and call.
         /// </summary>
-        public IEnumerable<ClientContext> WithHub<THub>() where THub : HARRR {
+        /// <remarks>
+        /// The result describes a target set rather than listing one: with a backplane enabled the
+        /// filters and the send/invoke methods resolve across the whole cluster. Use
+        /// <see cref="IClientQuery.LocalClients"/> when you need the <see cref="ClientContext"/>
+        /// objects themselves — those exist only for connections this node owns.
+        /// </remarks>
+        public IClientQuery WithHub<THub>() where THub : HARRR {
             return new ClusterClientQuery(
                 HARRRClientManager.GetClients().Where(c => c.HARRRType == typeof(THub)),
                 typeof(THub),

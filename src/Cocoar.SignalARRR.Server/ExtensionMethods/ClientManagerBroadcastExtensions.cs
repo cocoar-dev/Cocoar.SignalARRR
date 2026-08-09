@@ -22,9 +22,9 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         /// Typed fire-and-forget send to a filtered set of clients.
         /// Collects ConnectionIds and sends a single broadcast via SignalR.
         /// </summary>
-        public static async Task SendAsync<T>(this IEnumerable<ClientContext> clients, Action<T> action, CancellationToken cancellationToken = default)
+        internal static async Task SendAsync<T>(IEnumerable<ClientContext> clients, IClusterClientQueryMetadata? cluster, Action<T> action, CancellationToken cancellationToken = default)
             where T : class {
-            if (clients is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
+            if (cluster is { DistributedDispatchSupported: true } clusterQuery) {
                 var (methodName, capturedArguments) = CaptureCall<T>(action);
 
                 // The route is frozen while the request scope is still alive: the cancellation

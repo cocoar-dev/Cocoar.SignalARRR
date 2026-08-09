@@ -38,8 +38,8 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             await dispatcher.CancelToken(clientContext.Id, tokenReference);
         }
 
-        public static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
-            if (clientContext is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
+        internal static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TResult>(IEnumerable<ClientContext> clientContext, IClusterClientQueryMetadata? cluster, string method, object[] arguments, CancellationToken cancellationToken) {
+            if (cluster is { DistributedDispatchSupported: true } clusterQuery) {
                 var backplane = clusterQuery.ServiceProvider.GetRequiredService<ISignalARRRBackplane>();
                 if (backplane.IsEnabled) {
                     var message = new ServerRequestMessage(method, arguments).WithTraceContext();
@@ -111,13 +111,13 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             return result;
         }
 
-        public static async Task<ClientResult<TResult>> InvokeOneAsync<TResult>(this IEnumerable<ClientContext> clientContext, string method, object[] arguments, CancellationToken cancellationToken) {
+        internal static async Task<ClientResult<TResult>> InvokeOneAsync<TResult>(IEnumerable<ClientContext> clientContext, IClusterClientQueryMetadata? cluster, string method, object[] arguments, CancellationToken cancellationToken) {
             // Every candidate that fails contributes its exception here. Without them the caller only
             // ever saw "No client responded", which says nothing about *why* -- authorization denied,
             // deserialization failure and client timeout all looked identical.
             var failures = new List<Exception>();
 
-            if (clientContext is IClusterClientQueryMetadata clusterQuery && clusterQuery.DistributedDispatchSupported) {
+            if (cluster is { DistributedDispatchSupported: true } clusterQuery) {
                 var backplane = clusterQuery.ServiceProvider.GetRequiredService<ISignalARRRBackplane>();
                 if (backplane.IsEnabled) {
                     var message = new ServerRequestMessage(method, arguments).WithTraceContext();
@@ -218,57 +218,61 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
         /// Typed invoke on all clients in the collection. Calls each client individually via InvokeCoreAsync,
         /// awaits all in parallel, and returns results per client.
         /// </summary>
-        public static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
-            this IEnumerable<ClientContext> clientContexts,
+        internal static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
+            IEnumerable<ClientContext> clientContexts,
+            IClusterClientQueryMetadata? cluster,
             Func<TInterface, TResult> action,
             CancellationToken cancellationToken = default)
             where TInterface : class {
 
             var (methodName, arguments) = CaptureCall<TInterface>(action, validateNoStreams: true);
             ValidateNoStreamResult<TResult>(methodName);
-            return await clientContexts.InvokeAllAsync<TResult>(methodName, arguments, cancellationToken);
+            return await InvokeAllAsync<TResult>(clientContexts, cluster, methodName, arguments, cancellationToken);
         }
 
         /// <summary>
         /// Typed invoke on all clients (async method overload).
         /// </summary>
-        public static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
-            this IEnumerable<ClientContext> clientContexts,
+        internal static async Task<IEnumerable<ClientResult<TResult>>> InvokeAllAsync<TInterface, TResult>(
+            IEnumerable<ClientContext> clientContexts,
+            IClusterClientQueryMetadata? cluster,
             Func<TInterface, Task<TResult>> action,
             CancellationToken cancellationToken = default)
             where TInterface : class {
 
             var (methodName, arguments) = CaptureCall<TInterface>(action, validateNoStreams: true);
             ValidateNoStreamResult<TResult>(methodName);
-            return await clientContexts.InvokeAllAsync<TResult>(methodName, arguments, cancellationToken);
+            return await InvokeAllAsync<TResult>(clientContexts, cluster, methodName, arguments, cancellationToken);
         }
 
         /// <summary>
         /// Typed invoke — calls clients one by one until the first succeeds.
         /// </summary>
-        public static async Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(
-            this IEnumerable<ClientContext> clientContexts,
+        internal static async Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(
+            IEnumerable<ClientContext> clientContexts,
+            IClusterClientQueryMetadata? cluster,
             Func<TInterface, TResult> action,
             CancellationToken cancellationToken = default)
             where TInterface : class {
 
             var (methodName, arguments) = CaptureCall<TInterface>(action, validateNoStreams: true);
             ValidateNoStreamResult<TResult>(methodName);
-            return await clientContexts.InvokeOneAsync<TResult>(methodName, arguments, cancellationToken);
+            return await InvokeOneAsync<TResult>(clientContexts, cluster, methodName, arguments, cancellationToken);
         }
 
         /// <summary>
         /// Typed invoke one (async method overload).
         /// </summary>
-        public static async Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(
-            this IEnumerable<ClientContext> clientContexts,
+        internal static async Task<ClientResult<TResult>> InvokeOneAsync<TInterface, TResult>(
+            IEnumerable<ClientContext> clientContexts,
+            IClusterClientQueryMetadata? cluster,
             Func<TInterface, Task<TResult>> action,
             CancellationToken cancellationToken = default)
             where TInterface : class {
 
             var (methodName, arguments) = CaptureCall<TInterface>(action, validateNoStreams: true);
             ValidateNoStreamResult<TResult>(methodName);
-            return await clientContexts.InvokeOneAsync<TResult>(methodName, arguments, cancellationToken);
+            return await InvokeOneAsync<TResult>(clientContexts, cluster, methodName, arguments, cancellationToken);
         }
 
         private static (string methodName, object[] arguments) CaptureCall<TInterface>(Delegate action, bool validateNoStreams = false) where TInterface : class {
@@ -295,39 +299,6 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
                     $"Method '{methodName}' returns a Stream. Stream return values are not supported for multi-client operations. Use single-client GetTypedMethods<T>() instead.");
             }
         }
-
-        public static IEnumerable<ClientContext> WithGroup(this IEnumerable<ClientContext> clientContexts, string groupName) {
-            if (clientContexts is ClusterClientQuery clusterQuery) {
-                return clusterQuery.WithGroup(groupName);
-            }
-
-            return clientContexts.Where(c => c.Groups.Contains(groupName));
-        }
-
-        public static IEnumerable<ClientContext> WithAttribute(this IEnumerable<ClientContext> clientContexts, string key) {
-            if (clientContexts is ClusterClientQuery clusterQuery) {
-                return clusterQuery.WithAttribute(key);
-            }
-
-            return clientContexts.Where(c => c.Attributes.Has(key));
-        }
-
-        public static IEnumerable<ClientContext> WithAttribute(this IEnumerable<ClientContext> clientContexts, string key, string value) {
-            if (clientContexts is ClusterClientQuery clusterQuery) {
-                return clusterQuery.WithAttribute(key, value);
-            }
-
-            return clientContexts.Where(c => c.Attributes.Has(key, value));
-        }
-
-        public static IEnumerable<ClientContext> WithUser(this IEnumerable<ClientContext> clientContexts, string userId) {
-            if (clientContexts is ClusterClientQuery clusterQuery) {
-                return clusterQuery.WithUser(userId);
-            }
-
-            return clientContexts.Where(c => string.Equals(c.UserIdentifier, userId, StringComparison.Ordinal));
-        }
-
 
     }
 
