@@ -16,27 +16,65 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Microsoft.AspNetCore.Builder {
     public static class SignalARRREndpointRouteBuilderExtensions {
 
-        public static HubEndpointConventionBuilder MapSignalARRRHub<THub>(
+        public static IHubEndpointConventionBuilder MapSignalARRRHub<THub>(
             this IEndpointRouteBuilder endpoints, string pattern) where THub : HARRR {
 
-            var ret = endpoints.MapHub<THub>(pattern);
-            MapFileTransferEndpoints<THub>(endpoints, pattern);
-            return ret;
+            var hub = endpoints.MapHub<THub>(pattern);
+            var transfers = MapFileTransferEndpoints<THub>(endpoints, pattern);
+            return Combine(hub, transfers);
 
         }
 
-        public static HubEndpointConventionBuilder MapSignalARRRHub<THub>(
+        public static IHubEndpointConventionBuilder MapSignalARRRHub<THub>(
             this IEndpointRouteBuilder endpoints, string pattern,
             Action<HttpConnectionDispatcherOptions> configureOptions) where THub : HARRR {
 
             var opts = configureOptions.InvokeAction();
 
-            var ret = endpoints.MapHub<THub>(pattern, configureOptions);
+            var hub = endpoints.MapHub<THub>(pattern, configureOptions);
 
-            MapFileTransferEndpoints<THub>(endpoints, pattern);
+            var transfers = MapFileTransferEndpoints<THub>(endpoints, pattern);
 
-            return ret;
+            return Combine(hub, transfers);
 
+        }
+
+        private static IHubEndpointConventionBuilder Combine(
+            IEndpointConventionBuilder hub, IEndpointConventionBuilder[] transfers) {
+
+            var all = new IEndpointConventionBuilder[transfers.Length + 1];
+            all[0] = hub;
+            Array.Copy(transfers, 0, all, 1, transfers.Length);
+            return new FanOutHubEndpointConventionBuilder(all);
+        }
+
+        /// <summary>
+        /// Applies everything chained onto <c>MapSignalARRRHub</c> to the hub <em>and</em> to the
+        /// file-transfer endpoints that belong to it.
+        /// </summary>
+        /// <remarks>
+        /// Returning SignalR's own builder meant <c>.RequireAuthorization()</c> — the idiomatic way
+        /// to secure a mapped endpoint, and the one this library's README shows — configured the hub
+        /// alone and silently left <c>/download/{id}</c> and <c>/upload/{id}</c> anonymous. Copying
+        /// the hub type's <c>[Authorize]</c> attributes covered only the other style of securing it.
+        /// <para>
+        /// Every convention fans out, not just authorization: a policy someone applies to the hub is
+        /// meant for the transfers it hands out too, and picking a subset would recreate the same
+        /// class of surprise one method at a time.
+        /// </para>
+        /// </remarks>
+        private sealed class FanOutHubEndpointConventionBuilder : IHubEndpointConventionBuilder {
+            private readonly IEndpointConventionBuilder[] _builders;
+
+            public FanOutHubEndpointConventionBuilder(IEndpointConventionBuilder[] builders) => _builders = builders;
+
+            public void Add(Action<EndpointBuilder> convention) {
+                foreach (var builder in _builders) builder.Add(convention);
+            }
+
+            public void Finally(Action<EndpointBuilder> finallyConvention) {
+                foreach (var builder in _builders) builder.Finally(finallyConvention);
+            }
         }
 
         /// <summary>
@@ -44,29 +82,30 @@ namespace Microsoft.AspNetCore.Builder {
         /// and return values, carrying over the hub's own authorization requirements.
         /// </summary>
         /// <remarks>
-        /// These are ordinary HTTP endpoints, so the hub's <c>[Authorize]</c> does not reach them and
-        /// a <c>.RequireAuthorization()</c> applied to the returned hub builder does not either — it
-        /// only configures the hub. They were therefore anonymous even when the hub was not, and
-        /// possession of the URL was the only credential.
+        /// These are ordinary HTTP endpoints, so the hub's <c>[Authorize]</c> does not reach them by
+        /// itself — they were anonymous even when the hub was not, and possession of the URL was the
+        /// only credential. Both ways of securing a hub are now covered: the attributes are copied
+        /// here, and anything chained onto <c>MapSignalARRRHub</c> reaches these endpoints through
+        /// <see cref="FanOutHubEndpointConventionBuilder"/>.
         /// <para>
-        /// Copying the hub type's authorization data closes the common case. It cannot bind a
-        /// transfer to the connection that requested it, because the client's upload POST carries no
-        /// connection identity at all — that needs a protocol change. Until then the slot id is an
-        /// unguessable capability and should be treated as a secret: do not log these URLs.
+        /// What this still cannot do is bind the HTTP request itself to the connection that
+        /// requested the transfer, because the POST carries no connection identity — so the slot id
+        /// remains a capability worth treating as a secret: do not log these URLs. Consuming a slot
+        /// <em>is</em> bound to its owner; see <c>ServerPushStreamManager.WaitForUpload</c>.
         /// </para>
         /// </remarks>
-        private static void MapFileTransferEndpoints<THub>(IEndpointRouteBuilder endpoints, string pattern) where THub : HARRR {
+        private static IEndpointConventionBuilder[] MapFileTransferEndpoints<THub>(IEndpointRouteBuilder endpoints, string pattern) where THub : HARRR {
 
             var download = endpoints.MapGet($"{pattern}/download/{{id}}", async context => await InvokeDownload(context));
             var upload = endpoints.MapPost($"{pattern}/upload/{{id}}", async context => await InvokeUpload(context));
 
             var authorizeData = typeof(THub).GetCustomAttributes(inherit: true).OfType<IAuthorizeData>().ToArray();
-            if (authorizeData.Length == 0) {
-                return;
+            if (authorizeData.Length > 0) {
+                download.RequireAuthorization(authorizeData);
+                upload.RequireAuthorization(authorizeData);
             }
 
-            download.RequireAuthorization(authorizeData);
-            upload.RequireAuthorization(authorizeData);
+            return new IEndpointConventionBuilder[] { download, upload };
         }
 
         /// <summary>

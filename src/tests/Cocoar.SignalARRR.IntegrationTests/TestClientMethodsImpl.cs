@@ -24,6 +24,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         /// same whether the client's token worked or the call fell over for an unrelated reason.
         /// </remarks>
         public bool WaitObservedCancellation { get; private set; }
+
+        /// <summary>Clears what the last <see cref="Wait"/> call recorded, for tests that call it repeatedly.</summary>
+        public void ResetWaitObservations() {
+            LastWaitSeconds = null;
+            WaitObservedCancellation = false;
+        }
         public T Invoke<T>(string command, Dictionary<string, object>? variables = null) {
             throw new NotImplementedException();
         }

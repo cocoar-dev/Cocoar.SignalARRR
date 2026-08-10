@@ -249,42 +249,75 @@ namespace Cocoar.SignalARRR.Client {
 
         private async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, Guid? cancellationTokenGuid) {
 
-            // Connection lifetime rather than None: the handler notices its caller's world ending
-            // even when the server never sends an explicit cancellation.
-            CancellationToken cancellationToken = _connectionLifetime.Token;
-            if (cancellationTokenGuid.HasValue) {
-                var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
-                cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cancellation);
-                cancellationToken = cancellation.Token;
+            // Every linked source this invocation creates, so the finally can let go of all of
+            // them: the call-level one below, plus one per CancellationToken parameter bound in
+            // BuildExecuteMethodParameters.
+            var ownedTokenIds = new List<Guid>(1);
+            var ownershipTransferred = false;
+
+            try {
+                // Connection lifetime rather than None: the handler notices its caller's world ending
+                // even when the server never sends an explicit cancellation.
+                CancellationToken cancellationToken = _connectionLifetime.Token;
+                if (cancellationTokenGuid.HasValue) {
+                    var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
+                    cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cancellation);
+                    ownedTokenIds.Add(cancellationTokenGuid.Value);
+                    cancellationToken = cancellation.Token;
+                }
+
+
+                var parameters = await BuildExecuteMethodParameters(methodInfo, arguments, cancellationToken, ownedTokenIds);
+
+                if (genericArguments?.Any() == true) {
+
+                    var arrType = genericArguments.Select(TypeHelper.FindType).ToList();
+                    methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray()!);
+                }
+
+                object? result = null;
+                if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
+                    await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
+                } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
+                    // IAsyncEnumerable<T> — invoke directly, don't try to await as Task
+                    result = methodInfo.Invoke(instance, parameters);
+
+                    // The stream is consumed after this method returns, so its token has to outlive
+                    // us. Cleaning up here would hand the caller an already-cancelled enumeration.
+                    // These sources are released when the connection ends, as they were before.
+                    ownershipTransferred = true;
+                } else {
+                    result = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
+                }
+
+                return result!;
             }
-
-
-            var parameters = await BuildExecuteMethodParameters(methodInfo, arguments, cancellationToken);
-
-            if (genericArguments?.Any() == true) {
-
-                var arrType = genericArguments.Select(TypeHelper.FindType).ToList();
-                methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray()!);
+            finally {
+                // Dispose, not merely remove. CreateLinkedTokenSource registers a callback on the
+                // parent, and the parent here is the connection lifetime — so a source that is
+                // dropped without being disposed leaves that registration attached for as long as
+                // the connection lives. On a long-lived connection taking a server push every few
+                // seconds, that grows without bound and nothing fails while it happens. The
+                // per-parameter sources were worse: nothing removed them at all unless the server
+                // happened to cancel them.
+                if (!ownershipTransferred) {
+                    foreach (var id in ownedTokenIds) {
+                        if (cancellationTokenSources.TryRemove(id, out var cts)) {
+                            cts.Dispose();
+                        }
+                    }
+                }
             }
-
-            object? result = null;
-            if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
-                await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
-            } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
-                // IAsyncEnumerable<T> — invoke directly, don't try to await as Task
-                result = methodInfo.Invoke(instance, parameters);
-            } else {
-                result = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
-            }
-
-            if (cancellationTokenGuid.HasValue) {
-                cancellationTokenSources.TryRemove(cancellationTokenGuid.Value, out var token);
-            }
-
-            return result!;
         }
 
         private ConcurrentDictionary<Guid, CancellationTokenSource> cancellationTokenSources = new ConcurrentDictionary<Guid, CancellationTokenSource>();
+
+        /// <summary>
+        /// How many linked cancellation sources are still held. Test seam: a leak here is invisible
+        /// from the outside — nothing fails, the process just grows — so the regression test needs
+        /// a way to see that finished invocations let go of theirs.
+        /// </summary>
+        internal int TrackedCancellationSourceCount => cancellationTokenSources.Count;
 
         /// <summary>
         /// Fires when the underlying connection closes. Every token bound into a client method
@@ -307,7 +340,7 @@ namespace Cocoar.SignalARRR.Client {
         // instances live for the process, so the clone is cached per method (P-6).
         private static readonly ConcurrentDictionary<MethodInfo, ParameterInfo[]> ParameterCache = new();
 
-        private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default) {
+        private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default, ICollection<Guid>? ownedTokenIds = null) {
 
             int paramsPosition = 0;
             var @params = parameters as IList<object> ?? parameters.ToList();
@@ -332,7 +365,7 @@ namespace Cocoar.SignalARRR.Client {
 
                 if (parameterInfo.ParameterType == typeof(CancellationToken)) {
                     // Check if the argument is a CancellationTokenReference (per-parameter cancellation from server)
-                    var tokenFromRef = TryGetCancellationTokenFromReference(par);
+                    var tokenFromRef = TryGetCancellationTokenFromReference(par, ownedTokenIds);
                     bound[i] = tokenFromRef ?? cancellation;
                     continue;
                 }
@@ -396,7 +429,7 @@ namespace Cocoar.SignalARRR.Client {
             return type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
         }
 
-        private CancellationToken? TryGetCancellationTokenFromReference(object argument) {
+        private CancellationToken? TryGetCancellationTokenFromReference(object argument, ICollection<Guid>? ownedTokenIds = null) {
             if (argument == null) return null;
 
             var reference = _serializer.TryConvertTo<CancellationTokenReference>(argument);
@@ -407,14 +440,25 @@ namespace Cocoar.SignalARRR.Client {
             // deliver (the connection is gone) must still fire.
             var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
             cancellationTokenSources.TryAdd(reference.Id, cts);
+            ownedTokenIds?.Add(reference.Id);
             return cts.Token;
         }
 
         public void CancelTokenFromServer(ServerRequestMessage requestMessage) {
 
             if (requestMessage.CancellationGuid.HasValue) {
-                if (cancellationTokenSources.TryRemove(requestMessage.CancellationGuid.Value, out var token)) {
-                    token.Cancel();
+                // Look up rather than remove: the invocation that created this source owns it and
+                // disposes it when it finishes. Taking it out here would leave two parties each
+                // believing they hold the last reference — and one of them disposing it while the
+                // handler still reads the token.
+                if (cancellationTokenSources.TryGetValue(requestMessage.CancellationGuid.Value, out var token)) {
+                    try {
+                        token.Cancel();
+                    }
+                    catch (ObjectDisposedException) {
+                        // The invocation finished between the lookup and the cancel. There is
+                        // nothing left to cancel, and the source is already gone.
+                    }
                 }
             }
 

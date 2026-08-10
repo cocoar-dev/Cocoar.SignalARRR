@@ -114,6 +114,50 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             Assert.Equal("AutoUploadContent", result);
         }
 
+        /// <summary>
+        /// The same upload has to happen on the invoke paths that are not the generic one.
+        /// </summary>
+        /// <remarks>
+        /// Only <c>InvokeCoreAsync&lt;TResult&gt;</c> and <c>SendCoreAsync</c> prepared their Stream
+        /// arguments. The void overload, the Type-based one and the three streaming ones handed the
+        /// live Stream straight to the hub protocol serializer instead — MessagePack threw, JSON
+        /// emitted a <c>{"CanRead":true,…}</c> object the server then bound as garbage. So the very
+        /// same call worked or failed depending on whether the caller wanted the result back.
+        /// </remarks>
+        [Fact]
+        public async Task ClientSendsStreamArgument_OnTheTypeBasedInvokePath() {
+            var ct = TestContext.Current.CancellationToken;
+
+            var stream = new System.IO.MemoryStream();
+            var writer = new System.IO.StreamWriter(stream);
+            writer.Write("TypeBasedUploadContent");
+            writer.Flush();
+            stream.Position = 0;
+
+            var result = await _connection.InvokeCoreAsync(
+                new ClientRequestMessage("ExtraMethods.ReadStreamContent", new object[] { stream }),
+                typeof(string), ct);
+
+            Assert.Equal("TypeBasedUploadContent", result);
+        }
+
+        [Fact]
+        public async Task ClientSendsStreamArgument_OnTheVoidInvokePath() {
+            var ct = TestContext.Current.CancellationToken;
+
+            var stream = new System.IO.MemoryStream();
+            var writer = new System.IO.StreamWriter(stream);
+            writer.Write("VoidUploadContent");
+            writer.Flush();
+            stream.Position = 0;
+
+            // Nothing comes back on this path, so the assertion is that the call completes at all:
+            // an unprepared Stream fails while the message is being written, or lands on the server
+            // as an object its Stream parameter cannot bind.
+            await _connection.InvokeCoreAsync(
+                new ClientRequestMessage("ExtraMethods.ReadStreamContent", new object[] { stream }), ct);
+        }
+
         [Fact]
         public async Task RequestUploadSlot_ReturnsValidUrl() {
             var ct = TestContext.Current.CancellationToken;

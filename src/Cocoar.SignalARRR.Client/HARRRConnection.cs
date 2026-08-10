@@ -72,6 +72,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task<object> InvokeCoreAsync(ClientRequestMessage message, Type returnType, CancellationToken cancellationToken = default) {
+            await PrepareStreamArguments(message);
             message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId();
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
@@ -86,6 +87,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task InvokeCoreAsync(ClientRequestMessage message, CancellationToken cancellationToken = default) {
+            await PrepareStreamArguments(message);
             message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId();
             using var activity = SignalARRRClientTelemetry.StartOutgoingCall(message);
             try {
@@ -150,6 +152,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async IAsyncEnumerable<TResult> StreamAsyncCore<TResult>(ClientRequestMessage message, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+            await PrepareStreamArguments(message);
             // No span around a stream: it lives for as long as the consumer reads. The trace
             // context still travels with the message so the server span joins the caller's trace.
             message = (await message.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
@@ -164,12 +167,16 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task<ChannelReader<object>> StreamAsChannelCoreAsync(string methodName, Type returnType, object[] args, CancellationToken cancellationToken = default) {
-            var msg = (await new ClientRequestMessage(methodName, args).WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
+            var msg = new ClientRequestMessage(methodName, args);
+            await PrepareStreamArguments(msg);
+            msg = (await msg.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
             return (await HubConnection.StreamAsChannelCoreAsync(MethodNames.StreamMessageFromServer, returnType, new object[] { msg }, cancellationToken))!;
         }
 
         public async Task<ChannelReader<TResult>> StreamAsChannelCoreAsync<TResult>(string methodName, object[] args, CancellationToken cancellationToken = default) {
-            var msg = (await new ClientRequestMessage(methodName, args).WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
+            var msg = new ClientRequestMessage(methodName, args);
+            await PrepareStreamArguments(msg);
+            msg = (await msg.WithAuthorizationAsync(_connectionContext.AccessTokenProvider)).WithInvocationId().WithTraceContext();
             return await HubConnection.StreamAsChannelCoreAsync<TResult>(MethodNames.StreamMessageFromServer, new object[] { msg }, cancellationToken);
         }
 
@@ -269,6 +276,9 @@ namespace Cocoar.SignalARRR.Client {
         public ValueTask DisposeAsync() {
             return HubConnection.DisposeAsync();
         }
+
+        /// <summary>Test seam for the cancellation-source leak regression test.</summary>
+        internal int TrackedCancellationSourceCount => _connectionContext.MessageHandler.TrackedCancellationSourceCount;
 
         #endregion
 

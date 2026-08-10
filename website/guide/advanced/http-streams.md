@@ -208,12 +208,23 @@ Manages both download streams (server → client) and upload slots (client → s
 /apphub/upload/{id}    ← HTTP stream uploads (client → server)
 ```
 
+Both endpoints inherit the hub's protection, whichever way you applied it — an `[Authorize]` attribute on the hub class, or anything chained onto `MapSignalARRRHub<T>()`:
+
+```csharp
+// Both of these protect the transfer endpoints too.
+app.MapSignalARRRHub<AppHub>("/apphub").RequireAuthorization("files");
+
+[Authorize(Policy = "files")]
+public class AppHub : HARRR { ... }
+```
+
 ## Limitations
 
 - **`Stream` / `Blob` / `Data` types only** — other large types (e.g., `byte[]`) are not automatically intercepted
 - **In-memory storage** — download streams are held in memory on the server until the client fetches them (10 minute timeout)
 - **One Stream per client** — the same `Stream` instance cannot be sent to multiple clients (see warning above)
-- **Download URL uses GUID as access token** — secure over HTTPS, but no user-level authentication on the endpoint
+- **The transfer URL is a capability** — the id is an unguessable GUID and the endpoint carries the hub's authorization, but the HTTP request itself cannot be tied to the connection that requested the transfer: an HTTP request carries no connection identity. Consuming an upload slot *is* restricted to the connection that asked for it, so a leaked URL cannot be used to read another client's upload back. Still: do not log these URLs — they routinely end up in reverse-proxy and ingress access logs otherwise.
+- **Upload slots are capped per connection** — 32 unused slots at a time by default (`WithMaxUploadSlotsPerConnection`, 0 to disable). Beyond that a client gets the `upload_slot_limit_reached` error code until it completes or abandons one.
 
 ## Next steps
 

@@ -162,6 +162,13 @@ namespace Cocoar.SignalARRR.Server {
                 ServiceProvider.GetRequiredService<ServerStreamManager>()
                     .CompleteStreamsFor(Context.ConnectionId, "The client disconnected while streaming.");
 
+                // Same reasoning for the other direction: an upload slot this connection asked for
+                // and never used can only be filled by that connection, so once it is gone the slot
+                // is dead weight. It used to survive until the expiration sweep, which meant a
+                // client could disconnect and reconnect to keep allocating past its cap.
+                ServiceProvider.GetRequiredService<ServerPushStreamManager>()
+                    .CancelUploadSlotsFor(Context.ConnectionId);
+
                 var unregisterStopwatch = Stopwatch.StartNew();
                 var client = ClientManager.UnRegister(Context.ConnectionId);
                 unregisterStopwatch.Stop();
@@ -415,7 +422,11 @@ namespace Cocoar.SignalARRR.Server {
         /// <returns>The upload URL where the client should POST the stream data.</returns>
         public string RequestUploadSlot() {
             var streamManager = ServiceProvider.GetRequiredService<ServerPushStreamManager>();
-            return streamManager.CreateUploadSlot(ClientContext.ConnectedTo);
+            var maxSlots = ServiceProvider.GetService<SignalARRRServerOptions>()?.MaxUploadSlotsPerConnection ?? 32;
+
+            // Bound to this connection: the slot may only be consumed on behalf of the caller that
+            // asked for it, and it is released when the connection goes away.
+            return streamManager.CreateUploadSlot(ClientContext.ConnectedTo, Context.ConnectionId, maxSlots);
         }
 
     }

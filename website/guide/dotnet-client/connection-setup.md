@@ -108,7 +108,7 @@ try {
 | Code | What the client sees |
 |------|----------------------|
 | A code you threw yourself — `new HARRRException("room_full", "The room is full")` | Your code and your message, verbatim |
-| A framework code — `unauthorized`, `timeout`, `cancelled`, `argument_binding_failed`, `method_not_found`, `no_client_responded` | The message the pipeline produced, plus the nested cause chain |
+| A framework code — `unauthorized`, `timeout`, `cancelled`, `argument_binding_failed`, `method_not_found`, `no_client_responded`, `upload_slot_limit_reached` | The message the pipeline produced, plus the nested cause chain |
 | `internal` — the invoked method threw something the pipeline does not recognize | A fixed sentence and a correlation id. Nothing else. |
 
 ::: warning Changed in 5.0

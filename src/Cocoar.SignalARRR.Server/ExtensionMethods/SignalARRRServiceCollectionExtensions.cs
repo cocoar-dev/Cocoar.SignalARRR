@@ -177,14 +177,23 @@ namespace Microsoft.Extensions.DependencyInjection {
                     var directInterfaces = type.GetDirectInterfaces().ToList();
                     if (directInterfaces.Any()) {
 
-                        if (!interfaceDictionary.TryGetValue(type, out var interfaceCollection))
+                        // Keyed by the hub, like everything else in this dictionary — and like
+                        // hubMethodsDictionary above, whose lookup was already correct. Looking up
+                        // by `type` (the ServerMethods class) could never hit, because nothing is
+                        // ever stored under that key: each class built a fresh collection and
+                        // overwrote the hub's entry, so the hub's own contract and every earlier
+                        // class's contracts vanished, leaving only the last class registered.
+                        // Everything for one hub now accumulates in one collection, which is also
+                        // what lets RegisterInterface see a wire-name collision between two
+                        // ServerMethods classes instead of the loser silently disappearing.
+                        if (!interfaceDictionary.TryGetValue(grouping.Key, out var interfaceCollection)) {
                             interfaceCollection = new SignalARRRInterfaceCollection(ServerWireSlots.Policy);
+                            interfaceDictionary[grouping.Key] = interfaceCollection;
+                        }
 
                         foreach (var @interface in directInterfaces) {
                             interfaceCollection.RegisterInterface(@interface, type);
                         }
-
-                        interfaceDictionary[GetHubTypeForServerMethods(type)!] = interfaceCollection;
                     }
 
                 }
