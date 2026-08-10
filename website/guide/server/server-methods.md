@@ -42,6 +42,32 @@ public class AdminMethods : ServerMethods<AppHub>, IAdminHub { ... }
 
 All three classes serve methods on the same `AppHub` endpoint.
 
+## Every interface you declare is a public surface
+
+An interface on a `ServerMethods` class or on a hub is not just a shape — it is registered, and every member on it becomes callable from any client that can reach the hub:
+
+```csharp
+// IOrderRepository was meant for DI and testing. It is now RPC.
+public class OrderMethods : ServerMethods<AppHub>, IOrderRepository {
+    public Task DeleteAll() { ... }   // any client: invoke("MyApp.IOrderRepository|DeleteAll")
+}
+```
+
+Registration does not distinguish an interface you intended as a contract from one you implement for other reasons. `[SignalARRRContract]` does not narrow this — it tells the source generator to emit a proxy and nothing else; interfaces without it are registered just the same, which is what lets the DynamicProxy, .NET Framework, TypeScript and Swift clients work without it.
+
+Authorization still applies: whatever `[Authorize]` guards the hub or the implementing class guards these members too. But if the hub is reachable, so are they.
+
+::: tip Keep non-contract interfaces off the class
+Implement them on a separate collaborator the `ServerMethods` class holds, rather than on the class itself:
+
+```csharp
+public class OrderMethods : ServerMethods<AppHub>, IOrderContract {
+    private readonly IOrderRepository _orders;   // injected, not implemented
+    public OrderMethods(IOrderRepository orders) => _orders = orders;
+}
+```
+:::
+
 ## Method naming
 
 Clients call methods using the pattern `ClassName.MethodName`:

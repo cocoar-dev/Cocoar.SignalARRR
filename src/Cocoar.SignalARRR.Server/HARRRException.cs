@@ -25,7 +25,15 @@ namespace Cocoar.SignalARRR.Server {
         /// <summary>The structured error this exception puts on the wire.</summary>
         public HARRRError Error { get; }
 
-        public HARRRException(Exception exception) : this(ToError(exception)) {
+        /// <summary>
+        /// Set only when the detail was withheld from the client, i.e. for
+        /// <see cref="HARRRErrorCodes.Internal"/>. It appears both in the message the caller
+        /// receives and in the server-side log entry, so a user can quote it in a bug report and
+        /// an operator can find the exception it stands for. Never travels as its own wire field.
+        /// </summary>
+        public string? CorrelationId { get; }
+
+        public HARRRException(Exception exception) : this(BuildError(exception)) {
         }
 
         /// <summary>
@@ -41,8 +49,13 @@ namespace Cocoar.SignalARRR.Server {
         }) {
         }
 
-        private HARRRException(HARRRError error) : base(JsonSerializer.Serialize(error)) {
-            Error = error;
+        private HARRRException(HARRRError error) : this((error, (string?)null)) {
+        }
+
+        private HARRRException((HARRRError Error, string? CorrelationId) built)
+            : base(JsonSerializer.Serialize(built.Error)) {
+            Error = built.Error;
+            CorrelationId = built.CorrelationId;
         }
 
         /// <summary>
@@ -75,11 +88,53 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
-        private static HARRRError ToError(Exception exception) {
-            var error = ToErrorNode(exception, MaxInnerErrorDepth);
-            error.Version = 1;
-            error.Code = MapCode(exception);
-            return error;
+        /// <summary>
+        /// Builds the wire error, withholding the detail of anything the pipeline does not
+        /// recognize.
+        /// </summary>
+        /// <remarks>
+        /// A recognized code names a stage this library controls, so its message is ours to show:
+        /// "not authorized", "no method with 3 arguments", "the call timed out". Everything else is
+        /// whatever the invoked method happened to throw, and its <c>Message</c> routinely carries
+        /// things the caller has no business seeing — a <c>SqlException</c> naming the server and
+        /// database, a <c>FileNotFoundException</c> naming an absolute path, a DI failure spelling
+        /// out the internal type graph. SignalR's own <c>EnableDetailedErrors=false</c> default
+        /// exists to stop exactly that, and passing the error contract through used to bypass it
+        /// with no way to opt back in.
+        /// <para>
+        /// So <see cref="HARRRErrorCodes.Internal"/> now travels as a fixed sentence plus a
+        /// correlation id, and the exception itself is logged at the call site under that same id.
+        /// Nothing is lost — it moves from a place the caller can read to a place the operator can.
+        /// Application errors are unaffected: throw
+        /// <c>new HARRRException("room_full", "The room is full")</c> and both halves reach the
+        /// client verbatim, which is what that constructor is for.
+        /// </para>
+        /// </remarks>
+        private static (HARRRError Error, string? CorrelationId) BuildError(Exception exception) {
+            var code = MapCode(exception);
+
+            if (code != HARRRErrorCodes.Internal) {
+                var detailed = ToErrorNode(exception, MaxInnerErrorDepth);
+                detailed.Version = 1;
+                detailed.Code = code;
+                return (detailed, null);
+            }
+
+            // Short and copyable: this ends up in a bug report typed by hand, not in a parser.
+            var correlationId = Guid.NewGuid().ToString("n").Substring(0, 12);
+
+            return (new HARRRError {
+                Version = 1,
+                Code = code,
+                // The concrete exception type is withheld with the message: naming
+                // SqlException or NpgsqlException already tells a caller what runs behind the hub.
+                Type = typeof(HARRRException).FullName!,
+                Message = "The server failed to handle this call. " +
+                          $"Correlation id: {correlationId}",
+#if DEBUG
+                StackTrace = exception.StackTrace,
+#endif
+            }, correlationId);
         }
 
         private static HARRRError ToErrorNode(Exception exception, int remainingDepth) {

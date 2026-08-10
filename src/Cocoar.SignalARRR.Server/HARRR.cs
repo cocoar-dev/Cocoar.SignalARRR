@@ -236,12 +236,14 @@ namespace Cocoar.SignalARRR.Server {
 
             } catch (Exception ex) {
                 invocation.RecordFailure(ex);
+                var wrapped = HARRRException.Wrap(ex);
                 Logger.LogError(
                     ex,
-                    "Error invoking message '{Method}' from ConnectionId: {ConnectionId}",
+                    "Error invoking message '{Method}' from ConnectionId: {ConnectionId}. Correlation id: {CorrelationId}",
                     clientMessage.Method,
-                    Context.ConnectionId);
-                throw HARRRException.Wrap(ex);
+                    Context.ConnectionId,
+                    wrapped.CorrelationId);
+                throw wrapped;
             }
         }
 
@@ -267,12 +269,14 @@ namespace Cocoar.SignalARRR.Server {
 
             } catch (Exception ex) {
                 invocation.RecordFailure(ex);
+                var wrapped = HARRRException.Wrap(ex);
                 Logger.LogError(
                     ex,
-                    "Error invoking message result '{Method}' from ConnectionId: {ConnectionId}",
+                    "Error invoking message result '{Method}' from ConnectionId: {ConnectionId}. Correlation id: {CorrelationId}",
                     clientMessage.Method,
-                    Context.ConnectionId);
-                throw HARRRException.Wrap(ex);
+                    Context.ConnectionId,
+                    wrapped.CorrelationId);
+                throw wrapped;
             }
         }
 
@@ -314,12 +318,14 @@ namespace Cocoar.SignalARRR.Server {
 
             } catch (Exception ex) {
                 invocation.RecordFailure(ex);
+                var wrapped = HARRRException.Wrap(ex);
                 Logger.LogError(
                     ex,
-                    "Error sending message '{Method}' from ConnectionId: {ConnectionId}",
+                    "Error sending message '{Method}' from ConnectionId: {ConnectionId}. Correlation id: {CorrelationId}",
                     clientMessage.Method,
-                    Context.ConnectionId);
-                throw HARRRException.Wrap(ex);
+                    Context.ConnectionId,
+                    wrapped.CorrelationId);
+                throw wrapped;
             }
         }
 
@@ -350,12 +356,14 @@ namespace Cocoar.SignalARRR.Server {
 
             } catch (Exception ex) {
                 invocation.RecordFailure(ex);
+                var wrapped = HARRRException.Wrap(ex);
                 Logger.LogError(
                     ex,
-                    "Error streaming message '{Method}' from ConnectionId: {ConnectionId}",
+                    "Error streaming message '{Method}' from ConnectionId: {ConnectionId}. Correlation id: {CorrelationId}",
                     clientMessage.Method,
-                    Context.ConnectionId);
-                throw HARRRException.Wrap(ex);
+                    Context.ConnectionId,
+                    wrapped.CorrelationId);
+                throw wrapped;
             }
         }
 

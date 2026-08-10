@@ -129,6 +129,34 @@ The second parameter is now the error **code**, not a second message — errors 
 stable set of codes, and an application code you pass travels verbatim. Relevant only if you
 construct these yourself.
 
+### An unexpected exception no longer reaches the caller with its detail
+
+If a hub method throws something the pipeline does not recognize, the client used to receive the
+exception's .NET type name, its `Message` and its cause chain. It now receives a fixed sentence and
+a correlation id, under the same `internal` code as before:
+
+```
+The server failed to handle this call. Correlation id: 3f9a1c74b2e0
+```
+
+The exception is logged on the server under that id, so the detail is still there — just not on the
+client. Recognized codes (`unauthorized`, `timeout`, `cancelled`, `argument_binding_failed`, the
+resolution codes, `no_client_responded`) are unchanged and keep their message and cause chain.
+
+**What to change:** if a failure was meant to be actionable for the caller, throw it as an
+application error instead of letting it escape:
+
+```csharp
+// Before: the caller saw "Room 'lobby' has 50 of 50 participants."
+throw new InvalidOperationException($"Room '{id}' has {count} of {max} participants.");
+
+// After: say explicitly that this one is for the client.
+throw new HARRRException("room_full", $"Room '{id}' is full.");
+```
+
+If you were relying on `error.Type` to branch, use `error.Code` — that is what it is for, and it is
+the only field a TypeScript or Swift client could ever act on anyway.
+
 ## Only if you have TypeScript or Swift clients
 
 ### Remote reference arguments carry a `__type` marker

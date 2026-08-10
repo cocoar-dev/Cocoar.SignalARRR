@@ -30,13 +30,18 @@ describe('Error Handling', () => {
     }
   });
 
-  test('structured error: InvalidOperationException has correct type and message', async () => {
+  // Contrast with the ArgumentException case above, which still arrives verbatim: that one names a
+  // pipeline stage the server controls, this one is whatever the hub method threw and could say
+  // anything about the server's insides. Since 5.0 it is withheld and logged server-side under the
+  // correlation id the client is shown.
+  test('structured error: an unexpected exception withholds its detail', async () => {
     try {
       await connection.invoke<string>('ExtraMethods.ThrowInvalidOperation');
       expect.fail('Expected an error to be thrown');
     } catch (err: any) {
-      expect(err.type).toBe('System.InvalidOperationException');
-      expect(err.message).toBe('This operation is not allowed');
+      expect(err.type).not.toBe('System.InvalidOperationException');
+      expect(err.message).not.toContain('This operation is not allowed');
+      expect(err.message).toMatch(/Correlation id: [0-9a-f]{12}/);
     }
   });
 

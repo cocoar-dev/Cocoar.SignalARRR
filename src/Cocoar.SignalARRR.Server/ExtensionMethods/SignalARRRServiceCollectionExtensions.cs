@@ -87,6 +87,27 @@ namespace Microsoft.Extensions.DependencyInjection {
                             && m.DeclaringType != typeof(object)
                             && m.DeclaringType != typeof(ServerMethods));
 
+        /// <summary>
+        /// Builds the allow-list of what clients may call: the hub's own methods, each
+        /// <see cref="ServerMethods{T}"/> class's methods, and every interface either declares.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <strong>Every declared interface becomes wire-reachable.</strong> There is no filter on
+        /// intent — an interface a class implements for dependency injection or testing is
+        /// registered exactly like one written as a contract, and each of its members is callable
+        /// by any client that can reach the hub. <c>[SignalARRRContract]</c> does not gate this and
+        /// is not checked here: it marks an interface for the source generator, and gating on it
+        /// would break the DynamicProxy, .NET Framework, TypeScript and Swift clients, which
+        /// legitimately use contracts that carry no attribute. Gating would also fail silently —
+        /// an unregistered interface only shows up as "not registered" at call time.
+        /// </para>
+        /// <para>
+        /// Authorization is unaffected: the plan resolved for each member still walks the
+        /// implementing class and the owning hub. The exposure is surface, not a bypass. Keep
+        /// interfaces that are not meant for clients off the class and on a collaborator it holds.
+        /// </para>
+        /// </remarks>
         private static void AddSignalARRRMethods(IServiceCollection serviceCollection, SignalARRRServerOptions serverOptions) {
 
 
