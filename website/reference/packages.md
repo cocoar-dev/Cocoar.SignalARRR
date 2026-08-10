@@ -27,7 +27,7 @@ These packages are referenced transitively — you normally don't need to refere
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@cocoar/signalarrr` | 4.0.0 | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
+| `@cocoar/signalarrr` | 5.0.0 | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
 
 ### Peer dependency
 
@@ -78,7 +78,7 @@ targets: [
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="4.*" />
+    <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="5.*" />
   </ItemGroup>
 </Project>
 ```
@@ -87,7 +87,7 @@ targets: [
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Server" Version="4.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Server" Version="5.*" />
   <ProjectReference Include="..\Shared\Shared.csproj" />
 </ItemGroup>
 ```
@@ -112,7 +112,7 @@ This backplane is Redis-compatible and works with Redis, Valkey, and Garnet.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Client" Version="4.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Client" Version="5.*" />
   <ProjectReference Include="..\Shared\Shared.csproj" />
 </ItemGroup>
 ```
@@ -123,7 +123,7 @@ For legacy .NET Framework projects (e.g., SCCM/SCSM integration, WinForms, WPF o
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Client.FullFramework" Version="4.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Client.FullFramework" Version="5.*" />
 </ItemGroup>
 ```
 
@@ -136,7 +136,7 @@ The FullFramework client uses `DispatchProxy` at runtime. Define the same interf
 ```json
 {
   "dependencies": {
-    "@cocoar/signalarrr": "^4.0.0",
+    "@cocoar/signalarrr": "^5.0.0",
     "@microsoft/signalr": "^10.0.0"
   }
 }

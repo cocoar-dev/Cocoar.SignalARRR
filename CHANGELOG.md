@@ -7,10 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [5.0.0]
+
 Results of a full code review of the server and the .NET client. Several entries below are
 security fixes for paths that were reachable by any connected client — two of them without
-authenticating at all. The breaking changes are listed under *Changed*; all of them are on types
-that are server infrastructure rather than application-facing API.
+authenticating at all.
+
+Most of this needs nothing from you. What does is collected in the
+[migration guide](https://docs.cocoar.dev/signalarrr/guide/migration/from-v4), grouped by whether it
+is likely to affect you: the reshaped `WithHub<T>()` query and the moved entry points touch nearly
+everyone, a handful of removals only matter if you used the feature, and the rest is infrastructure
+that was never meant to be application-facing.
 
 ### Security
 

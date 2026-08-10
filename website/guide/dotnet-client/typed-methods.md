@@ -84,7 +84,7 @@ var user = await data.GetItem<User>("user-123");
 For proxy generation to work, the shared interface project must reference `Cocoar.SignalARRR.Contracts`:
 
 ```xml
-<PackageReference Include="Cocoar.SignalARRR.Contracts" Version="4.*" />
+<PackageReference Include="Cocoar.SignalARRR.Contracts" Version="5.*" />
 ```
 
 The `[SignalARRRContract]` attribute triggers the Roslyn source generator, which produces a proxy class at build time. See [Proxy Generation](/guide/advanced/proxy-generation) for details on how this works.
