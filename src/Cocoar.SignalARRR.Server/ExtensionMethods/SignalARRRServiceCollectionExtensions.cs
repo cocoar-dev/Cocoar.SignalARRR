@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -29,13 +29,20 @@ namespace Microsoft.Extensions.DependencyInjection {
                 sp.GetRequiredService<SignalARRRServerOptions>().StreamIdleTimeout));
             serviceCollection.AddSingleton<InMemoryHARRRClientManager>();
             serviceCollection.AddSingleton<IHARRRClientManager>(sp => sp.GetRequiredService<InMemoryHARRRClientManager>());
+            // TryAdd, not Add, and not because these are extension points — they are internal and
+            // not replaceable from outside this assembly (AF-3). It is here so that registration
+            // order does not matter: Cocoar.SignalARRR.Server.Backplane.Redis swaps its
+            // implementation in with Replace, and a consumer who calls AddSignalARRRRedisBackplane
+            // *before* AddSignalARRR would otherwise get the disabled default appended afterwards
+            // and silently win, leaving a configured cluster running single-node.
             serviceCollection.TryAddSingleton<LocalSignalARRRBackplaneDispatcher>();
             serviceCollection.TryAddSingleton<ISignalARRRBackplane, DisabledSignalARRRBackplane>();
             serviceCollection.TryAddSingleton<ISignalARRRConnectionRegistry, DisabledSignalARRRConnectionRegistry>();
             serviceCollection.AddSingleton<ClientManager>(sp => new ClientManager(sp.GetRequiredService<IHARRRClientManager>(), sp));
             serviceCollection.AddTransient(typeof(ClientContextDispatcher<>));
 
-            // Register default transport auth revalidation service (can be overridden by user)
+            // This one *is* an extension point, which is why the interface is public: register your
+            // own before this call and it stays.
             serviceCollection.TryAddSingleton<ITransportAuthRevalidationService, DefaultTransportAuthRevalidationService>();
 
             return serviceCollection;

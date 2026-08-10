@@ -86,6 +86,22 @@ namespace Cocoar.SignalARRR.Server {
         public object? Value { get; set; }
     }
 
+    /// <summary>
+    /// The distributed view of who is connected where. Implemented by the backplane package.
+    /// </summary>
+    /// <remarks>
+    /// Internal on purpose: this and <see cref="ISignalARRRBackplane"/> are contracts between the
+    /// server assembly and the first-party backplane package, not a supported extension point. They
+    /// are registered with <c>TryAddSingleton</c> so that registration order cannot matter — read
+    /// that as order-independence, not as an invitation to substitute your own (AF-3).
+    /// <para>
+    /// Opening them up is a deliberate decision, not a side effect: the shape below grew around
+    /// Redis, <see cref="SignalARRRBackplaneEnvelope"/> is the inter-node wire format and publishing
+    /// it would freeze it, and <c>LocalSignalARRRBackplaneDispatcher</c> — a concrete class — stands
+    /// in the contract. A supported extension point would want a surface designed for the purpose.
+    /// Internal is also the reversible direction: it can be opened later without breaking anyone.
+    /// </para>
+    /// </remarks>
     internal interface ISignalARRRConnectionRegistry {
         bool IsEnabled { get; }
 
@@ -107,6 +123,10 @@ namespace Cocoar.SignalARRR.Server {
         Task RemoveConnectionFromGroupAsync(string connectionId, string groupName, CancellationToken cancellationToken = default);
     }
 
+    /// <summary>
+    /// Moves calls and queries between nodes. Implemented by the backplane package.
+    /// </summary>
+    /// <remarks>Not a supported extension point — see <see cref="ISignalARRRConnectionRegistry"/>.</remarks>
     internal interface ISignalARRRBackplane {
         bool IsEnabled { get; }
         string NodeId { get; }
