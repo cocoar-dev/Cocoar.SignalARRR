@@ -394,8 +394,10 @@ namespace Cocoar.SignalARRR.Server {
                         var timeout = _serviceProvider.GetService<SignalARRRServerOptions>()?.StreamUploadTimeout
                             ?? TimeSpan.FromMinutes(2);
 
+                        // ClientContext.Id, not just the URL: the slot belongs to the connection that
+                        // requested it, so naming someone else's is a miss rather than a free read.
                         par = await streamManager
-                            .WaitForUpload(streamRef.Uri, timeout, uploadCancellation)
+                            .WaitForUpload(streamRef.Uri, ClientContext.Id, timeout, uploadCancellation)
                             .ConfigureAwait(false);
                     }
                 } else if (par != null && p.ParameterType != par.GetType()) {

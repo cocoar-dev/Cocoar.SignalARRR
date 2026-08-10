@@ -1,16 +1,21 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Cocoar.SignalARRR.Common;
 
 namespace Cocoar.SignalARRR.Server {
     internal class ServerPushStreamManager : IDisposable {
 
         private readonly ConcurrentDictionary<string, PendingStream> _pendingStreams = new();
         private readonly ConcurrentDictionary<string, UploadSlot> _uploadSlots = new();
+
+        /// <summary>Open slots per owning connection, so the cap can be enforced without scanning.</summary>
+        private readonly ConcurrentDictionary<string, int> _slotsPerConnection = new(StringComparer.Ordinal);
         private readonly Timer _cleanupTimer;
         private readonly TimeSpan _expirationTimeout;
 
@@ -60,15 +65,78 @@ namespace Cocoar.SignalARRR.Server {
         // --- Upload (Client → Server) ---
 
         /// <summary>
-        /// Create an upload slot and return the upload URL.
+        /// Create an upload slot for <paramref name="ownerConnectionId"/> and return the upload URL.
         /// The client uploads the stream to this URL, and the server awaits it via WaitForUpload.
         /// </summary>
-        public string CreateUploadSlot(Uri baseUrl) {
+        /// <remarks>
+        /// The owner is recorded so that consuming the slot can be restricted to the connection that
+        /// asked for it — see <see cref="WaitForUpload"/>. The POST itself still cannot be checked
+        /// that way (an HTTP request carries no connection identity), so the URL remains a secret
+        /// worth protecting; what this closes is the other half, where any connection could name
+        /// another's slot as a Stream argument and be handed its bytes.
+        /// <para>
+        /// <paramref name="maxSlotsPerConnection"/> bounds what one client can pin: a slot is a
+        /// dictionary entry and a <see cref="TaskCompletionSource{T}"/> held for the expiration
+        /// window whether or not anything is ever uploaded, and requesting one is an ordinary hub
+        /// call that can be made in a loop.
+        /// </para>
+        /// </remarks>
+        public string CreateUploadSlot(Uri baseUrl, string ownerConnectionId, int maxSlotsPerConnection) {
+            if (string.IsNullOrEmpty(ownerConnectionId)) throw new ArgumentNullException(nameof(ownerConnectionId));
+
+            // Reserve first, then build: a check followed by an add would let a client racing itself
+            // past the cap.
+            var held = _slotsPerConnection.AddOrUpdate(ownerConnectionId, 1, (_, n) => n + 1);
+            if (maxSlotsPerConnection > 0 && held > maxSlotsPerConnection) {
+                Release(ownerConnectionId);
+                throw new HARRRException(
+                    HARRRErrorCodes.UploadSlotLimitReached,
+                    $"This connection already holds {maxSlotsPerConnection} upload slots that have not been used. " +
+                    "Complete or abandon an upload before requesting another.");
+            }
+
             var id = Guid.NewGuid().ToString().ToLowerInvariant();
             var uri = new Uri($"{baseUrl}/upload/{id}");
             var tcs = new TaskCompletionSource<Stream>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _uploadSlots.TryAdd(Normalize(uri.ToString()), new UploadSlot(tcs, Stopwatch.GetTimestamp()));
+            _uploadSlots.TryAdd(Normalize(uri.ToString()), new UploadSlot(tcs, Stopwatch.GetTimestamp(), ownerConnectionId));
             return uri.ToString();
+        }
+
+        /// <summary>Removes a slot and gives its owner the quota back. Every removal goes through here.</summary>
+        private bool TryTakeSlot(string key, out UploadSlot? slot) {
+            if (_uploadSlots.TryRemove(key, out slot)) {
+                Release(slot.OwnerConnectionId);
+                return true;
+            }
+            return false;
+        }
+
+        private void Release(string ownerConnectionId) {
+            if (string.IsNullOrEmpty(ownerConnectionId)) return;
+
+            _slotsPerConnection.AddOrUpdate(ownerConnectionId, 0, (_, n) => n > 0 ? n - 1 : 0);
+            // Otherwise the counter dictionary itself grows one entry per connection, forever.
+            _slotsPerConnection.TryRemove(new KeyValuePair<string, int>(ownerConnectionId, 0));
+        }
+
+        /// <summary>
+        /// Cancels every slot still held by a connection that has gone away.
+        /// </summary>
+        /// <remarks>
+        /// Called from <c>OnDisconnectedAsync</c>, next to the equivalent for client-to-server
+        /// streams. Without it a slot outlived its connection and was only reclaimed by the
+        /// expiration sweep, so a client could disconnect and reconnect to keep allocating.
+        /// </remarks>
+        public void CancelUploadSlotsFor(string connectionId) {
+            if (string.IsNullOrEmpty(connectionId)) return;
+
+            foreach (var entry in _uploadSlots.ToArray()) {
+                if (!string.Equals(entry.Value.OwnerConnectionId, connectionId, StringComparison.Ordinal)) continue;
+
+                if (TryTakeSlot(entry.Key, out var slot)) {
+                    slot!.Completion.TrySetCanceled();
+                }
+            }
         }
 
         /// <summary>
@@ -114,9 +182,15 @@ namespace Cocoar.SignalARRR.Server {
         /// client can supply, so without a deadline a client that requests a slot and never uploads
         /// parks the invocation forever.
         /// </remarks>
-        public async Task<Stream> WaitForUpload(string uploadUrl, TimeSpan timeout, CancellationToken cancellationToken = default) {
+        /// <param name="ownerConnectionId">
+        /// The connection the slot must belong to. A slot named by anyone else is reported as not
+        /// found — deliberately the same answer as for a slot that does not exist, so the check
+        /// cannot be used to probe which URLs are live.
+        /// </param>
+        public async Task<Stream> WaitForUpload(string uploadUrl, string ownerConnectionId, TimeSpan timeout, CancellationToken cancellationToken = default) {
             var key = Normalize(uploadUrl);
-            if (!_uploadSlots.TryGetValue(key, out var slot)) {
+            if (!_uploadSlots.TryGetValue(key, out var slot)
+                || !string.Equals(slot.OwnerConnectionId, ownerConnectionId, StringComparison.Ordinal)) {
                 throw new InvalidOperationException($"Upload slot not found: {uploadUrl}");
             }
 
@@ -131,8 +205,8 @@ namespace Cocoar.SignalARRR.Server {
             } finally {
                 // Whatever the outcome, the slot is done. Previously it was only removed on success,
                 // so a cancelled or abandoned wait left it behind for the process lifetime.
-                if (_uploadSlots.TryRemove(key, out var removed)) {
-                    removed.Completion.TrySetCanceled();
+                if (TryTakeSlot(key, out var removed)) {
+                    removed!.Completion.TrySetCanceled();
                 }
             }
         }
@@ -169,8 +243,8 @@ namespace Cocoar.SignalARRR.Server {
                 .Select(kvp => kvp.Key)
                 .ToList();
             foreach (var key in expiredUploads) {
-                if (_uploadSlots.TryRemove(key, out var slot)) {
-                    slot.Completion.TrySetCanceled();
+                if (TryTakeSlot(key, out var slot)) {
+                    slot!.Completion.TrySetCanceled();
                     SignalARRRServerTelemetry.UploadSlotsSwept.Add(1);
                 }
             }
@@ -182,8 +256,8 @@ namespace Cocoar.SignalARRR.Server {
                 DisposeStream(key);
             }
             foreach (var key in _uploadSlots.Keys.ToList()) {
-                if (_uploadSlots.TryRemove(key, out var slot)) {
-                    slot.Completion.TrySetCanceled();
+                if (TryTakeSlot(key, out var slot)) {
+                    slot!.Completion.TrySetCanceled();
                 }
             }
         }
@@ -193,6 +267,6 @@ namespace Cocoar.SignalARRR.Server {
         // ServerStreamManager, where it additionally showed up as an intermittent CI failure.
         private sealed record PendingStream(Stream Stream, long CreatedAt, string? ContentType);
 
-        private sealed record UploadSlot(TaskCompletionSource<Stream> Completion, long CreatedAt);
+        private sealed record UploadSlot(TaskCompletionSource<Stream> Completion, long CreatedAt, string OwnerConnectionId);
     }
 }

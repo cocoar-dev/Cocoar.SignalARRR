@@ -41,6 +41,16 @@ namespace Cocoar.SignalARRR.Common {
         /// <summary>No client answered the invoke (locally or across the backplane).</summary>
         public const string NoClientResponded = "no_client_responded";
 
+        /// <summary>
+        /// The connection already holds as many unused upload slots as it is allowed to.
+        /// </summary>
+        /// <remarks>
+        /// Its own code rather than the <see cref="Internal"/> bucket because it is actionable: the
+        /// caller can finish or abandon an upload and retry, which is not true of anything else that
+        /// folds to internal.
+        /// </remarks>
+        public const string UploadSlotLimitReached = "upload_slot_limit_reached";
+
         /// <summary>The invoked method itself threw — the default bucket.</summary>
         public const string Internal = "internal";
 
@@ -57,6 +67,7 @@ namespace Cocoar.SignalARRR.Common {
                 case Cancelled:
                 case Timeout:
                 case NoClientResponded:
+                case UploadSlotLimitReached:
                 case Internal:
                     return code;
                 default:

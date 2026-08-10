@@ -52,7 +52,7 @@ namespace Cocoar.SignalARRR.Server {
                     var timeout = _clientContext.ServiceProvider.GetService<SignalARRRServerOptions>()?.StreamUploadTimeout
                         ?? TimeSpan.FromMinutes(2);
 
-                    var stream = await streamManager.WaitForUpload(streamRef.Uri, timeout, cancellationToken);
+                    var stream = await streamManager.WaitForUpload(streamRef.Uri, _clientContext.Id, timeout, cancellationToken);
                     return (T)(object)stream;
                 }
                 return default!;

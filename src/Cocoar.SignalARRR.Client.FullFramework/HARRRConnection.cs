@@ -298,38 +298,58 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         }
 
         private async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, Guid? cancellationTokenGuid) {
-            // Connection lifetime rather than None — see _connectionLifetime.
-            CancellationToken cancellationToken = _connectionLifetime.Token;
-            if (cancellationTokenGuid.HasValue) {
-                var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
-                _cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cts);
-                cancellationToken = cts.Token;
+            // Every linked source this invocation creates — the call-level one and one per
+            // CancellationToken parameter — so the finally can let go of all of them.
+            var ownedTokenIds = new List<Guid>(1);
+            var ownershipTransferred = false;
+
+            try {
+                // Connection lifetime rather than None — see _connectionLifetime.
+                CancellationToken cancellationToken = _connectionLifetime.Token;
+                if (cancellationTokenGuid.HasValue) {
+                    var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
+                    _cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cts);
+                    ownedTokenIds.Add(cancellationTokenGuid.Value);
+                    cancellationToken = cts.Token;
+                }
+
+                var parameters = await BuildExecuteMethodParameters(methodInfo, arguments, cancellationToken, ownedTokenIds);
+
+                if (genericArguments?.Any() == true) {
+                    var arrType = genericArguments.Select(Common.Helper.TypeHelper.FindType).ToList();
+                    methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray());
+                }
+
+                object result = null;
+                if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
+                    await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
+                } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
+                    result = methodInfo.Invoke(instance, parameters);
+
+                    // Consumed after this method returns, so the token has to outlive us.
+                    ownershipTransferred = true;
+                } else {
+                    result = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
+                }
+
+                return result;
             }
-
-            var parameters = await BuildExecuteMethodParameters(methodInfo, arguments, cancellationToken);
-
-            if (genericArguments?.Any() == true) {
-                var arrType = genericArguments.Select(Common.Helper.TypeHelper.FindType).ToList();
-                methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray());
+            finally {
+                // Dispose, not merely remove: CreateLinkedTokenSource registers a callback on the
+                // parent, which here is the connection lifetime, so dropping a source without
+                // disposing leaves that registration attached for as long as the connection lives.
+                // Mirrors the fix in the .NET client's MessageHandler.
+                if (!ownershipTransferred) {
+                    foreach (var id in ownedTokenIds) {
+                        if (_cancellationTokenSources.TryRemove(id, out var cts)) {
+                            cts.Dispose();
+                        }
+                    }
+                }
             }
-
-            object result = null;
-            if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
-                await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
-            } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
-                result = methodInfo.Invoke(instance, parameters);
-            } else {
-                result = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
-            }
-
-            if (cancellationTokenGuid.HasValue) {
-                _cancellationTokenSources.TryRemove(cancellationTokenGuid.Value, out _);
-            }
-
-            return result;
         }
 
-        private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default) {
+        private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default, ICollection<Guid> ownedTokenIds = null) {
             int paramsPosition = 0;
             var paramsList = parameters.ToList();
             var argumentList = new List<object>();
@@ -342,7 +362,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
                 paramsPosition++;
 
                 if (parameterInfo.ParameterType == typeof(CancellationToken)) {
-                    var tokenFromRef = TryGetCancellationTokenFromReference(par);
+                    var tokenFromRef = TryGetCancellationTokenFromReference(par, ownedTokenIds);
                     if (tokenFromRef.HasValue) {
                         argumentList.Add(tokenFromRef.Value);
                         continue;
@@ -399,7 +419,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             return converted ?? message;
         }
 
-        private CancellationToken? TryGetCancellationTokenFromReference(object argument) {
+        private CancellationToken? TryGetCancellationTokenFromReference(object argument, ICollection<Guid> ownedTokenIds = null) {
             if (argument == null) return null;
             var reference = _serializer.TryConvertTo<CancellationTokenReference>(argument);
             if (reference == null || reference.Id == Guid.Empty) return null;
@@ -407,13 +427,21 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             // (the connection is gone) must still fire.
             var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
             _cancellationTokenSources.TryAdd(reference.Id, cts);
+            ownedTokenIds?.Add(reference.Id);
             return cts.Token;
         }
 
         private void CancelTokenFromServer(ServerRequestMessage requestMessage) {
             if (requestMessage.CancellationGuid.HasValue) {
-                if (_cancellationTokenSources.TryRemove(requestMessage.CancellationGuid.Value, out var token)) {
-                    token.Cancel();
+                // Look up rather than remove: the invocation owns the source and disposes it when
+                // it finishes. See the .NET client's MessageHandler for the reasoning.
+                if (_cancellationTokenSources.TryGetValue(requestMessage.CancellationGuid.Value, out var token)) {
+                    try {
+                        token.Cancel();
+                    }
+                    catch (ObjectDisposedException) {
+                        // The invocation finished between the lookup and the cancel.
+                    }
                 }
             }
         }

@@ -68,5 +68,57 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 await connection.DisposeAsync();
             }
         }
+
+        /// <summary>
+        /// A finished invocation must let go of the cancellation sources it created.
+        /// </summary>
+        /// <remarks>
+        /// The client mirrored the server's DI-6 defect: the call-level source was removed from the
+        /// dictionary but never disposed, and the per-parameter one — the kind
+        /// <c>Wait(int, CancellationToken)</c> uses — was never even removed unless the server
+        /// happened to cancel it. <c>CreateLinkedTokenSource</c> registers a callback on the parent,
+        /// and the parent is the connection lifetime, so every leaked source stayed attached for as
+        /// long as the connection lived. Nothing fails while that happens, which is why this asserts
+        /// on a count rather than on behaviour: the integration suite never saw it because it opens
+        /// and closes connections constantly, and closing is what used to clean up.
+        /// </remarks>
+        [Fact]
+        public async Task Finished_invocations_release_their_cancellation_sources() {
+            var ct = TestContext.Current.CancellationToken;
+            var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/testhub"));
+            var clientMethods = new TestClientMethodsImpl();
+            connection.RegisterInterface<ITestClientMethods, TestClientMethodsImpl>(clientMethods);
+            await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl, connection, ct);
+
+            try {
+                var connectionId = connection.ConnectionId;
+                using var http = new HttpClient();
+                http.Timeout = System.TimeSpan.FromSeconds(30);
+                var url = $"{_fixture.ServerUrl}/__test/trigger-client-cancellation?connectionId={connectionId}&delayMs=100";
+
+                for (var i = 0; i < 3; i++) {
+                    clientMethods.ResetWaitObservations();
+
+                    var response = await http.PostAsync(url, content: null, ct);
+                    Assert.True(response.IsSuccessStatusCode,
+                        $"Trigger {i} returned {response.StatusCode}: {await response.Content.ReadAsStringAsync(ct)}");
+
+                    await TestHelper.WaitFor(
+                        () => clientMethods.WaitObservedCancellation,
+                        $"the client's cancellation token to fire on call {i}");
+                }
+
+                // Waited for rather than asserted outright: the handler observes cancellation
+                // slightly before its invocation unwinds, so the release happens just after the
+                // flag flips.
+                await TestHelper.WaitFor(
+                    () => connection.TrackedCancellationSourceCount == 0,
+                    "the client to release every cancellation source it created");
+            } finally {
+                await connection.StopAsync(ct);
+                await connection.DisposeAsync();
+            }
+        }
     }
 }

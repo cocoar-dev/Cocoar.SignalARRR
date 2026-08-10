@@ -129,6 +129,37 @@ The second parameter is now the error **code**, not a second message — errors 
 stable set of codes, and an application code you pass travels verbatim. Relevant only if you
 construct these yourself.
 
+### `MapSignalARRRHub` returns `IHubEndpointConventionBuilder`
+
+It used to return SignalR's concrete `HubEndpointConventionBuilder`. Chaining is unchanged —
+`RequireAuthorization`, `RequireCors` and the rest are extensions on the interface — so this only
+matters if you assigned the result to an explicitly typed variable:
+
+```csharp
+HubEndpointConventionBuilder hub = app.MapSignalARRRHub<AppHub>("/apphub");   // before
+IHubEndpointConventionBuilder hub = app.MapSignalARRRHub<AppHub>("/apphub");  // after, or use var
+```
+
+The reason is a fix, not tidiness: the returned builder now applies what you chain onto it to the
+hub **and** to the `/download/{id}` and `/upload/{id}` endpoints that belong to it. Previously
+`.RequireAuthorization()` configured the hub alone and left the transfer endpoints anonymous.
+
+**Check your setup:** if you secured a hub by chaining rather than with an `[Authorize]` attribute,
+its file-transfer endpoints were open until now. Nothing in your code needs to change — they are
+covered from this version on — but it is worth knowing they were reachable.
+
+### Upload slots are capped per connection
+
+A connection may hold 32 unused upload slots at a time. Beyond that `RequestUploadSlot` fails with
+the new `upload_slot_limit_reached` code. Slots are consumed as soon as their upload completes, so
+this only bites code that requests slots without using them; raise or remove it with
+`WithMaxUploadSlotsPerConnection(n)` (`0` disables the cap) if your application genuinely needs more
+in flight at once.
+
+An upload slot is also now bound to the connection that requested it — another connection naming
+that URL as a `Stream` argument gets "upload slot not found". This is only a change for code that
+deliberately passed a slot URL between clients, which was never intended to work.
+
 ### An unexpected exception no longer reaches the caller with its detail
 
 If a hub method throws something the pipeline does not recognize, the client used to receive the

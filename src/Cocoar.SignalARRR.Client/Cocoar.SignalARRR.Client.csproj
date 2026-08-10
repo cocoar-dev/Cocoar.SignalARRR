@@ -22,6 +22,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- So the leak regression test can see how many cancellation sources are still tracked.
+         There is no public way to observe that, and a leak fix without a test regresses quietly. -->
+    <InternalsVisibleTo Include="Cocoar.SignalARRR.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Cocoar.Reflectensions" />
     <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />

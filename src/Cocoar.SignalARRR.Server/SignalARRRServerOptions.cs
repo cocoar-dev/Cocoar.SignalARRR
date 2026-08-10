@@ -66,6 +66,21 @@ namespace Cocoar.SignalARRR.Server {
         public TimeSpan UploadSlotExpiration { get; set; } = TimeSpan.FromMinutes(10);
 
         /// <summary>
+        /// How many unused upload slots one connection may hold at a time. Default: 32.
+        /// Set to 0 to remove the limit.
+        /// </summary>
+        /// <remarks>
+        /// Requesting a slot is an ordinary hub call, and each one pins a dictionary entry and a
+        /// <c>TaskCompletionSource</c> for <see cref="UploadSlotExpiration"/> whether or not anything
+        /// is ever uploaded — so without a cap one client in a loop can grow server memory until the
+        /// sweep catches up, which it will not while the loop runs. The default is well above what a
+        /// client needs (slots are consumed as soon as the upload completes) and well below what an
+        /// abusive one wants. A client that hits it gets
+        /// <see cref="Common.HARRRErrorCodes.UploadSlotLimitReached"/>.
+        /// </remarks>
+        public int MaxUploadSlotsPerConnection { get; set; } = 32;
+
+        /// <summary>
         /// Whether client IP addresses appear in log messages. Default: false — an IP address is
         /// personal data under most privacy regimes, so logging it is a deliberate decision, not a
         /// side effect of enabling debug logging.
@@ -176,6 +191,14 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public SignalARRRServerOptionsBuilder WithUploadSlotExpiration(TimeSpan expiration) {
             _options.UploadSlotExpiration = expiration;
+            return this;
+        }
+
+        /// <summary>
+        /// Set how many unused upload slots one connection may hold. Default: 32. Use 0 to disable.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithMaxUploadSlotsPerConnection(int maxSlots) {
+            _options.MaxUploadSlotsPerConnection = maxSlots;
             return this;
         }
 

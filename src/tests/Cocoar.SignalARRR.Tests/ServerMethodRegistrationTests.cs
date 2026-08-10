@@ -90,6 +90,60 @@ public class ServerMethodRegistrationTests {
 
         Assert.Equal(expected, IsRegistered(methods, methodName));
     }
+
+    // ---- Contracts, when one hub is served by several classes -------------------------------
+    //
+    // The interface registry is keyed by hub type, but the ServerMethods branch looked its entry
+    // up by the ServerMethods class — a key nothing is ever stored under. Each class therefore
+    // started a fresh collection and overwrote the hub's entry, leaving only whatever registered
+    // last. The shape this breaks is the one the server-methods guide recommends: split a hub
+    // across domain classes, each with its own contract.
+
+    private static ISignalARRRInterfaceCollection GetContractsFor<THub>() where THub : HARRR {
+        var services = new ServiceCollection();
+        services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(ServerMethodRegistrationTests).Assembly));
+
+        using var provider = services.BuildServiceProvider();
+        return provider.GetRequiredKeyedService<ISignalARRRInterfaceCollection>(typeof(THub).FullName);
+    }
+
+    private static string WireName<TContract>(string method) => $"{typeof(TContract).FullName}|{method}";
+
+    [Fact]
+    public void Every_ServerMethods_class_on_one_hub_keeps_its_contract() {
+        var contracts = GetContractsFor<ContractProbeHub>();
+
+        var alpha = contracts.GetInvokeInformation(
+            WireName<IContractAlpha>(nameof(IContractAlpha.FromAlpha)), 0);
+        var beta = contracts.GetInvokeInformation(
+            WireName<IContractBeta>(nameof(IContractBeta.FromBeta)), 0);
+
+        // Whichever of the two registered last used to be the only one left; the other answered
+        // "Interface '…' is not registered."
+        Assert.Equal(nameof(IContractAlpha.FromAlpha), alpha.MethodInfo.Name);
+        Assert.Equal(nameof(IContractBeta.FromBeta), beta.MethodInfo.Name);
+    }
+
+    [Fact]
+    public void A_hubs_own_contract_survives_its_ServerMethods_classes() {
+        var contracts = GetContractsFor<ContractProbeHub>();
+
+        // The hub registers first, so its entry was the one every ServerMethods class overwrote.
+        var fromHub = contracts.GetInvokeInformation(
+            WireName<IContractOnTheHub>(nameof(IContractOnTheHub.FromHub)), 0);
+
+        Assert.Equal(nameof(IContractOnTheHub.FromHub), fromHub.MethodInfo.Name);
+    }
+
+    [Fact]
+    public void A_contract_registered_on_another_hub_is_not_reachable_here() {
+        var contracts = GetContractsFor<ContractProbeHub>();
+
+        // Guards the two assertions above: they would pass just as well against a registry that
+        // resolved everything, which is the other way to get this wrong.
+        Assert.Throws<Cocoar.SignalARRR.Common.Exceptions.MethodResolutionException>(
+            () => contracts.GetInvokeInformation("Nowhere.INotRegistered|Whatever", 0));
+    }
 }
 
 public class RegistrationProbeHub : HARRR {
@@ -114,4 +168,33 @@ public abstract class InheritingProbeMethodsBase : ServerMethods<RegistrationPro
 
 public class InheritingProbeMethods : InheritingProbeMethodsBase {
     public string OwnOperation() => "own";
+}
+
+// A hub with a contract of its own, served additionally by two classes that each bring one —
+// deliberately its own hub, so the endpoint-scan cases above keep their exact method set.
+
+public interface IContractOnTheHub {
+    string FromHub();
+}
+
+public interface IContractAlpha {
+    string FromAlpha();
+}
+
+public interface IContractBeta {
+    string FromBeta();
+}
+
+public class ContractProbeHub : HARRR, IContractOnTheHub {
+    public ContractProbeHub(IServiceProvider serviceProvider) : base(serviceProvider) { }
+
+    public string FromHub() => "hub";
+}
+
+public class ContractAlphaMethods : ServerMethods<ContractProbeHub>, IContractAlpha {
+    public string FromAlpha() => "alpha";
+}
+
+public class ContractBetaMethods : ServerMethods<ContractProbeHub>, IContractBeta {
+    public string FromBeta() => "beta";
 }
