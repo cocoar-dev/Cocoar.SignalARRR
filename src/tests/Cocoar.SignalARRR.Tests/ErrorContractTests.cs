@@ -69,26 +69,31 @@ public class ErrorContractTests {
 
     // ---- Cause chain -----------------------------------------------------------------------
 
+    // A recognized code is the precondition for seeing a chain at all — an unrecognized one is
+    // withheld whole (see the redaction tests below), so these two use ArgumentException as the
+    // outermost exception rather than the InvalidOperationException they used to use.
+
     [Fact]
     public void The_cause_chain_is_nested_not_flattened() {
-        var exception = new InvalidOperationException("outer",
-            new ArgumentException("middle",
+        var exception = new ArgumentException("outer",
+            new InvalidOperationException("middle",
                 new FormatException("root")));
 
         var error = HARRRException.Wrap(exception).Error;
 
         // Previously only GetBaseException() survived — the intermediate step was discarded.
-        Assert.Equal(typeof(InvalidOperationException).FullName, error.Type);
-        Assert.Equal(typeof(ArgumentException).FullName, error.InnerError?.Type);
+        Assert.Equal(typeof(ArgumentException).FullName, error.Type);
+        Assert.Equal(typeof(InvalidOperationException).FullName, error.InnerError?.Type);
         Assert.Equal(typeof(FormatException).FullName, error.InnerError?.InnerError?.Type);
     }
 
     [Fact]
     public void The_cause_chain_is_depth_limited() {
         Exception exception = new Exception("0");
-        for (var i = 1; i < 10; i++) {
+        for (var i = 1; i < 9; i++) {
             exception = new Exception(i.ToString(), exception);
         }
+        exception = new ArgumentException("outermost", exception);
 
         var depth = 0;
         for (var error = HARRRException.Wrap(exception).Error; error != null; error = error.InnerError) {
@@ -96,6 +101,57 @@ public class ErrorContractTests {
         }
 
         Assert.Equal(5, depth);
+    }
+
+    // ---- Withholding the detail of an unexpected failure -------------------------------------
+
+    [Fact]
+    public void An_unexpected_failure_does_not_carry_its_detail_to_the_client() {
+        var exception = new InvalidOperationException(
+            "Login failed for user 'svc_app' on server 'sql-prod-07.internal'.",
+            new FormatException("D:\\secrets\\connection.config"));
+
+        var wrapped = HARRRException.Wrap(exception);
+
+        // Nothing about what actually failed may survive into what the caller receives —
+        // not the message, not the concrete exception type, not the cause chain.
+        Assert.Equal(HARRRErrorCodes.Internal, wrapped.Error.Code);
+        Assert.DoesNotContain("sql-prod-07", wrapped.Message);
+        Assert.DoesNotContain("svc_app", wrapped.Message);
+        Assert.DoesNotContain("secrets", wrapped.Message);
+        Assert.DoesNotContain(nameof(InvalidOperationException), wrapped.Message);
+        Assert.Null(wrapped.Error.InnerError);
+    }
+
+    [Fact]
+    public void A_withheld_failure_is_traceable_by_correlation_id() {
+        var wrapped = HARRRException.Wrap(new InvalidOperationException("internal detail"));
+
+        // The id is what ties the sentence the user quotes to the exception in the server log,
+        // so it has to reach both — hence it travels inside the message rather than as a
+        // wire field the TypeScript and Swift clients would each have to learn.
+        Assert.False(string.IsNullOrWhiteSpace(wrapped.CorrelationId));
+        Assert.Contains(wrapped.CorrelationId!, wrapped.Error.Message);
+    }
+
+    [Fact]
+    public void A_recognized_failure_keeps_its_detail() {
+        var wrapped = HARRRException.Wrap(new TimeoutException("the call took longer than 30s"));
+
+        Assert.Equal(HARRRErrorCodes.Timeout, wrapped.Error.Code);
+        Assert.Equal("the call took longer than 30s", wrapped.Error.Message);
+        Assert.Null(wrapped.CorrelationId);
+    }
+
+    [Fact]
+    public void An_application_error_is_never_withheld() {
+        // The whole point of the (code, message) constructor is that both halves are meant for
+        // the client — redaction must not touch it.
+        var wrapped = HARRRException.Wrap(new HARRRException("room_full", "The room is full."));
+
+        Assert.Equal("room_full", wrapped.Error.Code);
+        Assert.Equal("The room is full.", wrapped.Error.Message);
+        Assert.Null(wrapped.CorrelationId);
     }
 
     // ---- Round trip and client surface ------------------------------------------------------

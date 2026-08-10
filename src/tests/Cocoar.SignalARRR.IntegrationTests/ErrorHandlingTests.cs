@@ -62,7 +62,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         [Fact]
-        public async Task StructuredError_InvalidOperationException_ParsesCorrectly() {
+        public async Task StructuredError_UnexpectedException_WithholdsTheDetail() {
             var ct = TestContext.Current.CancellationToken;
             var ex = await Assert.ThrowsAsync<HARRRRemoteException>(async () => {
                 await _connection.InvokeCoreAsync<string>(
@@ -71,8 +71,11 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
             var error = ex.Error;
 
-            Assert.Equal("System.InvalidOperationException", error.Type);
-            Assert.Equal("This operation is not allowed", error.Message);
+            // Contrast with the ArgumentException case above, which still arrives verbatim: that
+            // one names a pipeline stage the library controls, this one is whatever the method
+            // threw and could say anything about the server's insides.
+            Assert.NotEqual("System.InvalidOperationException", error.Type);
+            Assert.DoesNotContain("This operation is not allowed", error.Message);
         }
     }
 }

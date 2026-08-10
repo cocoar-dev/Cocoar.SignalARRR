@@ -67,15 +67,19 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         [Fact]
-        public async Task A_method_exception_reports_internal_with_the_dotnet_type_as_detail() {
+        public async Task A_method_exception_reports_internal_without_the_detail() {
             var ct = TestContext.Current.CancellationToken;
 
             var ex = await Assert.ThrowsAsync<HARRRRemoteException>(() => _connection.InvokeCoreAsync<string>(
                 new ClientRequestMessage("ExtraMethods.ThrowInvalidOperation"), ct));
 
+            // Across a real connection, not just in the wrapper: what the method threw stays on
+            // the server. The code is still there to branch on, and the correlation id in the
+            // message is what ties this call to the server log entry.
             Assert.Equal(HARRRErrorCodes.Internal, ex.Code);
-            Assert.Equal(typeof(InvalidOperationException).FullName, ex.Error.Type);
-            Assert.Equal("This operation is not allowed", ex.Message);
+            Assert.DoesNotContain("This operation is not allowed", ex.Message);
+            Assert.DoesNotContain(nameof(InvalidOperationException), ex.Error.Type);
+            Assert.Matches("Correlation id: [0-9a-f]{12}", ex.Message);
         }
     }
 }

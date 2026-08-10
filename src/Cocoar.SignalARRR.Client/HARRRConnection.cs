@@ -16,7 +16,11 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Cocoar.SignalARRR.Client {
-    public partial class HARRRConnection {
+    // IAsyncDisposable, declared rather than merely pattern-matched: `await using` compiled fine
+    // without it, which is why the omission went unnoticed, but a DI container disposes what it
+    // holds only through the interface. A connection registered as a singleton was therefore never
+    // disposed and its HubConnection outlived host shutdown.
+    public partial class HARRRConnection : IAsyncDisposable {
         private HubConnection HubConnection { get; }
         private ClientConnectionContext _connectionContext { get; }
 
