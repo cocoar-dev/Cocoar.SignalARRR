@@ -24,7 +24,8 @@ namespace Microsoft.Extensions.DependencyInjection {
             // fallback works for MessagePack-deserialized values (plain .NET objects) too.
             // SignalR supports both protocols simultaneously — different clients can use different protocols.
             serviceCollection.AddSingleton<IProtocolSerializer, JsonProtocolSerializer>();
-            serviceCollection.AddSingleton<ServerPushStreamManager>();
+            serviceCollection.AddSingleton(sp => new ServerPushStreamManager(
+                sp.GetRequiredService<SignalARRRServerOptions>().UploadSlotExpiration));
             serviceCollection.AddSingleton(sp => new ServerStreamManager(
                 sp.GetRequiredService<SignalARRRServerOptions>().StreamIdleTimeout));
             serviceCollection.AddSingleton<InMemoryHARRRClientManager>();

@@ -268,7 +268,6 @@ Each `ClientContext` provides detailed information about the connected client:
 | Property | Type | Description |
 |----------|------|-------------|
 | `Id` | `string` | Connection ID |
-| `HARRRType` | `Type` | Hub type the client is connected to |
 | `RemoteIp` | `IPAddress?` | Client's IP address |
 | `User` | `ClaimsPrincipal` | Authenticated user claims |
 | `ConnectedAt` | `DateTime` | Connection timestamp |

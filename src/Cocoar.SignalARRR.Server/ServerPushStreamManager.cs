@@ -39,7 +39,11 @@ namespace Cocoar.SignalARRR.Server {
                     "A Stream can only be read once.");
             }
 
-            var uri = new Uri($"{baseUrl}/download/{Guid.NewGuid()}".ToLower());
+            // Normalize, i.e. ToLowerInvariant: same Turkish-'I' hazard as the upload slots, and the
+            // two ends of this pair run on different threads whose CurrentCulture is set independently
+            // from each request (UseRequestLocalization) — a download stored under 'i' would then be
+            // looked up as 'ı' and never found, pinning the Stream until it expires.
+            var uri = new Uri(Normalize($"{baseUrl}/download/{Guid.NewGuid()}"));
             var key = uri.ToString();
 
             _pendingStreams.TryAdd(key, new PendingStream(stream, Stopwatch.GetTimestamp(), contentType));

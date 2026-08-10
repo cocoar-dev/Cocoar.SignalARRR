@@ -75,7 +75,9 @@ namespace Microsoft.AspNetCore.Builder {
         internal static async Task InvokeDownload(HttpContext context) {
             var streamManager = context.RequestServices.GetRequiredService<ServerPushStreamManager>();
 
-            var uri = context.Request.GetDisplayUrl().ToLower();
+            // ToLowerInvariant, not ToLower: this request's culture is set independently of the one
+            // that stored the download, so a culture-sensitive fold would miss the key.
+            var uri = context.Request.GetDisplayUrl().ToLowerInvariant();
 
             var (stream, contentType) = streamManager.TakeStream(uri);
 

@@ -77,7 +77,7 @@ the way to receive server-to-client calls, and always was.
 
 ## `On()` is for raw SignalR calls, not contracts
 
-`HARRRConnectionExtensions` provides `On<T>()` overloads for up to 16 parameters. These register
+`HARRRConnectionExtensions` provides `On<T>()` overloads for up to 4 parameters. These register
 against **raw SignalR method names** — they pass straight through to `HubConnection.On`:
 
 ```csharp

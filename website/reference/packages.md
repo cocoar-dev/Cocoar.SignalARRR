@@ -53,7 +53,7 @@ npm install @cocoar/signalarrr @microsoft/signalr
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/cocoar-dev/Cocoar.SignalARRR.git", from: "4.0.0"),
+    .package(url: "https://github.com/cocoar-dev/Cocoar.SignalARRR.git", from: "5.0.0"),
 ],
 targets: [
     .target(
