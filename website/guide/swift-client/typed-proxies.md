@@ -63,6 +63,13 @@ name is `"chat.client|received"`.
 
 Handlers return `AnyCodable` — a type-erased wrapper that supports all JSON-serializable types.
 
+::: warning A throwing handler may go unnoticed
+If the server awaited a result, the error travels back to it. If the server sent fire-and-forget, the
+error is written to the client's logger as `Failed to handle server message '<name>'` and goes no
+further — the server's send completed long before the handler ran. See
+[what happens when a handler throws](/guide/dotnet-client/server-to-client#what-happens-when-a-handler-throws).
+:::
+
 ## Streaming handlers
 
 For server-to-client streaming methods, use `onServerStreamMethod`:

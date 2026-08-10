@@ -60,6 +60,19 @@ connection.onServerMethod('MyApp.Contracts.IChatClient|GetClientTime', () => {
 
 The return value is sent back to the server automatically via SignalR's native client results feature.
 
+## When a handler throws
+
+Whether the server finds out depends on how the server declared the member:
+
+- The server awaited a result (`InvokeServerRequest`) — the error travels back and surfaces at the
+  caller as a `HubException`.
+- The server sent fire-and-forget (`InvokeServerMessage`) — the error is written to `console.error`
+  as `[SignalARRR] Failed to handle server message '<name>'` and goes no further. The server's send
+  already completed; there is no caller left to tell.
+
+So for a browser client, a consistently failing push leaves no trace anywhere the operator can see.
+If that matters, ask the server side to give the contract member a return value.
+
 ## Async handlers
 
 Handlers can be async:

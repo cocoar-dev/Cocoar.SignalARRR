@@ -104,6 +104,14 @@ from a query — which is what keeps them cluster-aware.
 When using `SendAsync`, methods with return values still work — the client executes the method — but the return value is discarded since there's no single caller to send it back to. A warning is logged. Use `InvokeAllAsync` if you need return values.
 :::
 
+::: warning Errors are discarded too
+`SendAsync` completes when the message reaches the transport, not when the clients have run the
+method. A handler that throws is logged **on the client** and nowhere else — the server sees a
+successful send either way. `InvokeAllAsync` and `InvokeOneAsync` do surface client-side failures,
+because they wait for an answer. See
+[what happens when a handler throws](/guide/dotnet-client/server-to-client#what-happens-when-a-handler-throws).
+:::
+
 ### SendAsync — fire-and-forget, one SignalR call
 
 Collects ConnectionIds and sends a **single** `Clients.Clients(ids).SendCoreAsync` call.
