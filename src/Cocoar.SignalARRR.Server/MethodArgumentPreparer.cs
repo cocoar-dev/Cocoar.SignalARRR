@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -37,7 +37,11 @@ namespace Cocoar.SignalARRR.Server {
         /// token parameter of a call cancel together.
         /// </para>
         /// </remarks>
-        internal IEnumerable<object> PrepareArguments(IEnumerable<object> arguments) {
+        /// <param name="registrations">
+        /// Collects the cancellation callbacks registered here, so the caller can unhook them when
+        /// the call is over rather than leaving them on the caller's token (DI-6).
+        /// </param>
+        internal IEnumerable<object> PrepareArguments(IEnumerable<object> arguments, CancellationRegistrations registrations) {
             foreach (var argument in arguments) {
 
                 switch (argument) {
@@ -50,7 +54,7 @@ namespace Cocoar.SignalARRR.Server {
                             continue;
                         }
                     case CancellationToken cancellationToken: {
-                            yield return PrepareCancellationToken(cancellationToken);
+                            yield return PrepareCancellationToken(cancellationToken, registrations);
                             continue;
                         }
                     default:
@@ -65,7 +69,7 @@ namespace Cocoar.SignalARRR.Server {
             return new StreamReference() { Uri = identifier };
         }
 
-        private CancellationTokenReference PrepareCancellationToken(CancellationToken cancellationToken) {
+        private CancellationTokenReference PrepareCancellationToken(CancellationToken cancellationToken, CancellationRegistrations registrations) {
             var tokenReference = new CancellationTokenReference();
 
             // CancellationToken.Register takes an Action, so an `async` lambda here compiles to
@@ -73,7 +77,7 @@ namespace Cocoar.SignalARRR.Server {
             // observe it, which terminates the process. That is not a corner case -- this callback
             // fires precisely when the caller cancels, which is typically because the client is
             // already gone, so CancelToken faulting is the expected path, not the exceptional one.
-            cancellationToken.Register(() => _ = CancelTokenSafeAsync(tokenReference.Id));
+            registrations.Add(cancellationToken.Register(() => _ = CancelTokenSafeAsync(tokenReference.Id)));
 
             return tokenReference;
         }
