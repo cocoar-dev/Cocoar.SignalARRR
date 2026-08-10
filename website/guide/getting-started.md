@@ -27,7 +27,7 @@ npm install @cocoar/signalarrr
 ```
 
 ```swift [Swift (Package.swift)]
-.package(url: "https://github.com/cocoar-dev/Cocoar.SignalARRR.git", from: "4.0.0")
+.package(url: "https://github.com/cocoar-dev/Cocoar.SignalARRR.git", from: "5.0.0")
 // Products: CocoarSignalARRR, CocoarSignalARRRMacros
 ```
 
