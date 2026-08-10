@@ -100,6 +100,46 @@ Use `RegisterInterface` for anything the server sends through a contract, and `O
 messages the hub sends with plain `SendAsync`.
 :::
 
+## What happens when a handler throws
+
+**The return type decides whether the server finds out.** This is the one thing to know before
+choosing a signature for a contract member.
+
+| Contract member | Sent as | A throwing handler |
+|---|---|---|
+| `Task<T>`, `T` | `InvokeServerRequest` | reaches the server as a `HubException` carrying the client's message |
+| `void`, `Task` | `InvokeServerMessage` | is logged on the client and **nowhere else** |
+
+For the fire-and-forget case this is not a gap that could be closed by propagating harder: the
+server's `SendAsync` completes as soon as the message reaches the transport, long before the client
+runs the method. By the time the handler fails there is no caller left to tell.
+
+::: warning A failing push is invisible to the server
+All three clients log the failure — .NET through `ILogger`, TypeScript to `console.error`, Swift
+through its logger — and all three use the same wording, `Failed to handle server message '<name>'`.
+That is the only record. For a browser or mobile client that means the evidence sits on someone
+else's machine.
+
+**If the server needs to know that the call succeeded, give the contract member a return value.**
+Even `Task<bool>` turns a silent failure into a `HubException` at the call site.
+:::
+
+```csharp
+[SignalARRRContract]
+public interface IChatClient
+{
+    // Fire-and-forget: fast, and the server cannot tell whether it worked
+    void ReceiveMessage(string user, string message);
+
+    // Awaited: a throwing handler surfaces at the caller
+    Task<bool> ApplySettings(Settings settings);
+}
+```
+
+The same split applies to broadcasts, with one addition: `SendAsync` discards return values even for
+members that declare one, because there is no single caller to return them to. Use `InvokeAllAsync`
+when you need results — or errors — from a set of clients.
+
 ## How it works
 
 When the server calls a client method:
