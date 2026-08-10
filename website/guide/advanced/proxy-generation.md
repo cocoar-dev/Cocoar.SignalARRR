@@ -15,7 +15,7 @@ SignalARRR uses a Roslyn source generator to produce typed proxy classes at comp
 Reference `Cocoar.SignalARRR.Contracts` in your shared interface project:
 
 ```xml
-<PackageReference Include="Cocoar.SignalARRR.Contracts" Version="4.*" />
+<PackageReference Include="Cocoar.SignalARRR.Contracts" Version="5.*" />
 ```
 
 This package bundles:
@@ -116,7 +116,7 @@ PluginB.dll          →  registers IPluginBContract
 For scenarios where compile-time generation isn't possible (e.g., plugin systems loading interfaces at runtime), add the `Cocoar.SignalARRR.DynamicProxy` package:
 
 ```xml
-<PackageReference Include="Cocoar.SignalARRR.DynamicProxy" Version="4.*" />
+<PackageReference Include="Cocoar.SignalARRR.DynamicProxy" Version="5.*" />
 ```
 
 This registers a fallback factory in `ProxyCreator` that uses `DispatchProxy` for runtime proxy creation.

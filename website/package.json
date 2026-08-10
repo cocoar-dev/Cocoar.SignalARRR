@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vitepress dev --host --port 5175",
-    "dev:public": "vitepress dev --config .vitepress/config.public.ts --host --port 5175",
-    "build": "vitepress build --config .vitepress/config.public.ts --outDir .vitepress/dist && node scripts/strip-dev-notes.mjs .vitepress/dist",
-    "build:dev": "vitepress build --outDir .vitepress/dist-dev",
+    "dev": "node scripts/sync-changelog.mjs && vitepress dev --host --port 5175",
+    "dev:public": "node scripts/sync-changelog.mjs && vitepress dev --config .vitepress/config.public.ts --host --port 5175",
+    "build": "node scripts/sync-changelog.mjs && vitepress build --config .vitepress/config.public.ts --outDir .vitepress/dist && node scripts/strip-dev-notes.mjs .vitepress/dist",
+    "build:dev": "node scripts/sync-changelog.mjs && vitepress build --outDir .vitepress/dist-dev",
     "preview": "vitepress preview --config .vitepress/config.public.ts"
   },
   "devDependencies": {

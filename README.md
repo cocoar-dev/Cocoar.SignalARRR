@@ -11,6 +11,10 @@ Server and client call each other's methods through shared interfaces — with c
 
 > **[Read the full documentation](https://docs.cocoar.dev/signalarrr/)**
 
+> **Upgrading from 4.x?** v5 carries breaking changes from a full code review. Most need nothing from
+> you; what does is in the **[migration guide](https://docs.cocoar.dev/signalarrr/guide/migration/from-v4)**,
+> grouped by whether it is likely to affect you at all.
+
 ## Packages
 
 ### .NET
