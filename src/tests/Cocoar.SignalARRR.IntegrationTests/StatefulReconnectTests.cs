@@ -31,6 +31,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
     /// from a fallback to a fresh connection.
     /// </para>
     /// <para>
+    /// The client runs against a hub of its own. During the severed window its connection sits in
+    /// <c>ClientManager</c> with a dead transport, and the broadcast-to-all tests in other
+    /// collections run in parallel against the same server process — they would reach the corpse and
+    /// fail for a reason that has nothing to do with them.
+    /// </para>
+    /// <para>
     /// Do not "help" detection along by shortening the client's <c>ServerTimeout</c>: it has to stay
     /// above the server's keep-alive interval (15s by default), or the client times out on an idle
     /// but healthy connection and falls back to a full reconnect — which looks exactly like stateful
@@ -59,7 +65,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 builder
                     // WebSockets explicitly: stateful reconnect exists only there, and a silent
                     // fallback to long polling would look like the feature failing.
-                    .WithUrl($"{proxy.BaseAddress.ToString().TrimEnd('/')}/signalr/testhub",
+                    .WithUrl($"{proxy.BaseAddress.ToString().TrimEnd('/')}/signalr/reconnecthub",
                         options => options.Transports = HttpTransportType.WebSockets)
                     .WithStatefulReconnect()
                     .WithAutomaticReconnect();

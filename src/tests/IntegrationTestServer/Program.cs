@@ -95,12 +95,13 @@ var app = builder.Build();
 app.Lifetime.ApplicationStarted.Register(() => WriteDiagnostics("application-started"));
 app.Lifetime.ApplicationStopping.Register(() => WriteDiagnostics("application-stopping"));
 
-// Stateful reconnect is permitted here so StatefulReconnectTests can exercise it. It changes
-// nothing for the other tests: a client only resumes a connection if it asked for it with
-// WithStatefulReconnect(), and none of them do.
-app.MapSignalARRRHub<TestHub>("/signalr/testhub", options => options.AllowStatefulReconnects = true);
+app.MapSignalARRRHub<TestHub>("/signalr/testhub");
 
-// The control for StatefulReconnectTests: same option, no SignalARRR anywhere in it.
+// Both hubs below exist only for StatefulReconnectTests, and both are deliberately separate from
+// TestHub: that test leaves a connection with a dead transport registered for a moment, and the
+// broadcast-to-all tests running in parallel against this same process would reach it and fail for
+// a reason of their own making. The second one is the control — plain SignalR, no SignalARRR.
+app.MapSignalARRRHub<ReconnectHub>("/signalr/reconnecthub", options => options.AllowStatefulReconnects = true);
 app.MapHub<PlainReconnectHub>("/signalr/plainhub", options => options.AllowStatefulReconnects = true);
 
 // Test trigger endpoints for server→client calls (used by .NET, TS, and Swift integration tests)
