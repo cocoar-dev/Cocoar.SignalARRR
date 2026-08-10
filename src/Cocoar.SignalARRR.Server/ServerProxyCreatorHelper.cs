@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.Reflectensions.Helper;
@@ -30,10 +31,11 @@ namespace Cocoar.SignalARRR.Server {
 
         public override async Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
 
-            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments).ToList();
+            using var registrations = new CancellationRegistrations();
+            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments, registrations).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
-            RegisterCallCancellation(msg, arguments, cancellationToken);
+            registrations.Add(RegisterCallCancellation(msg, arguments, cancellationToken));
 
             msg.GenericArguments = genericArguments;
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
@@ -64,10 +66,11 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override async Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments).ToList();
+            using var registrations = new CancellationRegistrations();
+            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments, registrations).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
-            RegisterCallCancellation(msg, arguments, cancellationToken);
+            registrations.Add(RegisterCallCancellation(msg, arguments, cancellationToken));
             msg.GenericArguments = genericArguments;
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
@@ -82,14 +85,18 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments).ToList();
+            // Not a `using`: unlike an invoke or a send, this method returns before the work is over.
+            // The callbacks have to stay hooked for as long as the stream can still be cancelled, so
+            // the enumerable below owns them and unhooks on completion.
+            var registrations = new CancellationRegistrations();
+            var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments, registrations).ToList();
 
             var streamId = Guid.NewGuid();
             var msg = new ServerRequestMessage(methodName, preparedArguments);
             msg.GenericArguments = genericArguments;
             msg.StreamId = streamId;
 
-            RegisterCallCancellation(msg, arguments, cancellationToken);
+            registrations.Add(RegisterCallCancellation(msg, arguments, cancellationToken));
 
             var serverStreamManager = _clientContext.ServiceProvider.GetRequiredService<ServerStreamManager>();
             // Only the client this stream was requested from may feed it.
@@ -104,7 +111,29 @@ namespace Cocoar.SignalARRR.Server {
                 .ContinueWith(_ => serviceProviderScope.Dispose());
 
             var serializer = _clientContext.ServiceProvider.GetService<Common.Serialization.IProtocolSerializer>();
-            return serverStreamManager.ReadStream<TResult>(streamId, cancellationToken, serializer);
+            return UnhookWhenFinished(serverStreamManager.ReadStream<TResult>(streamId, cancellationToken, serializer), registrations);
+        }
+
+        /// <summary>
+        /// Passes a stream through and unhooks the call's cancellation callbacks once it ends,
+        /// however it ends — completed, faulted or abandoned mid-enumeration.
+        /// </summary>
+        /// <remarks>
+        /// A caller that takes the stream and never enumerates it keeps the callbacks, exactly as it
+        /// keeps the stream itself; that case is the idle sweeper's, not this method's.
+        /// </remarks>
+        private static async IAsyncEnumerable<T> UnhookWhenFinished<T>(
+            IAsyncEnumerable<T> source,
+            CancellationRegistrations registrations,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+
+            try {
+                await foreach (var item in source.WithCancellation(cancellationToken).ConfigureAwait(false)) {
+                    yield return item;
+                }
+            } finally {
+                registrations.Dispose();
+            }
         }
 
 
@@ -123,19 +152,21 @@ namespace Cocoar.SignalARRR.Server {
         /// the check both would fire on cancellation and send two messages for one event.
         /// </para>
         /// <para>
-        /// The registration is discarded, which leaks on a long-lived token (DI-6). Tracked
-        /// separately; this change deliberately does not widen into it.
+        /// The registration is returned rather than dropped: on a long-lived token — the kind server
+        /// code builds for "cancel everything for this connection" — a dropped one keeps its callback,
+        /// and the <see cref="ClientContext"/> it closes over, attached for the life of the token
+        /// (DI-6). The caller unhooks it when the call is over.
         /// </para>
         /// </remarks>
-        private void RegisterCallCancellation(
+        private CancellationTokenRegistration RegisterCallCancellation(
             ServerRequestMessage message, IEnumerable<object> originalArguments, CancellationToken cancellationToken) {
 
             if (cancellationToken == CancellationToken.None) {
-                return;
+                return default;
             }
 
             if (originalArguments.Any(a => a is CancellationToken argumentToken && argumentToken == cancellationToken)) {
-                return;
+                return default;
             }
 
             var callId = Guid.NewGuid();
@@ -145,7 +176,7 @@ namespace Cocoar.SignalARRR.Server {
             // take the process down when it throws — which is the normal case here, because the
             // token usually fires precisely because the client has gone. The send is best-effort
             // and already swallows downstream in ClientContextExtensions.CancelToken.
-            cancellationToken.Register(() => _ = _clientContext.CancelToken(callId));
+            return cancellationToken.Register(() => _ = _clientContext.CancelToken(callId));
         }
     }
 }
