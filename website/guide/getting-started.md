@@ -146,8 +146,9 @@ connection.stream<string>('ChatMethods.StreamMessages').subscribe({
     complete: () => console.log('done'),
 });
 
-// Handle server-to-client calls
-connection.onServerMethod('GetClientName', () => navigator.userAgent);
+// Handle server-to-client calls. The name is the contract's wire name, 'interface|method' —
+// a bare method name never matches a contract call. See /guide/server/contracts-wire-names
+connection.onServerMethod('MyApp.Contracts.IChatClient|GetClientName', () => navigator.userAgent);
 ```
 
 ## 5. Swift client (iOS / macOS)
@@ -179,8 +180,8 @@ for try await msg in try await chat.streamMessages() {
     print(msg)
 }
 
-// Handle server-to-client calls
-await connection.onServerMethod("GetClientName") { _ in
+// Handle server-to-client calls. The name is the contract's wire name, "interface|method".
+await connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { _ in
     AnyCodable(stringLiteral: UIDevice.current.name)
 }
 ```

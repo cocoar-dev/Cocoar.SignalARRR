@@ -24,6 +24,10 @@
   <ItemGroup>
     <!-- ProxyGenerator flows transitively so generated code can compile (uses ProxyCreatorHelper) -->
     <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
+    <!-- [MessageName] lives in Common, and contract projects are documented as referencing Contracts
+         alone. Without this the attribute would be unreachable in exactly the assemblies that
+         declare contracts — the ones it exists for. -->
+    <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
 
     <!-- SourceGenerator runs as an analyzer in the consuming project -->
     <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"

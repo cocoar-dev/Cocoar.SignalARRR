@@ -75,11 +75,15 @@ namespace Cocoar.SignalARRR.Common {
                 Add(interfaceType, implementationType, methodInfo, slotPolicy);
             }
 
-            var declaredNames = new HashSet<string>(declaredMethods.Select(m => m.Name), StringComparer.Ordinal);
+            // Hiding is decided on the wire name, which is what a caller actually addresses. With
+            // [MessageName] in play the two can diverge: a declared member renamed on the wire no
+            // longer hides the inherited member it shares a C# name with, and one renamed *onto* an
+            // inherited member's wire name does hide it.
+            var declaredNames = new HashSet<string>(declaredMethods.Select(WireName.ForMethod), StringComparer.Ordinal);
 
             foreach (var baseInterface in interfaceType.GetInterfaces()) {
                 foreach (var methodInfo in baseInterface.GetMethods(flags)) {
-                    if (declaredNames.Contains(methodInfo.Name)) {
+                    if (declaredNames.Contains(WireName.ForMethod(methodInfo))) {
                         continue;
                     }
 
@@ -89,36 +93,29 @@ namespace Cocoar.SignalARRR.Common {
         }
 
         private void Add(Type declaringInterface, Type? implementationType, MethodInfo methodInfo, WireSlotPolicy slotPolicy) {
-            // [MessageName] is honoured nowhere on the interface path — not by this registration,
-            // not by either proxy flavour, not by the source generator; the wire name is always
-            // 'Namespace.IInterface|MethodName'. Whoever sets it expects it to work (the attribute
-            // allows the target), so it fails here at startup instead of doing nothing, wordlessly
-            // (N-5). Renaming the wire independently of the C# name is a protocol-level feature of
-            // its own, deliberately not smuggled in here.
-            if (methodInfo.GetCustomAttribute<Attributes.MessageNameAttribute>() != null) {
-                throw new InvalidOperationException(
-                    $"Cannot register interface '{InterfaceType.FullName}': member '{declaringInterface.FullName}.{methodInfo.Name}' " +
-                    "carries [MessageName], which the interface dispatch path does not honour — the name on the wire is always " +
-                    $"'{declaringInterface.FullName}|{methodInfo.Name}'. Remove the attribute (or rename the method); " +
-                    "[MessageName] works on hub and ServerMethods methods only.");
-            }
+            // The wire name, not the C# name. They are the same unless [MessageName] says otherwise,
+            // and everything below keys off this one so that the index matches what the proxies emit.
+            var wireName = WireName.ForMethod(methodInfo);
 
             // The argument counts are computed from the resolved target, not the interface
             // declaration: the binder fills omitted arguments from the *executed* method's default
             // values, so the index must accept exactly what the binder can actually bind.
             var target = Resolve(declaringInterface, implementationType, methodInfo);
 
-            if (!_methods.TryGetValue(methodInfo.Name, out var byCount)) {
+            if (!_methods.TryGetValue(wireName, out var byCount)) {
                 byCount = new Dictionary<int, MethodInfo>();
-                _methods[methodInfo.Name] = byCount;
+                _methods[wireName] = byCount;
             }
 
             foreach (var count in slotPolicy.GetAcceptedArgumentCounts(target)) {
                 if (byCount.TryGetValue(count, out var existing)) {
+                    var asName = wireName == methodInfo.Name
+                        ? $"'{wireName}'"
+                        : $"'{wireName}' (from [MessageName] on '{methodInfo.Name}')";
                     throw new InvalidOperationException(
                         $"Cannot register interface '{InterfaceType.FullName}': " +
                         $"{SignalARRRMethodsCollection.Describe(existing)} and {SignalARRRMethodsCollection.Describe(target)} " +
-                        $"would both be reachable as '{methodInfo.Name}' with {count} argument(s). " +
+                        $"would both be reachable as {asName} with {count} argument(s). " +
                         "The wire carries no parameter types, so methods sharing a name must differ in argument count — " +
                         "rename one of them, or declare the method on the registered interface itself to hide the inherited ones.");
                 }

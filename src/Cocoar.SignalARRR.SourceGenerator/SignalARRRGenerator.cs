@@ -107,7 +107,7 @@ public class SignalARRRGenerator : IIncrementalGenerator {
             .ToArray();
 
         return new ContractInterfaceInfo(
-            ns, interfaceName, fullName, proxyClassName,
+            ns, interfaceName, fullName, MessageName(interfaceSymbol) ?? fullName, proxyClassName,
             new EquatableArray<ContractMethodInfo>(methods));
     }
 
@@ -146,6 +146,29 @@ public class SignalARRRGenerator : IIncrementalGenerator {
         return false;
     }
 
+    /// <summary>
+    /// The name declared with [MessageName], or null. The generator cannot call
+    /// Cocoar.SignalARRR.Common.WireName -- it runs against Roslyn symbols, not loaded types -- so it
+    /// applies the same rule here. Both sides have to agree: the proxy emits the name and the
+    /// registration indexes it, and a disagreement means "method not found" at runtime.
+    /// </summary>
+    private static string? MessageName(ISymbol symbol) {
+        foreach (var attr in symbol.GetAttributes()) {
+            var attrClass = attr.AttributeClass;
+            if (attrClass == null ||
+                attrClass.Name != "MessageNameAttribute" ||
+                attrClass.ContainingNamespace.ToDisplayString() != "Cocoar.SignalARRR.Common.Attributes") {
+                continue;
+            }
+
+            if (attr.ConstructorArguments.Length == 1 && attr.ConstructorArguments[0].Value is string name) {
+                return name;
+            }
+        }
+
+        return null;
+    }
+
     private static ContractMethodInfo ExtractMethodInfo(IMethodSymbol method, CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
 
@@ -161,6 +184,7 @@ public class SignalARRRGenerator : IIncrementalGenerator {
 
         return new ContractMethodInfo(
             name: method.Name,
+            wireName: MessageName(method) ?? method.Name,
             returnCategory: category,
             returnTypeFullName: method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             elementTypeFullName: elementType,

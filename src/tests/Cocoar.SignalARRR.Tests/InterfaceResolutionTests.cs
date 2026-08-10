@@ -202,23 +202,76 @@ public class TypeHelperTests {
     }
 
     /// <summary>
-    /// <c>[MessageName]</c> on an interface member is a hard registration error (N-5 interim).
+    /// <c>[MessageName]</c> on a contract member decides the name on the wire (N-5).
     /// </summary>
     /// <remarks>
-    /// Nothing on the interface path honours the attribute — the wire name is always
-    /// <c>Namespace.IInterface|MethodName</c>. Whoever sets it expects it to work, so it fails at
-    /// startup with an explanation instead of doing nothing, wordlessly. Renaming the wire
-    /// independently of the C# name is a protocol feature of its own, tracked separately.
+    /// Until 5.0 the C# identifier <em>was</em> the protocol, so renaming a method silently broke
+    /// every TypeScript and Swift client — they write the name out as a string and no compiler
+    /// checks it. The attribute was ignored on this path, then rejected outright as an interim
+    /// measure; it is now honoured, and the C# name becomes internal API.
     /// </remarks>
     [Fact]
-    public void MessageName_on_an_interface_member_is_rejected_at_registration() {
+    public void MessageName_on_a_contract_member_decides_the_wire_name() {
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IMessageNamedProbe), typeof(MessageNamedProbe));
+
+        var (_, methodInfo) = collection.GetInvokeInformation(
+            $"{typeof(IMessageNamedProbe).FullName}|Renamed", 0);
+
+        Assert.Equal(nameof(IMessageNamedProbe.Ping), methodInfo.Name);
+    }
+
+    [Fact]
+    public void The_csharp_name_no_longer_resolves_once_a_wire_name_is_declared() {
+        // The whole point: the declared name replaces the identifier rather than aliasing it.
+        // If both resolved, a rename would keep working and the coupling would be right back.
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IMessageNamedProbe), typeof(MessageNamedProbe));
+
+        Assert.Throws<MethodResolutionException>(() => collection.GetInvokeInformation(
+            $"{typeof(IMessageNamedProbe).FullName}|{nameof(IMessageNamedProbe.Ping)}", 0));
+    }
+
+    [Fact]
+    public void MessageName_on_the_interface_itself_decides_the_interface_part() {
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IRenamedContractProbe), typeof(RenamedContractProbe));
+
+        var (_, methodInfo) = collection.GetInvokeInformation("chat.client|received", 1);
+        Assert.Equal(nameof(IRenamedContractProbe.ReceiveMessage), methodInfo.Name);
+    }
+
+    [Fact]
+    public void A_renamed_interface_no_longer_answers_to_its_full_name() {
+        var collection = new SignalARRRInterfaceCollection();
+        collection.RegisterInterface(typeof(IRenamedContractProbe), typeof(RenamedContractProbe));
+
+        var ex = Assert.Throws<MethodResolutionException>(() => collection.GetInvokeInformation(
+            $"{typeof(IRenamedContractProbe).FullName}|received", 1));
+        Assert.Contains("not registered", ex.Message);
+    }
+
+    [Fact]
+    public void A_wire_name_containing_the_separator_is_rejected() {
+        // The receiver splits on the first separator to tell interface from method, so a separator
+        // inside either half would address something else entirely.
         var collection = new SignalARRRInterfaceCollection();
 
         var ex = Assert.Throws<InvalidOperationException>(
-            () => collection.RegisterInterface(typeof(IMessageNamedProbe), typeof(MessageNamedProbe)));
+            () => collection.RegisterInterface(typeof(ISeparatorProbe), typeof(SeparatorProbe)));
 
-        Assert.Contains("MessageName", ex.Message);
-        Assert.Contains(nameof(IMessageNamedProbe.Ping), ex.Message);
+        Assert.Contains("|", ex.Message);
+    }
+
+    [Fact]
+    public void Two_members_renamed_onto_the_same_wire_name_are_a_registration_error() {
+        // Same silent-overwrite class as F-6, reachable in a new way now that names are declarable.
+        var collection = new SignalARRRInterfaceCollection();
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => collection.RegisterInterface(typeof(ICollidingWireNameProbe), typeof(CollidingWireNameProbe)));
+
+        Assert.Contains("Collide", ex.Message);
     }
 
     [Fact]
@@ -249,6 +302,38 @@ public class MessageNamedProbe : IMessageNamedProbe {
 
 public interface IPlainContractProbe {
     Task Ping();
+}
+
+[Cocoar.SignalARRR.Common.Attributes.MessageName("chat.client")]
+public interface IRenamedContractProbe {
+    [Cocoar.SignalARRR.Common.Attributes.MessageName("received")]
+    Task ReceiveMessage(string text);
+}
+
+public class RenamedContractProbe : IRenamedContractProbe {
+    public Task ReceiveMessage(string text) => Task.CompletedTask;
+}
+
+public interface ISeparatorProbe {
+    [Cocoar.SignalARRR.Common.Attributes.MessageName("bad|name")]
+    Task Ping();
+}
+
+public class SeparatorProbe : ISeparatorProbe {
+    public Task Ping() => Task.CompletedTask;
+}
+
+public interface ICollidingWireNameProbe {
+    [Cocoar.SignalARRR.Common.Attributes.MessageName("Collide")]
+    Task First();
+
+    [Cocoar.SignalARRR.Common.Attributes.MessageName("Collide")]
+    Task Second();
+}
+
+public class CollidingWireNameProbe : ICollidingWireNameProbe {
+    public Task First() => Task.CompletedTask;
+    public Task Second() => Task.CompletedTask;
 }
 
 public class MessageNamedImplementationProbe : IPlainContractProbe {

@@ -111,9 +111,17 @@ namespace Cocoar.SignalARRR.Common {
         }
 
         private static IEnumerable<string> GetWireNames(Type interfaceType) {
-            if (interfaceType.FullName is { } fullName) {
-                yield return fullName;
+            var declared = WireName.ForInterface(interfaceType);
+
+            // A declared name replaces the type's identity on the wire rather than adding to it.
+            // Indexing FullName alongside it would keep the C# name working and quietly defeat the
+            // reason for declaring one: renames would stay invisible instead of being caught.
+            if (declared != interfaceType.FullName) {
+                yield return declared;
+                yield break;
             }
+
+            yield return declared;
 
             if (interfaceType.AssemblyQualifiedName is { } assemblyQualifiedName) {
                 yield return assemblyQualifiedName;
