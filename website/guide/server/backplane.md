@@ -38,6 +38,17 @@ The provider is **Redis-compatible**, not Redis-specific. It works with:
 - Valkey
 - Garnet
 
+::: info Custom backplanes are not a supported extension point
+The contracts behind this — `ISignalARRRBackplane` and `ISignalARRRConnectionRegistry` — are
+internal, so a backplane for NATS or RabbitMQ cannot be plugged in from outside the library today.
+They are registered with `TryAddSingleton`, which makes the order of `AddSignalARRR` and
+`AddSignalARRRRedisBackplane` irrelevant; read that as order-independence, not as an invitation.
+
+Opening them up would mean freezing the inter-node envelope as public API, so it is a deliberate
+decision rather than a side effect. If you need another transport, say so — internal can be opened
+later without breaking anyone, the reverse cannot.
+:::
+
 ## Supported distributed operations
 
 With the backplane enabled, the following become cluster-aware:
