@@ -300,8 +300,13 @@ app.MapGet("/__test/client-exists", (HttpContext context) => {
 
     var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
     try {
-        clientManager.GetClientById(connectionId);
-        return Results.Ok(true);
+        // Null-checked, not just non-throwing: GetClient returns null for an unknown id rather than
+        // throwing, so answering "true" for anything that did not throw made this endpoint answer
+        // true always — and WaitForClientRegistration, which polls it, return on its first attempt
+        // without waiting for anything at all. Every test using it was racing the registration and
+        // winning only because the window is small.
+        var client = clientManager.GetClientById(connectionId);
+        return Results.Ok(client != null);
     } catch {
         return Results.Ok(false);
     }
