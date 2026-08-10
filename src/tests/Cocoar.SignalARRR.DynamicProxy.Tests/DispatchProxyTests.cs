@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
@@ -42,6 +42,14 @@ public interface ICancellationMethods {
 
 public interface IFallbackOnly {
     Task<string> GetName();
+}
+
+[Cocoar.SignalARRR.Common.Attributes.MessageName("renamed.contract")]
+public interface IRenamedWireMethods {
+    [Cocoar.SignalARRR.Common.Attributes.MessageName("greet")]
+    Task<string> SayHello(string name);
+
+    Task Untouched();
 }
 
 #endregion
@@ -260,5 +268,21 @@ public class NoFallbackTests {
         var helper = new MockProxyCreatorHelper();
         var proxy = ProxyCreator.CreateInstanceFromInterface<IFallbackOnly>(helper);
         Assert.NotNull(proxy);
+    }
+
+    [Fact]
+    public async Task DispatchProxy_emits_the_declared_wire_names() {
+        // The third place a contract name is formed. It has to match what the registration index
+        // resolves and what the source generator emits for the same contract -- all three now go
+        // through the one rule in Cocoar.SignalARRR.Common.WireName.
+        DynamicProxyInitializer.Initialize();
+        var helper = new MockProxyCreatorHelper();
+        var proxy = ProxyCreator.CreateInstanceFromInterface<IRenamedWireMethods>(helper);
+
+        await proxy.SayHello("world");
+        Assert.Equal("renamed.contract|greet", helper.LastMethodName);
+
+        await proxy.Untouched();
+        Assert.Equal("renamed.contract|Untouched", helper.LastMethodName);
     }
 }

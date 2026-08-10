@@ -2,26 +2,58 @@
 
 The server can call methods on the TypeScript client. Use `onServerMethod()` to register handlers that respond to these calls.
 
-## Register a handler
+## The name you register is the name on the wire
+
+::: danger Register the full contract name, not the method name
+The name is matched **exactly**, and a handler that does not match is not an error — the call is
+dropped and nothing is logged. This is the single most common way for a TypeScript client to
+"silently do nothing".
+:::
+
+When the server calls a client through a typed contract —
+`clientContext.GetTypedMethods<IChatClient>().ReceiveMessage(...)` — the name that arrives is
+`interface|method`, not the bare method name:
 
 ```ts
-connection.onServerMethod('ReceiveMessage', (user: string, message: string) => {
+// Correct: the contract's wire name
+connection.onServerMethod('MyApp.Contracts.IChatClient|ReceiveMessage', (user: string, message: string) => {
     console.log(`${user}: ${message}`);
 });
+
+// Wrong: never fires for a contract call, and fails silently
+connection.onServerMethod('ReceiveMessage', () => { /* … */ });
 ```
 
-The handler is called when the server invokes `InvokeServerRequest` or `InvokeServerMessage` with the matching method name.
+By default the interface part is the C# interface's full name and the method part is the C# method
+name. Since 5.0 both can be declared explicitly on the contract, which is what you want as soon as a
+TypeScript or Swift client exists — see [Contract wire names](/guide/server/contracts-wire-names):
+
+```csharp
+[SignalARRRContract]
+[MessageName("chat.client")]
+public interface IChatClient {
+    [MessageName("received")]
+    void ReceiveMessage(string user, string message);
+}
+```
+
+```ts
+connection.onServerMethod('chat.client|received', (user: string, message: string) => { /* … */ });
+```
+
+A bare name without `|` only matches a call the hub made with plain SignalR
+(`Clients.Client(id).SendAsync("Ping", …)`), not a contract call.
 
 ## Return values
 
 If the server expects a return value (`InvokeServerRequest`), return it from the handler:
 
 ```ts
-connection.onServerMethod('GetClientName', () => {
+connection.onServerMethod('MyApp.Contracts.IChatClient|GetClientName', () => {
     return navigator.userAgent;
 });
 
-connection.onServerMethod('GetClientTime', () => {
+connection.onServerMethod('MyApp.Contracts.IChatClient|GetClientTime', () => {
     return new Date().toISOString();
 });
 ```
@@ -33,7 +65,7 @@ The return value is sent back to the server automatically via SignalR's native c
 Handlers can be async:
 
 ```ts
-connection.onServerMethod('FetchData', async (url: string) => {
+connection.onServerMethod('MyApp.Contracts.IChatClient|FetchData', async (url: string) => {
     const response = await fetch(url);
     return await response.json();
 });
@@ -49,9 +81,9 @@ const connection = HARRRConnection.create(builder => {
 });
 
 connection
-    .onServerMethod('ReceiveMessage', (user, msg) => console.log(`${user}: ${msg}`))
-    .onServerMethod('GetClientName', () => navigator.userAgent)
-    .onServerMethod('Ping', () => 'pong');
+    .onServerMethod('chat.client|received', (user, msg) => console.log(`${user}: ${msg}`))
+    .onServerMethod('chat.client|name', () => navigator.userAgent)
+    .onServerMethod('chat.client|ping', () => 'pong');
 
 await connection.start();
 ```
@@ -61,7 +93,7 @@ await connection.start();
 When the server passes a `CancellationToken` to a client method, SignalARRR converts it to an `AbortSignal` in the TypeScript handler:
 
 ```ts
-connection.onServerMethod('LongRunningTask', async (data: string, signal: AbortSignal) => {
+connection.onServerMethod('MyApp.Contracts.IWorkerClient|LongRunningTask', async (data: string, signal: AbortSignal) => {
     for (let i = 0; i < 100; i++) {
         if (signal.aborted) {
             throw new Error('Operation cancelled');

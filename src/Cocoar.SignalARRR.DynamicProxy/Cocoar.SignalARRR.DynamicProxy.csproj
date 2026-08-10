@@ -31,6 +31,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
+    <!-- For WireName: the naming rule has to be the same one the registration side applies. -->
+    <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
   </ItemGroup>
 
 </Project>

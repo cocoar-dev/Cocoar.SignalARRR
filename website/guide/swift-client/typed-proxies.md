@@ -40,20 +40,26 @@ for try await msg in try await chat.streamMessages() {
 
 ## Server-to-client handlers
 
-Register handlers for methods the server can call on the client:
+Register handlers for methods the server can call on the client. The name is the contract's **wire
+name** — `interface|method` — and it is matched exactly; a handler that does not match is not an
+error, the call is simply dropped. See [Contract Wire Names](/guide/server/contracts-wire-names).
 
 ```swift
-await connection.onServerMethod("ReceiveMessage") { args in
+await connection.onServerMethod("MyApp.Contracts.IChatClient|ReceiveMessage") { args in
     let user = args[0] as! String
     let message = args[1] as! String
     print("\(user): \(message)")
     return AnyCodable(nilLiteral: ())
 }
 
-await connection.onServerMethod("GetClientName") { _ in
+await connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { _ in
     return AnyCodable(stringLiteral: UIDevice.current.name)
 }
 ```
+
+If the contract declares its own names with `[MessageName]`, use those instead — for
+`[MessageName("chat.client")]` on the interface and `[MessageName("received")]` on the member, the
+name is `"chat.client|received"`.
 
 Handlers return `AnyCodable` — a type-erased wrapper that supports all JSON-serializable types.
 

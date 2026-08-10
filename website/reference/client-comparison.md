@@ -271,13 +271,15 @@ connection.RegisterInterface<IChatClient, ChatClientImpl>(new ChatClientImpl());
 ```
 
 ```ts [TypeScript]
-connection.onServerMethod('ReceiveMessage', (user, message) => {
+// The contract's wire name: the .NET clients resolve the interface for you, TypeScript and Swift
+// address it directly. See /guide/server/contracts-wire-names
+connection.onServerMethod('MyApp.Contracts.IChatClient|ReceiveMessage', (user, message) => {
     console.log(`${user}: ${message}`);
 });
 ```
 
 ```swift [Swift]
-await connection.onServerMethod("ReceiveMessage") { args in
+await connection.onServerMethod("MyApp.Contracts.IChatClient|ReceiveMessage") { args in
     print("\(args[0]): \(args[1])")
     return AnyCodable.nil
 }

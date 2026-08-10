@@ -61,7 +61,8 @@ world ending even if the server never sends an explicit cancellation.
 On the TypeScript client, `CancellationToken` parameters are converted to `AbortSignal`:
 
 ```ts
-connection.onServerMethod('ProcessData', async (data: string, signal: AbortSignal) => {
+// The contract's wire name, not the bare method name — see /guide/server/contracts-wire-names
+connection.onServerMethod('MyApp.Contracts.IWorkerClient|ProcessData', async (data: string, signal: AbortSignal) => {
     for (let i = 0; i < 100; i++) {
         if (signal.aborted) {
             throw new Error('Cancelled');

@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Text;
 using Cocoar.SignalARRR.SourceGenerator.Model;
 
@@ -24,7 +24,7 @@ internal static class ProxyEmitter {
         sb.AppendLine($"internal partial class {info.ProxyClassName} : global::{info.FullName}");
         sb.AppendLine("{");
         sb.AppendLine("    private readonly ProxyCreatorHelper _helper;");
-        sb.AppendLine($"    private const string Prefix = \"{info.FullName}\";");
+        sb.AppendLine($"    private const string Prefix = \"{info.WireName}\";");
         sb.AppendLine();
         sb.AppendLine($"    public {info.ProxyClassName}(ProxyCreatorHelper helper) => _helper = helper;");
 
@@ -70,7 +70,7 @@ internal static class ProxyEmitter {
             ? "new string[] { " + string.Join(", ", method.TypeParameterNames.Select(tp => $"typeof({tp}).FullName!")) + " }"
             : "Array.Empty<string>()";
 
-        var methodNameExpr = $"Prefix + \"|{method.Name}\"";
+        var methodNameExpr = $"Prefix + \"|{method.WireName}\"";
 
         switch (method.ReturnCategory) {
             case ReturnTypeCategory.Void:

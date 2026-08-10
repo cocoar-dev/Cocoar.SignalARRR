@@ -28,7 +28,9 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
             args = args ?? Array.Empty<object>();
 
-            var methodName = $"{_interfaceType.FullName}|{targetMethod.Name}";
+            // The registered interface, not targetMethod.DeclaringType: an inherited contract member
+            // travels under the interface that was registered (F-7).
+            var methodName = Cocoar.SignalARRR.Common.WireName.For(_interfaceType, targetMethod);
             var returnType = targetMethod.ReturnType;
 
             var genericArguments = targetMethod.IsGenericMethod
