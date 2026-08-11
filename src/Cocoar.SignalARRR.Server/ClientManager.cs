@@ -39,9 +39,20 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         /// <summary>
-        /// Get a single client by connection ID.
+        /// The client with this connection ID, or <c>null</c> if this node has no such connection.
         /// </summary>
-        public ClientContext GetClientById(string id) {
+        /// <remarks>
+        /// Null-returning, and now says so. It was declared non-nullable while returning <c>null!</c>
+        /// for a miss, so a caller with nullable reference types enabled got no warning and an
+        /// unexplained <see cref="NullReferenceException"/> instead — the compiler had promised the
+        /// value could not be null.
+        /// <para>
+        /// A miss is ordinary: the connection may have dropped a moment ago, or — with a backplane —
+        /// live on another node, which this method does not see. Where that matters, the cluster
+        /// methods on <see cref="WithHub{THub}"/> answer for every node.
+        /// </para>
+        /// </remarks>
+        public ClientContext? GetClientById(string id) {
             return HARRRClientManager.GetClient(id);
         }
 

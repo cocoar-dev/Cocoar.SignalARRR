@@ -286,6 +286,12 @@ app.MapSignalARRRTest("/__test/get-client-attributes", (context, clientManager) 
     }
 
     var client = clientManager.GetClientById(connectionId);
+    if (client == null) {
+        // 404 rather than a 500 from an NRE: a test asking about a connection that is gone should
+        // read that from the answer, not from a stack trace.
+        return Results.NotFound($"No such connection: {connectionId}");
+    }
+
     var attrs = new Dictionary<string, string?>();
     foreach (var kvp in client.Attributes) {
         attrs[kvp.Key] = kvp.Value.ToString();
@@ -421,7 +427,9 @@ app.MapGet("/__test/client-groups", (HttpContext context) => {
 
     var clientManager = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.ClientManager>();
     var client = clientManager.GetClientById(connectionId);
-    return Results.Ok(client.Groups);
+    return client == null
+        ? Results.NotFound($"No such connection: {connectionId}")
+        : Results.Ok(client.Groups);
 });
 
 // Typed InvokeAllAsync — calls GetById on each client, returns all results

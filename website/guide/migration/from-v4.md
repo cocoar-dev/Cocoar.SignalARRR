@@ -129,6 +129,28 @@ The second parameter is now the error **code**, not a second message — errors 
 stable set of codes, and an application code you pass travels verbatim. Relevant only if you
 construct these yourself.
 
+### `GetClientById` is nullable now — and always could return null
+
+`ClientManager.GetClientById` was declared as returning `ClientContext` while returning `null` for a
+connection this node does not have. The signature now says so:
+
+```csharp
+// Before: compiles, throws at runtime when the client is gone.
+var user = clients.GetClientById(id).User;
+
+// After: CS8602 points at exactly that line.
+var user = clients.GetClientById(id)?.User;
+```
+
+Nothing about the runtime behaviour changed — only whether the compiler tells you. If you get new
+warnings, each one marks a place that could already throw. A miss is ordinary: the connection may
+have dropped a moment ago, or live on another node, which this method does not see. For the
+cluster-wide question use `WithHub<T>()` and its filters.
+
+`HARRR.ClientContext` is unchanged and stays non-nullable — inside a hub method the connection is
+registered by definition. Reading it before `OnConnectedAsync` has run now throws with an
+explanation instead of a bare `NullReferenceException` somewhere further along.
+
 ### `MapSignalARRRHub` returns `IHubEndpointConventionBuilder`
 
 It used to return SignalR's concrete `HubEndpointConventionBuilder`. Chaining is unchanged —

@@ -124,7 +124,13 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                         return;
                                     }
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
-                                    var client = clientManager.GetClientById(connectionId);
+                                    // Same 503-until-registered guard the transport-auth endpoints use:
+                                    // OnConnectedAsync may still be in flight when a test calls this.
+                                    var client = await TransportAuthTestServerFixture.RequireRegistered(
+                                        context, clientManager.GetClientById(connectionId));
+                                    if (client == null) {
+                                        return;
+                                    }
                                     client.UserValidUntil = DateTime.MinValue;
                                     await context.Response.WriteAsync("Expired");
                                 });

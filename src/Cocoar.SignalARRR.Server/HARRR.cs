@@ -62,7 +62,16 @@ namespace Cocoar.SignalARRR.Server {
         /// Provides access to client IP, user claims, authentication state, and custom attributes.
         /// </summary>
         public ClientContext ClientContext {
-            get => _clientContext ?? ClientManager.GetClient(Context.ConnectionId);
+            // Stays non-nullable: inside a hub method the connection is registered by definition,
+            // and making every hub author null-check this would be noise. The throw is for the one
+            // case that is genuinely wrong — reaching for it before OnConnectedAsync has registered
+            // the connection — which used to surface as a bare NullReferenceException somewhere
+            // further down.
+            get => _clientContext
+                   ?? ClientManager.GetClient(Context.ConnectionId)
+                   ?? throw new InvalidOperationException(
+                       $"No ClientContext for connection '{Context.ConnectionId}'. It exists from " +
+                       "OnConnectedAsync onwards; reading it earlier, or after the connection ended, cannot work.");
             set => _clientContext = value;
         }
 
@@ -201,13 +210,19 @@ namespace Cocoar.SignalARRR.Server {
                             exception,
                             "HARRR '{HubName}' disconnected with error - {ClientIp} (ConnectionId: {ConnectionId})",
                             GetType().Name,
-                            _logClientIpAddresses ? client.RemoteIp : null,
+                            // client is null when the connection was never registered, or when
+                            // OnDisconnectedAsync runs twice — dereferencing it threw an NRE out of
+                            // the teardown path, and the catch below rethrows.
+                            _logClientIpAddresses ? client?.RemoteIp : null,
                             Context.ConnectionId);
                     } else {
                         Logger.LogDebug(
                             "HARRR '{HubName}' disconnected - {ClientIp} (ConnectionId: {ConnectionId})",
                             GetType().Name,
-                            _logClientIpAddresses ? client.RemoteIp : null,
+                            // client is null when the connection was never registered, or when
+                            // OnDisconnectedAsync runs twice — dereferencing it threw an NRE out of
+                            // the teardown path, and the catch below rethrows.
+                            _logClientIpAddresses ? client?.RemoteIp : null,
                             Context.ConnectionId);
                     }
                 }

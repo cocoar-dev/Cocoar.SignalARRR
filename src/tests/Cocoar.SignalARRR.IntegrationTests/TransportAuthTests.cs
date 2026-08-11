@@ -241,8 +241,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                         return;
                                     }
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
-                                    var client = clientManager.GetClientById(connectionId);
-                                    if (await NotYetRegistered(context, client)) {
+                                    var client = await RequireRegistered(context, clientManager.GetClientById(connectionId));
+                                    if (client == null) {
                                         return;
                                     }
                                     client.UserValidUntil = DateTime.MinValue;
@@ -253,8 +253,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                 endpoints.MapGet("/__test/auth-mode", async context => {
                                     var connectionId = context.Request.Query["connectionId"].ToString();
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
-                                    var client = clientManager.GetClientById(connectionId);
-                                    if (await NotYetRegistered(context, client)) {
+                                    var client = await RequireRegistered(context, clientManager.GetClientById(connectionId));
+                                    if (client == null) {
                                         return;
                                     }
                                     await context.Response.WriteAsync(client.AuthMode.ToString());
@@ -264,8 +264,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                 endpoints.MapGet("/__test/client-debug", async context => {
                                     var connectionId = context.Request.Query["connectionId"].ToString();
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
-                                    var client = clientManager.GetClientById(connectionId);
-                                    if (await NotYetRegistered(context, client)) {
+                                    var client = await RequireRegistered(context, clientManager.GetClientById(connectionId));
+                                    if (client == null) {
                                         return;
                                     }
                                     var hasCert = client.ClientCertificate != null;
@@ -282,8 +282,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                 endpoints.MapGet("/__test/revalidate", async context => {
                                     var connectionId = context.Request.Query["connectionId"].ToString();
                                     var clientManager = context.RequestServices.GetRequiredService<ClientManager>();
-                                    var client = clientManager.GetClientById(connectionId);
-                                    if (await NotYetRegistered(context, client)) {
+                                    var client = await RequireRegistered(context, clientManager.GetClientById(connectionId));
+                                    if (client == null) {
                                         return;
                                     }
                                     var svc = context.RequestServices.GetService<ITransportAuthRevalidationService>();
@@ -332,14 +332,20 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         /// which is exactly what <c>GetWhenRegisteredAsync</c> polls on.
         /// </para>
         /// </remarks>
-        internal static async Task<bool> NotYetRegistered(HttpContext context, ClientContext? client) {
+        /// <para>
+        /// Returns the client rather than a bool: with <c>GetClientById</c> now correctly typed as
+        /// nullable, a <c>Task&lt;bool&gt;</c> guard tells the compiler nothing about what follows,
+        /// and the call sites would each need a <c>!</c> — putting the suppression back one line
+        /// below where it was removed.
+        /// </para>
+        internal static async Task<ClientContext?> RequireRegistered(HttpContext context, ClientContext? client) {
             if (client != null) {
-                return false;
+                return client;
             }
 
             context.Response.StatusCode = 503;
             await context.Response.WriteAsync("NotRegistered");
-            return true;
+            return null;
         }
     }
 

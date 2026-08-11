@@ -31,12 +31,14 @@ namespace Cocoar.SignalARRR.Server {
 
         }
 
-        public ClientContext UnRegister(string connectionId) {
-            return ClientStore.TryRemove(connectionId, out var client) ? client : null!;
+        public ClientContext? UnRegister(string connectionId) {
+            return ClientStore.TryRemove(connectionId, out var client) ? client : null;
         }
 
-        public ClientContext GetClient(string connectionId) {
-            return ClientStore.TryGetValue(connectionId, out var client) ? client : null!;
+        // `null`, not `null!`: a lookup miss is an ordinary outcome here, and suppressing the
+        // warning only moved the failure to whoever dereferenced the result.
+        public ClientContext? GetClient(string connectionId) {
+            return ClientStore.TryGetValue(connectionId, out var client) ? client : null;
         }
 
         public IEnumerable<ClientContext> GetClients() {
