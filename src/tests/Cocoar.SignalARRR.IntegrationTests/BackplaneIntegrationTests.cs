@@ -593,6 +593,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             await connection.StartAsync(ct);
             await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connection, ct);
 
+            // The pushes are issued on node 2 for a connection that lives on node 1, so node 2 can
+            // only route them once it sees this connection in the distributed registry. This was the
+            // one cross-node test in this class that went straight from the node-1 registration wait
+            // to acting on node 2, and it lost that race on the slowest CI leg.
+            await WaitForCrossNodeVisibility(_fixture.ServerUrl2, connection, ct);
+
             try {
                 using var http = new HttpClient();
                 var connectionId = Uri.EscapeDataString(connection.ConnectionId ?? string.Empty);
