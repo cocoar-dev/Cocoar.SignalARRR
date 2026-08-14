@@ -9,8 +9,74 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # One release mechanism for stable and prerelease alike: the tag states the version, the
+  # release's "pre-release" flag states what kind it is. Everything downstream reads this job's
+  # outputs instead of re-deriving the version from the tag three times over.
+  validate-release:
+    name: Validate release version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      npm-tag: ${{ steps.v.outputs.npm-tag }}
+      docs-version: ${{ steps.v.outputs.docs-version }}
+
+    steps:
+      - name: Derive and validate version
+        id: v
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9] ]]; then
+            echo "::error ::Tag must start with 'v' (e.g. v1.2.3 or v1.2.3-beta.1). Got: $TAG"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error ::Invalid version format. Expected X.Y.Z or X.Y.Z-suffix, got: $VERSION"
+            exit 1
+          fi
+
+          # The tag and the checkbox must agree. This is the guard that makes one workflow for both
+          # kinds safe: a prerelease published without the flag would take the npm dist-tag "latest"
+          # and overwrite the stable docs, and neither is undoable.
+          if [[ "$VERSION" == *-* && "$IS_PRERELEASE" != "true" ]]; then
+            echo "::error ::$TAG carries a prerelease suffix but the release is not marked as a pre-release. Tick 'Set as a pre-release' and publish again."
+            exit 1
+          fi
+          if [[ "$VERSION" != *-* && "$IS_PRERELEASE" == "true" ]]; then
+            echo "::error ::The release is marked as a pre-release but $TAG has no prerelease suffix. Use a suffix such as v${VERSION}-beta.1, or untick the flag."
+            exit 1
+          fi
+
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            NPM_TAG="prerelease"
+            # A prerelease publishes its docs under the full version. Truncating to major.minor
+            # would overwrite the stable line's docs with a beta. Shelf keeps "latest" on the
+            # highest stable version, so this shows up in the version list without becoming the
+            # default (Cocoar.Shelf ManifestService: latest = highest stable, fallback prerelease).
+            DOCS_VERSION="v${VERSION}"
+          else
+            NPM_TAG="latest"
+            DOCS_VERSION="v$(echo "$VERSION" | cut -d. -f1).$(echo "$VERSION" | cut -d. -f2)"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "npm-tag=$NPM_TAG" >> $GITHUB_OUTPUT
+          echo "docs-version=$DOCS_VERSION" >> $GITHUB_OUTPUT
+
+          echo "### Release $TAG" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Package version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release:** $IS_PRERELEASE" >> $GITHUB_STEP_SUMMARY
+          echo "**npm dist-tag:** $NPM_TAG" >> $GITHUB_STEP_SUMMARY
+          echo "**Docs version:** $DOCS_VERSION" >> $GITHUB_STEP_SUMMARY
+
   test-multiplatform:
     name: Test on ${{ matrix.os }}
+    needs: [validate-release]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -61,6 +127,7 @@ jobs:
 
   test-swift:
     name: Test Swift package
+    needs: [validate-release]
     runs-on: macos-latest
     timeout-minutes: 30
     permissions:
@@ -83,12 +150,13 @@ jobs:
     name: Publish Packages
     if: github.event.release.target_commitish == 'develop'
     runs-on: ubuntu-latest
-    needs: [test-multiplatform, test-swift]
+    needs: [validate-release, test-multiplatform, test-swift]
     permissions:
       contents: read
     env:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      RELEASE_VERSION: ${{ needs.validate-release.outputs.version }}
     defaults:
       run:
         working-directory: src
@@ -104,21 +172,6 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-
-      - name: Extract and validate release version
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          if [[ "$TAG" =~ ^v[0-9] ]]; then
-            VERSION="${TAG#v}"
-          else
-            echo "::error ::Tag must start with 'v' (e.g., v1.2.3)"
-            exit 1
-          fi
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error ::Invalid version format. Expected X.Y.Z, got: $VERSION"
-            exit 1
-          fi
-          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -165,19 +218,25 @@ jobs:
             dotnet nuget push "$p" --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate
           done
 
+      # The dist-tag is not cosmetic: a bare `npm publish` writes "latest", so a prerelease would
+      # become what every `npm install @cocoar/signalarrr` resolves to. NuGet needs no equivalent —
+      # it reads the prerelease suffix off the version string itself.
       - name: Publish npm package
         working-directory: ./src/Cocoar.SignalARRR.Typescript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish
+          NPM_TAG: ${{ needs.validate-release.outputs.npm-tag }}
+        run: npm publish --tag "$NPM_TAG"
 
   publish-fullframework:
     name: Publish FullFramework Package
     if: github.event.release.target_commitish == 'develop'
     runs-on: windows-latest
-    needs: [test-multiplatform]
+    needs: [validate-release, test-multiplatform]
     permissions:
       contents: read
+    env:
+      RELEASE_VERSION: ${{ needs.validate-release.outputs.version }}
 
     steps:
       - name: Checkout tag
@@ -190,13 +249,6 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-
-      - name: Extract release version
-        shell: bash
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          VERSION="${TAG#v}"
-          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Test FullFramework client
         run: dotnet test src/tests/Cocoar.SignalARRR.Client.FullFramework.Tests/Cocoar.SignalARRR.Client.FullFramework.Tests.csproj -c Release --verbosity normal
@@ -215,7 +267,7 @@ jobs:
 
   deploy-docs:
     name: Deploy Documentation
-    needs: [publish, publish-fullframework]
+    needs: [validate-release, publish, publish-fullframework]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -239,23 +291,17 @@ jobs:
         working-directory: website
         run: npm run build
 
-      - name: Extract docs version
-        id: docs-version
-        run: |
-          TAG="${{ github.event.release.tag_name }}"
-          VERSION="${TAG#v}"
-          MAJOR=$(echo "$VERSION" | cut -d. -f1)
-          MINOR=$(echo "$VERSION" | cut -d. -f2)
-          echo "value=v${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
-
       - name: Package
         run: cd website/.vitepress/dist && zip -r $GITHUB_WORKSPACE/docs.zip .
 
+      # Stable docs land on the major.minor line (v5.0); a prerelease lands on its full version
+      # (v5.0.0-beta.1), so it never overwrites the stable line. Shelf accepts both — its default
+      # version pattern allows a prerelease suffix — and keeps "latest" on the highest stable one.
       - name: Upload to Shelf
         env:
           KEY: ${{ secrets.SHELF_API_KEY }}
           URL: ${{ secrets.SHELF_BASE_URL }}
-          VER: ${{ steps.docs-version.outputs.value }}
+          VER: ${{ needs.validate-release.outputs.docs-version }}
         run: |
           echo "Deploying signalarrr docs $VER to $URL"
           curl -f -X POST \
@@ -269,4 +315,4 @@ jobs:
           echo "### Documentation Deployed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Product:** signalarrr" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.docs-version.outputs.value }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.validate-release.outputs.docs-version }}" >> $GITHUB_STEP_SUMMARY
