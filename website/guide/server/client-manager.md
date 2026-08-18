@@ -270,11 +270,34 @@ Each `ClientContext` provides detailed information about the connected client:
 | `Id` | `string` | Connection ID |
 | `RemoteIp` | `IPAddress?` | Client's IP address |
 | `User` | `ClaimsPrincipal` | Authenticated user claims |
+| `UserIdentifier` | `string?` | SignalR's user identifier, or the principal's name identifier |
+| `AuthMode` | `AuthenticationMode` | How this connection authenticates — see [Authorization](/guide/server/authorization) |
+| `ClientCertificate` | `X509Certificate2?` | The certificate presented at the TLS handshake, if any |
 | `ConnectedAt` | `DateTime` | Connection timestamp |
 | `ReconnectedAt` | `List<DateTime>` | Reconnection history |
 | `Groups` | `IReadOnlyCollection<string>` | SignalR groups this client belongs to |
 | `Attributes` | `ClientAttributes` | Custom key-value storage |
 | `ConnectedTo` | `Uri` | Hub URL |
+
+### Dropping a connection
+
+`Abort()` closes the connection. Use it when you learn out-of-band that a client should no longer be
+connected — a revoked session, a decommissioned device — rather than letting each of its calls fail
+while the socket stays up:
+
+```csharp
+foreach (var client in _clients.WithHub<AppHub>().LocalClients())
+{
+    if (await _sessions.IsRevokedAsync(client.UserIdentifier))
+        client.Abort();
+}
+```
+
+Safe to call more than once, and after the connection has already gone. Note `LocalClients()` — a
+connection can only be aborted by the node holding it.
+
+Re-validation can reach the same outcome from inside the authorization pipeline by returning
+`RevalidationResult.Abort()`; see [Authorization](/guide/server/authorization).
 
 ## Custom client attributes
 
