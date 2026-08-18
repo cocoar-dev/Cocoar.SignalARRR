@@ -291,14 +291,14 @@ For full control over transport-auth re-validation, implement `ITransportAuthRev
 ```csharp
 public class MyRevalidationService : ITransportAuthRevalidationService
 {
-    public async Task<bool> RevalidateAsync(
+    public async Task<RevalidationResult> RevalidateAsync(
         ClientContext clientContext,
         CancellationToken cancellationToken = default)
     {
         if (clientContext.ClientCertificate != null)
         {
             // Check your internal revocation database, OCSP responder, etc.
-            return await CheckCertificateStatus(clientContext.ClientCertificate);
+            return await CheckCertificateStatus(clientContext.ClientCertificate);  // bool converts
         }
 
         // Non-cert transport auth (cookies, Negotiate)
