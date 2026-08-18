@@ -182,7 +182,24 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             });
         }
 
+        /// <summary>
+        /// Configures the same credential twice on purpose: SignalR's provider authenticates the
+        /// connection, SignalARRR's authenticates each message. They are separate settings — the
+        /// second used to be taken from the first by reflecting into SignalR's private fields — and
+        /// handing one credential to both is the common case.
+        /// </summary>
         private HARRRConnection CreateConnectionWithTokenProvider(Func<Task<string?>> tokenProvider) {
+            return HARRRConnection.Create(
+                builder => {
+                    builder.WithUrl($"{_fixture.ServerUrl}/signalr/authtesthub", options => {
+                        options.AccessTokenProvider = tokenProvider;
+                    });
+                },
+                options => options.WithAuthorization(async () => await tokenProvider() ?? string.Empty));
+        }
+
+        /// <summary>A connection that authenticates only its transport, with no per-message credential.</summary>
+        private HARRRConnection CreateConnectionWithTransportTokenOnly(Func<Task<string?>> tokenProvider) {
             return HARRRConnection.Create(builder => {
                 builder.WithUrl($"{_fixture.ServerUrl}/signalr/authtesthub", options => {
                     options.AccessTokenProvider = tokenProvider;
@@ -249,7 +266,29 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             Assert.Equal("AuthMethodNameAsync", result2);
 
             // Token provider was called at least twice (initial + challenge refresh)
-            Assert.True(callCount >= 2, $"Expected AccessTokenProvider to be called at least 2 times, was called {callCount} times");
+            Assert.True(callCount >= 2, $"Expected the authorization provider to be called at least 2 times, was called {callCount} times");
+        }
+
+        [Fact]
+        public async Task TokenChallenge_WithoutAMessageCredential_IsRejected() {
+            // The breaking half of separating the two credentials. A transport token authenticates
+            // the connection at negotiate and nothing after that: it is checked once, and the
+            // principal it produced is cached. When that cache expires the server needs fresh
+            // material, which on the ordinary call path can only come from the message — and this
+            // connection sends none, because SignalARRR no longer helps itself to SignalR's
+            // provider. Configure WithAuthorization to make this connection keep working.
+            var ct = TestContext.Current.CancellationToken;
+            _connection = CreateConnectionWithTransportTokenOnly(() => Task.FromResult<string?>("transport-only"));
+            await _connection.StartAsync(ct);
+
+            var typedClient = _connection.GetTypedMethods<ITestServerMethods>();
+            Assert.Equal("AuthMethodNameAsync", await typedClient.GetNameAsync());
+
+            using var http = new HttpClient();
+            await http.PostAsync(
+                $"{_fixture.ServerUrl}/__test/expire-auth-cache?connectionId={_connection.ConnectionId}", null, ct);
+
+            await Assert.ThrowsAnyAsync<Exception>(async () => await typedClient.GetNameAsync());
         }
 
         [Fact]

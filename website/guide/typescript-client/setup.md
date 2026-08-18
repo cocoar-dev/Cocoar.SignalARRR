@@ -124,19 +124,40 @@ The server must also have MessagePack enabled (`.AddMessagePackProtocol()`). Bot
 
 ## Authentication
 
-Provide a token factory through SignalR's connection options. It may be synchronous or `async` — the client awaits it before every call, and the resolved token travels with each message:
+There are two credentials, and they are configured separately:
 
 ```ts
-const connection = HARRRConnection.create(builder => {
-    builder.withUrl('https://localhost:5001/apphub', {
-        accessTokenFactory: async () => await getAuthToken(),
-    });
-});
+const connection = HARRRConnection.create(
+    builder => {
+        builder.withUrl('https://localhost:5001/apphub', {
+            // SignalR's — authenticates the connection: negotiate and transport.
+            accessTokenFactory: async () => await getAuthToken(),
+        });
+    },
+    {
+        // SignalARRR's — authenticates each message, answers a challenge, and carries the
+        // file transfers.
+        authorization: async () => await getAuthToken(),
+    },
+);
 ```
 
-Token challenges are handled automatically — when the server detects an expired token, it sends a `ChallengeAuthentication` message, and the client calls `accessTokenFactory()` to get a fresh token.
+| | Configured with | Checked by |
+|---|---|---|
+| **Connection** | SignalR's `accessTokenFactory` | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping |
+| **Message** | SignalARRR's `authorization` | `[Authorize]` on a method or a `ServerMethods` class |
 
-A failing factory surfaces where the call does: `invoke()` and `send()` reject, and `stream()` reports the error to the subscriber — the stream is opened only once the token is in hand.
+Usually it is one credential, so you pass the same factory to both — as above. They are separate because they answer different questions, and because they are not always the same thing: a single-use connection ticket belongs on the connection and has no business being resent with every message.
+
+`authorization` may be synchronous, `async`, or a plain string. The client awaits it before every call.
+
+Token challenges are handled automatically — when the server detects an expired token, it sends a `ChallengeAuthentication` message, and the client calls `authorization()` to get a fresh one. That is also what keeps a connection working past the server's auth cache (`AuthCacheDuration`, three minutes by default): without `authorization`, a client authenticated only at the transport is rejected once the cache expires.
+
+A failing factory surfaces where the call does: `invoke()` and `send()` reject, and `stream()` reports the error to the subscriber — the stream is opened only once the credential is in hand.
+
+::: warning Changed in 5.0.0
+The client used to take the message credential from SignalR's `accessTokenFactory` automatically, by reading private fields off the connection. It no longer does. If your client authenticates with a token, add `authorization` — otherwise calls start failing once the server's auth cache expires.
+:::
 
 ## Connection events
 

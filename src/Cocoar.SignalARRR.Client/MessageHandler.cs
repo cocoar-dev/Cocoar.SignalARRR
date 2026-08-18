@@ -36,7 +36,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public async Task<string?> ChallengeAuthentication(ServerRequestMessage message) {
-            return await _connectionContext.AccessTokenProvider();
+            return await _connectionContext.AuthorizationProvider();
         }
 
         /// <summary>
@@ -80,7 +80,7 @@ namespace Cocoar.SignalARRR.Client {
             content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
             using var request = await FileTransferHttp.AuthorizeAsync(
                 new HttpRequestMessage(HttpMethod.Post, uploadUrl) { Content = content },
-                _connectionContext.AccessTokenProvider);
+                _connectionContext.AuthorizationProvider);
             var response = await httpClient.SendAsync(request);
             response.EnsureSuccessStatusCode();
 

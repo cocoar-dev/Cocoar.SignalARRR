@@ -27,19 +27,40 @@ var connection = HARRRConnection.Create(hubConnection);
 
 ### Token-based (Bearer, JWT)
 
-Pass a token factory through SignalR's `WithUrl` options:
+There are two credentials, and they are configured separately:
 
 ```csharp
-var connection = HARRRConnection.Create(builder =>
-{
-    builder.WithUrl("https://localhost:5001/apphub", options =>
+var connection = HARRRConnection.Create(
+    builder =>
     {
-        options.AccessTokenProvider = () => Task.FromResult(GetCurrentToken());
+        builder.WithUrl("https://localhost:5001/apphub", options =>
+        {
+            // SignalR's — authenticates the connection: negotiate and transport.
+            options.AccessTokenProvider = () => Task.FromResult(GetCurrentToken());
+        });
+    },
+    options =>
+    {
+        // SignalARRR's — authenticates each message, answers a challenge, and carries the
+        // file transfers.
+        options.WithAuthorization(() => Task.FromResult(GetCurrentToken()));
     });
-});
 ```
 
-The token is sent with every SignalARRR request and automatically refreshed when the server challenges an expired token.
+| | Configured with | Checked by |
+|---|---|---|
+| **Connection** | SignalR's `AccessTokenProvider` | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping |
+| **Message** | SignalARRR's `WithAuthorization` | `[Authorize]` on a method or a `ServerMethods` class |
+
+Usually it is one credential, so you pass the same factory to both — as above. They are separate because they answer different questions, and because they are not always the same thing: a single-use connection ticket belongs on the connection and has no business being resent with every message.
+
+The message credential is what a challenge refreshes: when the server's auth cache expires it asks for fresh material, and `WithAuthorization` is what provides it. Without it, a connection authenticated only at the transport works until the cache expires (`AuthCacheDuration`, three minutes by default) and is rejected after that — unless its credentials are transport-level, see below.
+
+::: warning Changed in 5.0.0
+SignalARRR used to take the message credential from SignalR's `AccessTokenProvider` automatically, by reflecting into two levels of its private fields. It no longer does. If your client authenticates with a token, add `WithAuthorization` — otherwise calls start failing once the server's auth cache expires.
+:::
+
+`WithAuthorization` also accepts a `Func<string>` or a plain `string` for a credential that does not change.
 
 ### Certificate-based (mTLS)
 
