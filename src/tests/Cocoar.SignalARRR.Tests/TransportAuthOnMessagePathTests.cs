@@ -110,7 +110,7 @@ public class TransportAuthOnMessagePathTests {
         return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
     }
 
-    private static SignalARRRAuthentication Authentication() {
+    private static IServiceProvider Services() {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAuthentication("Probe").AddScheme<ProbeOptions, ProbeHandler>("Probe", _ => { });
@@ -118,8 +118,11 @@ public class TransportAuthOnMessagePathTests {
         // The probe certificate is self-signed, so chain building would fail before the question
         // under test is reached. Certificate validity itself is covered by TransportAuthRevalidationTests.
         services.AddSingleton(new SignalARRRServerOptions { CustomCertificateValidator = _ => true });
-        return new SignalARRRAuthentication(services.BuildServiceProvider());
+        // No ClientContextDispatcher on purpose — see StreamingContextWithoutADispatcher.
+        return services.BuildServiceProvider();
     }
+
+    private static SignalARRRAuthentication Authentication() => new(Services());
 
     private static MethodInfo ProtectedMethod() => typeof(Guarded).GetMethod(nameof(Guarded.Method))!;
 
@@ -238,6 +241,55 @@ public class TransportAuthOnMessagePathTests {
         var result = await Authentication().Authorize(context, "a-token", ProtectedMethod());
 
         Assert.True(result.Succeeded);
+    }
+
+    // ---- a client with nothing to give is asked once, not per element ------------------------
+
+    private class ProbeHub : HARRR {
+        public ProbeHub(IServiceProvider serviceProvider) : base(serviceProvider) { }
+    }
+
+    /// <remarks>
+    /// The service provider handed to the context has no <c>ClientContextDispatcher</c> registered,
+    /// so resolving one throws. That is the assertion: reaching the challenge at all is observable,
+    /// without having to stand up a hub context to count round trips.
+    /// </remarks>
+    private static ClientContext StreamingContextWithoutADispatcher() {
+        var context = ContextWith("Bearer", AuthenticationMode.MessageLevel);
+        SetPrivate(context, "<ServiceProvider>k__BackingField", Services());
+        SetPrivate(context, "<HARRRType>k__BackingField", typeof(ProbeHub));
+        return context;
+    }
+
+    [Fact]
+    public async Task The_first_expired_element_challenges_the_client() {
+        var context = StreamingContextWithoutADispatcher();
+
+        await Assert.ThrowsAnyAsync<Exception>(() => context.TryAuthenticate(ProtectedMethod()));
+    }
+
+    [Fact]
+    public async Task A_client_that_answered_with_nothing_is_not_challenged_again() {
+        // Per streamed element this was a round trip each, once the fallback stopped the empty
+        // answer from killing the stream outright.
+        var context = StreamingContextWithoutADispatcher();
+        SetPrivate(context, "_clientHasNoCredentialToGive", true);
+
+        var result = await context.TryAuthenticate(ProtectedMethod());
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void A_credential_arriving_later_makes_the_client_worth_asking_again() {
+        var context = StreamingContextWithoutADispatcher();
+        SetPrivate(context, "_clientHasNoCredentialToGive", true);
+
+        context.SetPrincipal(PrincipalWith("Bearer"));
+
+        Assert.False((bool)typeof(ClientContext)
+            .GetField("_clientHasNoCredentialToGive", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(context)!);
     }
 
     // ---- cookies are opt-in ------------------------------------------------------------------
