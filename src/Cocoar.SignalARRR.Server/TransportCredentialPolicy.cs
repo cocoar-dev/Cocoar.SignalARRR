@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
@@ -34,7 +35,13 @@ namespace Cocoar.SignalARRR.Server {
         /// revalidation then approved it against that very same cached principal — permanently,
         /// because the mode persists for the connection.
         /// </remarks>
-        public static bool IsTransportLevel(X509Certificate2? certificate, ClaimsPrincipal? user) {
+        /// <param name="additionalSchemes">
+        /// Schemes the application has declared connection-bound via
+        /// <c>SignalARRRServerOptions.ConnectionBoundSchemes</c>. Deliberately a parameter rather
+        /// than a lookup: this decision is the hinge of an escalation and stays a pure function.
+        /// </param>
+        public static bool IsTransportLevel(
+            X509Certificate2? certificate, ClaimsPrincipal? user, IReadOnlyList<string>? additionalSchemes = null) {
 
             if (certificate != null) {
                 return true;
@@ -45,8 +52,22 @@ namespace Cocoar.SignalARRR.Server {
                 return false;
             }
 
-            return Array.Exists(ConnectionBoundSchemes,
-                scheme => string.Equals(scheme, identity.AuthenticationType, StringComparison.OrdinalIgnoreCase));
+            if (Array.Exists(ConnectionBoundSchemes,
+                scheme => string.Equals(scheme, identity.AuthenticationType, StringComparison.OrdinalIgnoreCase))) {
+                return true;
+            }
+
+            if (additionalSchemes == null) {
+                return false;
+            }
+
+            for (var i = 0; i < additionalSchemes.Count; i++) {
+                if (string.Equals(additionalSchemes[i], identity.AuthenticationType, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

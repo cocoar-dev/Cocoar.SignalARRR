@@ -122,17 +122,32 @@ This happens transparently — no client-side code needed beyond providing a tok
 
 When `[Authorize]` is used without specifying a scheme (the common case), SignalARRR automatically uses the default authentication scheme configured via `AddAuthentication()`.
 
-## Transport-Level Authentication (Certificates, Cookies, Negotiate)
+## Transport-Level Authentication (Certificates, Negotiate, Cookies)
 
-For scenarios where credentials exist at the transport layer (TLS client certificates, HTTP cookies, Windows/Negotiate), SignalARRR supports **transport-level authentication**. The client authenticates once at connection time, and the server re-validates credentials server-side when the auth cache expires — no challenge round-trip needed.
+For scenarios where credentials exist at the transport layer (TLS client certificates, Windows/Negotiate, HTTP cookies), SignalARRR supports **transport-level authentication**. The client authenticates once at connection time, and the server re-validates credentials server-side when the auth cache expires — no challenge round-trip needed.
 
 ### How it works
 
 1. Client connects with transport credentials (e.g., client certificate via mTLS)
 2. ASP.NET Core authenticates during SignalR negotiate — `ClientContext.User` is set
-3. SignalARRR **auto-detects** transport-level auth (client cert present, or Negotiate/NTLM/Kerberos auth type)
+3. SignalARRR **auto-detects** transport-level auth (client cert present, or Negotiate/NTLM/Kerberos/Windows auth type)
 4. On cache expiry: server re-validates the stored credentials server-side (no challenge to client)
-5. If re-validation fails (cert expired, revoked, etc.) → request is rejected
+5. If re-validation fails (cert expired or revoked, ticket past its stated expiry) → request is rejected
+
+### Cookies and other schemes are opt-in
+
+Auto-detection covers only credentials that are unmistakably bound to the connection. A cookie identity looks exactly like a bearer identity once it has become a `ClaimsPrincipal`, and treating a bearer one as connection-bound would let a token outlive its own expiry — so SignalARRR does not guess. Declare the scheme instead:
+
+```csharp
+builder.Services.AddSignalARRR(options =>
+{
+    options.ConnectionBoundSchemes.Add(CookieAuthenticationDefaults.AuthenticationScheme);
+});
+```
+
+Adding a scheme is a statement that the credential lasts as long as the connection. Without it, a cookie-authenticated client is treated as message-level: it is challenged for a token once `AuthCacheDuration` has passed, has none to give, and every `[Authorize]` call is rejected from that point on.
+
+Re-validation of a declared scheme checks the expiry stated on the principal's ticket. To check more than that — a session store lookup, for instance — register an `ITransportAuthRevalidationService`.
 
 ### Client certificate authentication
 
