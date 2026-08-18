@@ -137,7 +137,19 @@ The FullFramework client (`Cocoar.SignalARRR.Client.FullFramework`) has near-ful
 
 SignalARRR wraps SignalR's standard hub protocol. All communication flows through a small set of well-defined hub methods (`InvokeMessage`, `InvokeMessageResult`, `StreamMessage`, etc.) that carry typed payloads. The source generator produces proxy classes that serialize interface method calls into these messages — no runtime reflection needed.
 
-This means SignalARRR is **fully backward-compatible** with standard SignalR clients. You can mix SignalARRR and raw SignalR clients on the same hub.
+A hub therefore stays an ordinary SignalR hub, and a raw SignalR client can share it with SignalARRR ones. What a raw client can do is worth being precise about, because "compatible" is easy to over-read:
+
+**It can** connect — nothing is required of a client at connection time; call methods declared directly on the hub, as ordinary SignalR methods; and drive the SignalARRR protocol by hand, since the hub method names are constants and the payload is plain JSON with PascalCase fields:
+
+```js
+connection.invoke("InvokeMessageResult", {
+    Method: "Alerts.List", Arguments: [], Authorization: ""
+});
+```
+
+**It has to bring its own** handling for everything the SignalARRR clients do for it: typed proxies, the `interface|method` dispatch names, cancellation token references (`__type: "cancellationToken"`), stream references over HTTP, and the four server-to-client handlers — `InvokeServerRequest`, `InvokeServerMessage`, `ChallengeAuthentication`, `CancelTokenFromServer`. Without the last one it cannot answer an authentication challenge, which a `[Authorize]`-gated stream will eventually send.
+
+Note also that a method reached the raw way is authorized by SignalR against the connection's principal, while the same method reached through `InvokeMessageResult` is authorized by SignalARRR against the message credential. Both checks apply; they simply consult different credentials.
 
 ## Next steps
 
