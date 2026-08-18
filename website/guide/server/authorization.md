@@ -116,6 +116,8 @@ When a client's token expires during an active connection, SignalARRR doesn't di
 
 **On an ordinary call**, there is. Every client-to-server message already carries the credential in its `Authorization` field, so the server simply validates that one against the configured scheme and continues — no round trip, nothing for the client to do beyond having configured a credential.
 
+That validation runs against a context built for the purpose, since a message over an open socket is not an HTTP request. It carries the credential **and the connection's own request facts** — host, scheme, path, and the `HttpContext.Items` your middleware stamped before authentication ran — captured when the connection was established. So a handler that resolves anything from where the request arrived, a per-tenant issuer set being the common case, works per message exactly as it did at negotiate.
+
 **On a running stream**, there is not. Authorization is re-checked for every streamed element, and those elements are not messages the client sends — so the server has to ask:
 
 1. Server detects the cached authentication has expired while the stream is running
@@ -170,6 +172,37 @@ builder.Services.AddSignalARRR(options =>
 ```
 
 Adding a scheme is a statement that the credential lasts as long as the connection. What it buys you is **active re-validation**: once the cache lapses the server runs `ITransportAuthRevalidationService` for that connection rather than falling back to the principal it negotiated with.
+
+```csharp
+public class SessionRevalidation : ITransportAuthRevalidationService
+{
+    public async Task<RevalidationResult> RevalidateAsync(
+        ClientContext client, CancellationToken cancellationToken = default)
+    {
+        var session = await _sessions.LookupAsync(client.UserIdentifier, cancellationToken);
+
+        if (session is null || session.Revoked)
+            return RevalidationResult.Abort();          // refuse, and drop the connection
+
+        if (session.ExpiresAt < DateTimeOffset.UtcNow)
+            return RevalidationResult.Deny();           // refuse this call, leave the socket up
+
+        return RevalidationResult.ValidForDuration(TimeSpan.FromSeconds(30));
+    }
+}
+```
+
+Three things it can say:
+
+| | Meaning |
+|---|---|
+| `Valid()` / `ValidForDuration(...)` | the credential holds; the duration overrides `AuthCacheDuration` for this connection, which is how one hub can re-check a reference token every few seconds and a browser cookie every few minutes |
+| `Deny()` | refuse this call, leave the connection open |
+| `Abort()` | refuse it **and drop the connection** — for a push connection, a client that believes it is connected while the server serves it nothing is worse than a client that knows it is gone |
+
+Returning a `bool` still works and means `Valid()` or `Deny()`.
+
+`ClientContext.Abort()` is public, so an application that learns a credential died outside this pipeline — a background watchdog, a revocation webhook — can drop the connection itself. It is safe to call more than once and after the connection has already gone.
 
 Without it a cookie client is not broken — it takes the fallback described above and keeps working on its negotiated principal, with that principal's stated expiry enforced. Declaring the scheme is what lets you check more than an `exp` claim: a session store lookup, a revocation list, whatever your `ITransportAuthRevalidationService` implements. The built-in one checks the ticket's expiry, and the certificate chain when there is a certificate.
 

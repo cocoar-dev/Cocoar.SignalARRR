@@ -288,7 +288,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                                     }
                                     var svc = context.RequestServices.GetService<ITransportAuthRevalidationService>();
                                     var svcType = svc?.GetType().Name ?? "null";
-                                    var result = svc != null ? await svc.RevalidateAsync(client) : false;
+                                    // Reported as the boolean this endpoint has always reported: the
+                                    // service speaks RevalidationResult now, whose ToString is the type name.
+                                    var revalidation = svc != null
+                                        ? await svc.RevalidateAsync(client)
+                                        : RevalidationResult.Deny();
+                                    var result = revalidation.Outcome == RevalidationOutcome.Valid;
                                     await context.Response.WriteAsync($"Service={svcType}, Result={result}");
                                 });
 

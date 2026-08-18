@@ -47,6 +47,46 @@ namespace Cocoar.SignalARRR.Server {
 
         internal IServiceProvider ServiceProvider { get; }
 
+        /// <summary>
+        /// Where this connection arrived, captured at connect time. Replayed onto the synthetic
+        /// context that per-message authentication and policy evaluation run against, so a handler
+        /// that worked at negotiate keeps working per message.
+        /// </summary>
+        internal ConnectionRequestSnapshot? RequestSnapshot { get; }
+
+        /// <summary>
+        /// Creates a scope for work that outlives the request this connection was established by.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="ServiceProvider"/> is that request's scope, and re-authentication resolves
+        /// scoped services from it — <c>IAuthenticationService</c> among them — minutes or hours
+        /// later. It does work: the connect request's scope stays alive for the connection, long
+        /// polling included, which is asserted by <c>LongPollingTransportTests</c>. But it is a
+        /// lifetime nobody promised us. The factory itself is a singleton, so holding it is safe, and
+        /// a scope taken from it is rooted in the application container rather than in a request.
+        /// </remarks>
+        internal IServiceScopeFactory ScopeFactory { get; } = null!;
+
+        private readonly Action? _abort;
+
+        /// <summary>
+        /// Drops this connection. Safe to call more than once and after it has already gone.
+        /// </summary>
+        /// <remarks>
+        /// The library had no way to do this at all, so an application that learned a session was
+        /// revoked could only refuse each call and leave the socket up — a client that believes it
+        /// is connected while the server serves it nothing. Captured from the
+        /// <see cref="HubCallerContext"/> at connect time, because that is the only place it is
+        /// offered.
+        /// </remarks>
+        public void Abort() {
+            try {
+                _abort?.Invoke();
+            } catch (ObjectDisposedException) {
+                // The connection is already gone, which is the state the caller wanted.
+            }
+        }
+
         public Uri ConnectedTo { get; }
 
 
@@ -64,8 +104,11 @@ namespace Cocoar.SignalARRR.Server {
 
         public ClientContext(HARRR hub, HubCallerContext hubCallerContext) {
             Id = hubCallerContext.ConnectionId;
+            _abort = hubCallerContext.Abort;
             var httpContext = hubCallerContext.GetHttpContext()!;
             ServiceProvider = httpContext.RequestServices;
+            ScopeFactory = ServiceProvider.GetRequiredService<IServiceScopeFactory>();
+            RequestSnapshot = new ConnectionRequestSnapshot(httpContext);
             User = hubCallerContext.User ?? new ClaimsPrincipal();
             UserIdentifier = ResolveUserIdentifier(hubCallerContext.UserIdentifier, User);
             HARRRType = hub.GetType();
@@ -124,7 +167,8 @@ namespace Cocoar.SignalARRR.Server {
         /// revalidate again, and for a client certificate that means chain building — potentially
         /// CRL/OCSP network I/O — on the dispatch hot path.
         /// </remarks>
-        internal void ExtendAuthCache() => UserValidUntil = DateTime.UtcNow.Add(_authCacheDuration);
+        internal void ExtendAuthCache(TimeSpan? validFor = null) =>
+            UserValidUntil = DateTime.UtcNow.Add(validFor ?? _authCacheDuration);
 
         internal void SetPrincipal(ClaimsPrincipal claimsPrincipal) {
             // Reached only by validating a credential the client sent, so it evidently has one now.
@@ -210,21 +254,28 @@ namespace Cocoar.SignalARRR.Server {
                 AuthMode = AuthenticationMode.MessageLevel;
             }
 
-            var authentication = new SignalARRRAuthentication(ServiceProvider);
+            using var scope = ScopeFactory.CreateScope();
+            var authentication = new SignalARRRAuthentication(scope.ServiceProvider);
             return await authentication.Authorize(this, res, methodInfo);
         }
 
         private async Task<PolicyAuthorizationResult> RevalidateTransportAuth(MethodInfo methodInfo) {
-            var revalidationService = ServiceProvider.GetService<ITransportAuthRevalidationService>()
-                ?? new DefaultTransportAuthRevalidationService(ServiceProvider);
+            using var scope = ScopeFactory.CreateScope();
+            var revalidationService = scope.ServiceProvider.GetService<ITransportAuthRevalidationService>()
+                ?? new DefaultTransportAuthRevalidationService(scope.ServiceProvider);
 
-            if (await revalidationService.RevalidateAsync(this)) {
-                // Revalidation succeeded — extend cache
-                ExtendAuthCache();
+            var result = await revalidationService.RevalidateAsync(this);
+
+            if (result.Outcome == RevalidationOutcome.Valid) {
+                ExtendAuthCache(result.ValidFor);
 
                 // Run policy evaluation with the existing principal
-                var authentication = new SignalARRRAuthentication(ServiceProvider);
+                var authentication = new SignalARRRAuthentication(scope.ServiceProvider);
                 return await authentication.AuthorizeWithPrincipal(this, methodInfo);
+            }
+
+            if (result.Outcome == RevalidationOutcome.Abort) {
+                Abort();
             }
 
             // Revalidation failed — credentials are no longer valid
