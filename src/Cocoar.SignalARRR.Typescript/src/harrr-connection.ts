@@ -9,14 +9,12 @@ import { CancellationManager } from './cancellation-manager.js';
 
 export class HARRRConnection {
   private _hubConnection: signalR.HubConnection;
-  // SignalR's contract is `() => string | Promise<string>`, and every OAuth-backed application
-  // returns the promise. Typing the field as synchronous did not make it so: the promise itself was
-  // serialised into `ClientRequestMessage.Authorization`, arrived as `{}`, and the server — where
-  // the field is a `string` — failed to bind the whole message. Every invoke, send and stream on
-  // that connection died with "Error binding arguments", while server-to-client calls kept working
-  // because they carry no such message. Both .NET clients and the Swift client await the token on
-  // every send path; this one now does too.
-  private _accessTokenFactory: () => string | Promise<string> = () => '';
+  // The credential SignalARRR sends, as opposed to the one SignalR sends. Set through
+  // HARRRConnectionOptions.authorization; see the note there for why it is no longer adopted from
+  // the transport. Awaited on every path: SignalR's contract allows a promise, every OAuth-backed
+  // application returns one, and serialising the promise itself put `{}` on the wire, which the
+  // server — where the field is a string — could not bind.
+  private _authorization: () => string | Promise<string> = () => '';
   private _serverRequestHandlers = new Map<string, (...args: unknown[]) => unknown>();
   private _serverStreamHandlers = new Map<string, (...args: unknown[]) => AsyncIterable<unknown>>();
   private _cancellationManager = new CancellationManager();
@@ -53,22 +51,21 @@ export class HARRRConnection {
     this._hubConnection.keepAliveIntervalInMilliseconds = value;
   }
 
-  constructor(hubConnection: signalR.HubConnection, _options?: HARRRConnectionOptions) {
+  constructor(hubConnection: signalR.HubConnection, options?: HARRRConnectionOptions) {
     this._hubConnection = hubConnection;
 
-    const conn = (hubConnection as unknown as Record<string, unknown>)['connection'] as Record<string, unknown> | undefined;
-    const factory =
-      (conn?.['_options'] as Record<string, unknown> | undefined)?.['accessTokenFactory'] ??
-      conn?.['_accessTokenFactory'];
-    if (typeof factory === 'function') {
-      this._accessTokenFactory = factory as () => string | Promise<string>;
+    const authorization = options?.authorization;
+    if (typeof authorization === 'function') {
+      this._authorization = authorization;
+    } else if (typeof authorization === 'string') {
+      this._authorization = () => authorization;
     }
 
     // Native client results — return values are sent back to the server automatically by SignalR.
     // A promise is fine here without awaiting it ourselves: SignalR awaits the return value of a
     // client-result handler before completing the invocation.
     this._hubConnection.on('ChallengeAuthentication', (req: ServerRequestMessage) => {
-      return this._accessTokenFactory();
+      return this._authorization();
     });
 
     this._hubConnection.on('InvokeServerRequest', async (req: ServerRequestMessage) => {
@@ -252,7 +249,7 @@ export class HARRRConnection {
 
   /** Resolves the token factory, sync or async, to the string the message field expects. */
   private async _resolveAuthorization(): Promise<string> {
-    return (await this._accessTokenFactory()) ?? '';
+    return (await this._authorization()) ?? '';
   }
 
   private async _buildRequest(methodName: string, args: unknown[]): Promise<ClientRequestMessage> {

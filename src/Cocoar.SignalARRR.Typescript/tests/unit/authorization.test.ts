@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as signalR from '@microsoft/signalr';
 import { HARRRConnection } from '../../src/harrr-connection.js';
+import { HARRRConnectionOptions } from '../../src/harrr-connection-options.js';
 import type { ClientRequestMessage } from '../../src/models/client-request-message.js';
 import { resolveStreamReference, transferAuthHeaders } from '../../src/models/stream-reference.js';
 
@@ -18,14 +19,13 @@ interface Frame {
   args: unknown[];
 }
 
-function createStub(accessTokenFactory?: unknown) {
+function createStub(authorization?: unknown) {
   const frames: Frame[] = [];
   const handlers = new Map<string, (...args: any[]) => any>();
   const subscribers: signalR.IStreamSubscriber<unknown>[] = [];
   let innerDisposals = 0;
 
   const stub = {
-    connection: { _options: accessTokenFactory ? { accessTokenFactory } : {} },
     on(name: string, handler: (...args: any[]) => any) {
       handlers.set(name, handler);
     },
@@ -52,7 +52,10 @@ function createStub(accessTokenFactory?: unknown) {
   };
 
   return {
-    connection: new HARRRConnection(stub as unknown as signalR.HubConnection),
+    connection: new HARRRConnection(
+      stub as unknown as signalR.HubConnection,
+      { authorization } as HARRRConnectionOptions,
+    ),
     frames,
     handlers,
     subscribers,
@@ -122,7 +125,7 @@ describe('other shapes of accessTokenFactory', () => {
     expect(messageOf(frames[0]!).Authorization).toBe(TOKEN);
   });
 
-  it('sends an empty string when there is no factory', async () => {
+  it('sends an empty string when nothing is configured', async () => {
     const { connection, frames } = createStub();
 
     await connection.invoke('Alerts.List');
@@ -145,6 +148,38 @@ describe('other shapes of accessTokenFactory', () => {
 
     await expect(connection.invoke('Alerts.List')).rejects.toThrow('token endpoint unreachable');
     expect(frames).toHaveLength(0);
+  });
+});
+
+describe("the credential is SignalARRR's own, not the transport's", () => {
+  it('accepts a plain string for a credential that does not change', async () => {
+    const { connection, frames } = createStub(TOKEN);
+
+    await connection.invoke('Alerts.List');
+
+    expect(messageOf(frames[0]!).Authorization).toBe(TOKEN);
+  });
+
+  it("does not adopt SignalR's accessTokenFactory", async () => {
+    // It used to, by reading private fields off the connection — so a credential meant for the
+    // transport alone was resent with every message, and the two could never be told apart.
+    const stub = {
+      connection: { _options: { accessTokenFactory: () => 'transport-only' } },
+      on: () => undefined,
+      invoke: async () => 'result',
+      send: async () => undefined,
+      stream: () => ({ subscribe: () => ({ dispose: () => undefined }) }),
+    };
+    const frames: unknown[] = [];
+    stub.invoke = (async (_target: string, msg: unknown) => {
+      frames.push(msg);
+      return 'result';
+    }) as never;
+
+    const connection = new HARRRConnection(stub as unknown as signalR.HubConnection);
+    await connection.invoke('Alerts.List');
+
+    expect((frames[0] as ClientRequestMessage).Authorization).toBe('');
   });
 });
 

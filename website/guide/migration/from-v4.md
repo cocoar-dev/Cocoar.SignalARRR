@@ -46,6 +46,57 @@ longer needs `using Cocoar.SignalARRR.Server.ExtensionMethods;`.
 
 See [Client Manager](/guide/server/client-manager).
 
+### Token clients must configure the message credential
+
+*Only if your clients authenticate with a token. Certificate, Negotiate and Windows clients are unaffected.*
+
+There are two credentials in play, and they used to be one setting by accident. SignalR's
+`AccessTokenProvider` (`accessTokenFactory` in TypeScript) authenticates the **connection** — that
+is what `[Authorize]` on a hub class checks at negotiate. SignalARRR sends its own credential with
+**each message**, which is what `[Authorize]` on a method or a `ServerMethods` class checks, and what
+answers a challenge when the server's auth cache expires.
+
+The clients used to fill the second from the first by reflecting into SignalR's private fields.
+They no longer do, so say it explicitly. Usually that means handing the same factory to both:
+
+```csharp
+// Before
+var connection = HARRRConnection.Create(builder =>
+{
+    builder.WithUrl(url, o => o.AccessTokenProvider = () => Task.FromResult(GetToken()));
+});
+
+// After
+var connection = HARRRConnection.Create(
+    builder =>
+    {
+        builder.WithUrl(url, o => o.AccessTokenProvider = () => Task.FromResult(GetToken()));
+    },
+    options => options.WithAuthorization(() => Task.FromResult(GetToken())));
+```
+
+```ts
+// After — TypeScript
+const connection = HARRRConnection.create(
+    builder => builder.withUrl(url, { accessTokenFactory: () => getToken() }),
+    { authorization: () => getToken() },
+);
+```
+
+**How you notice if you miss it:** the connection still opens and the first calls still succeed,
+because the server caches the principal it authenticated at negotiate. Once `AuthCacheDuration`
+passes — three minutes by default — calls start failing as unauthorized. So test past that window,
+or set the cache duration low while you check.
+
+**Why it is worth the change:** the two credentials are not always the same. A single-use connection
+ticket belongs on the connection and has no business being resent with every message — which is what
+the old behaviour did, with no way to stop it short of reaching into the client's private state. And
+the reflection it relied on was reading field names that are not API; the TypeScript half of it had
+already produced a silent wire bug in this release.
+
+The .NET Framework client always took its provider explicitly and needs no change. Swift takes one on
+`HARRRConnection.create` and now has a separate one on `SignalRWebSocketClient` for the connection.
+
 ### The entry points moved to the conventional namespaces
 
 Registration and endpoint mapping now live where the rest of ASP.NET Core puts them. If your `using`

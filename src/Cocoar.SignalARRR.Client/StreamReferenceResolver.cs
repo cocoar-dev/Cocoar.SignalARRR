@@ -23,7 +23,7 @@ namespace Cocoar.SignalARRR.Client {
             var uri = ValidateUri();
             var httpClient = new HttpClient();
             using var request = await FileTransferHttp.AuthorizeAsync(
-                new HttpRequestMessage(HttpMethod.Get, uri), _connectionContext.AccessTokenProvider);
+                new HttpRequestMessage(HttpMethod.Get, uri), _connectionContext.AuthorizationProvider);
             var res = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             res.EnsureSuccessStatusCode();
             return await res.Content.ReadAsStreamAsync();
@@ -37,7 +37,7 @@ namespace Cocoar.SignalARRR.Client {
             var uri = ValidateUri();
             using var httpClient = new HttpClient();
             using var request = await FileTransferHttp.AuthorizeAsync(
-                new HttpRequestMessage(HttpMethod.Get, uri), _connectionContext.AccessTokenProvider);
+                new HttpRequestMessage(HttpMethod.Get, uri), _connectionContext.AuthorizationProvider);
             using var res = await httpClient.SendAsync(request);
             res.EnsureSuccessStatusCode();
             return await res.Content.ReadAsByteArrayAsync();

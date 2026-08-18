@@ -86,16 +86,18 @@ builder.Services.AddAuthorization(options =>
 
 #### .NET Client
 
-Provide a token factory when creating the connection:
+Provide the credential twice: SignalR's `AccessTokenProvider` authenticates the connection, SignalARRR's `WithAuthorization` authenticates each message and answers a challenge. Usually it is the same credential.
 
 ```csharp
-var connection = HARRRConnection.Create(builder =>
-{
-    builder.WithUrl("https://localhost:5001/apphub", options =>
+var connection = HARRRConnection.Create(
+    builder =>
     {
-        options.AccessTokenProvider = () => Task.FromResult(GetCurrentToken());
-    });
-});
+        builder.WithUrl("https://localhost:5001/apphub", options =>
+        {
+            options.AccessTokenProvider = () => Task.FromResult(GetCurrentToken());
+        });
+    },
+    options => options.WithAuthorization(() => Task.FromResult(GetCurrentToken())));
 ```
 
 #### TypeScript Client
@@ -114,7 +116,7 @@ When a client's token expires during an active connection, SignalARRR doesn't di
 
 1. Server detects the cached authentication has expired
 2. Server sends `ChallengeAuthentication` to the client (via SignalR's native client results)
-3. Client's `AccessTokenProvider` is called to get a fresh token
+3. Client's message credential (`WithAuthorization`, `authorization`, `accessTokenFactory` — see the client guides) is called to get a fresh token
 4. Client returns the new token directly from the handler
 5. Server validates the new token against the configured authentication scheme and continues the request
 
@@ -201,8 +203,8 @@ var connection = HARRRConnection.Create(builder =>
 });
 ```
 
-::: tip No token provider needed
-When using transport-level auth, do **not** set `AccessTokenProvider`. SignalARRR automatically detects that the client uses transport-level credentials and re-validates server-side instead of sending a challenge.
+::: tip No token needed
+With transport-level auth, neither credential is required: SignalARRR detects that the client is authenticated by the connection and re-validates server-side instead of asking it for a token. `WithAuthorization` is what a token-authenticated client needs; a certificate-authenticated one does not.
 :::
 
 ### Certificate re-validation
@@ -281,8 +283,8 @@ public class AppHub : HARRR
 }
 ```
 
-- Client A connects with `AccessTokenProvider` → message-level auth, challenge on expiry
-- Client B connects with client certificate → transport-level auth, server-side re-validation
+- Client A connects with a token and `WithAuthorization` → message-level auth, credential resent per call, challenge on expiry
+- Client B connects with a client certificate → transport-level auth, server-side re-validation, no credential in the message
 
 ## Auth cache
 
