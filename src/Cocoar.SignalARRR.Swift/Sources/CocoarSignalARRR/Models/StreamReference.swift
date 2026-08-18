@@ -33,12 +33,35 @@ public enum StreamReferenceError: Error, CustomStringConvertible {
 /// Resolves `StreamReference` values by downloading their content.
 public enum StreamReferenceResolver {
 
+    /// Builds the request for a file-transfer URL, carrying the connection's credential.
+    ///
+    /// `/download/{id}` and `/upload/{id}` are ordinary HTTP endpoints: they carry the hub's
+    /// authorization requirements but not its connection, so nothing authenticates them unless the
+    /// request does. A bare request meant a hub with `[Authorize]` answered 401 to every stream
+    /// argument and every stream return value.
+    ///
+    /// The `Bearer` convention matches the server's: a credential without a space is a bearer token,
+    /// one with a space carries its own scheme.
+    public static func authorizedRequest(url: URL, authorization: String?) -> URLRequest {
+        var request = URLRequest(url: url)
+        guard let credential = authorization, !credential.isEmpty else {
+            return request
+        }
+        let value = credential.contains(" ") ? credential : "Bearer \(credential)"
+        request.setValue(value, forHTTPHeaderField: "Authorization")
+        return request
+    }
+
     /// Download the full content buffered in memory.
-    public static func resolve(_ ref: StreamReference) async throws -> Data {
+    public static func resolve(_ ref: StreamReference, authorization: String? = nil) async throws -> Data {
         let url = try validatedURL(ref)
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(
+                for: authorizedRequest(url: url, authorization: authorization))
+            try check(response)
             return data
+        } catch let error as StreamReferenceError {
+            throw error
         } catch {
             throw StreamReferenceError.downloadFailed(error.localizedDescription)
         }
@@ -46,13 +69,27 @@ public enum StreamReferenceResolver {
 
     /// Download as an async byte stream — for large files, avoids buffering in memory.
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
-    public static func resolveAsStream(_ ref: StreamReference) async throws -> URLSession.AsyncBytes {
+    public static func resolveAsStream(
+        _ ref: StreamReference, authorization: String? = nil
+    ) async throws -> URLSession.AsyncBytes {
         let url = try validatedURL(ref)
         do {
-            let (bytes, _) = try await URLSession.shared.bytes(from: url)
+            let (bytes, response) = try await URLSession.shared.bytes(
+                for: authorizedRequest(url: url, authorization: authorization))
+            try check(response)
             return bytes
+        } catch let error as StreamReferenceError {
+            throw error
         } catch {
             throw StreamReferenceError.downloadFailed(error.localizedDescription)
+        }
+    }
+
+    /// A rejected download used to be indistinguishable from an empty one — the status was never read.
+    private static func check(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else { return }
+        guard (200..<300).contains(http.statusCode) else {
+            throw StreamReferenceError.downloadFailed("HTTP \(http.statusCode)")
         }
     }
 

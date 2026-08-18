@@ -22,7 +22,10 @@ namespace Cocoar.SignalARRR.Client {
         public async Task<Stream> ProcessStreamArgument() {
             var uri = ValidateUri();
             var httpClient = new HttpClient();
-            var res = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead);
+            using var request = await FileTransferHttp.AuthorizeAsync(
+                new HttpRequestMessage(HttpMethod.Get, uri), _connectionContext.AccessTokenProvider);
+            var res = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            res.EnsureSuccessStatusCode();
             return await res.Content.ReadAsStreamAsync();
         }
 
@@ -32,8 +35,12 @@ namespace Cocoar.SignalARRR.Client {
         /// </summary>
         public async Task<byte[]> ProcessStreamArgumentBuffered() {
             var uri = ValidateUri();
-            var httpClient = new HttpClient();
-            return await httpClient.GetByteArrayAsync(uri);
+            using var httpClient = new HttpClient();
+            using var request = await FileTransferHttp.AuthorizeAsync(
+                new HttpRequestMessage(HttpMethod.Get, uri), _connectionContext.AccessTokenProvider);
+            using var res = await httpClient.SendAsync(request);
+            res.EnsureSuccessStatusCode();
+            return await res.Content.ReadAsByteArrayAsync();
         }
 
         private Uri ValidateUri() {

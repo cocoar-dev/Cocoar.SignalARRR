@@ -74,6 +74,15 @@ public struct ReconnectPolicy: Sendable {
 public final class SignalRWebSocketClient: @unchecked Sendable {
 
     private let url: String
+    /// Authenticates the connection itself — the negotiate request and the transport URL.
+    ///
+    /// This client used to take no credential at all: negotiate went out as a bare request and the
+    /// transport URL carried only the connection token, so the connection was always anonymous. A
+    /// hub with `[Authorize]` rejected it at `/negotiate` with 401, and it worked only against hubs
+    /// that declare authorization on their methods, where SignalARRR's own per-message credential
+    /// carries it. That is a different thing from `HARRRConnection.accessTokenFactory`, which
+    /// authenticates each message; pass the same factory to both if they are the same credential.
+    private let accessTokenFactory: (@Sendable () async -> String)?
     private let serverTimeout: TimeInterval
     private let keepAliveInterval: TimeInterval
     private let handshakeTimeout: TimeInterval
@@ -99,6 +108,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
     public init(
         url: String,
         hubProtocol: HubProtocolKind = .json,
+        accessTokenFactory: (@Sendable () async -> String)? = nil,
         serverTimeout: TimeInterval = 30,
         keepAliveInterval: TimeInterval = 15,
         handshakeTimeout: TimeInterval = 15,
@@ -107,6 +117,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         logLevel: SignalRLogLevel = .info
     ) {
         self.url = url
+        self.accessTokenFactory = accessTokenFactory
         self.hubProtocolKind = hubProtocol
         self.hubProtocol = hubProtocol == .messagepack ? MessagePackHubProtocol() : JsonHubProtocol()
         self.serverTimeout = serverTimeout
@@ -325,6 +336,13 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         }
         var request = URLRequest(url: negotiateUrl)
         request.httpMethod = "POST"
+        // Negotiate is an ordinary HTTP request, so the credential travels as a header here. The
+        // transport URL below cannot do that portably and uses the `access_token` query instead,
+        // which is the convention SignalR itself uses for WebSocket and SSE.
+        if let credential = await accessTokenFactory?(), !credential.isEmpty {
+            let value = credential.contains(" ") ? credential : "Bearer \(credential)"
+            request.setValue(value, forHTTPHeaderField: "Authorization")
+        }
         // Fast-fail instead of hanging on the OS-level connect timeout (~30s). This surfaces
         // unreachable endpoints quickly — notably `localhost` resolving to IPv6 (::1) against an
         // IPv4-only server, where there is no Happy-Eyeballs fallback for the WebSocket upgrade.
@@ -358,10 +376,11 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         serverTransports: [String],
         connectionToken: String
     ) async throws -> (any SignalRTransport, TransportType) {
+        let accessToken = await accessTokenFactory?()
         for preferred in allowedTransports {
             if serverTransports.isEmpty || serverTransports.contains(preferred.rawValue) {
                 guard let transportURL = TransportFactory.transportURL(
-                    base: url, connectionToken: connectionToken, type: preferred
+                    base: url, connectionToken: connectionToken, type: preferred, accessToken: accessToken
                 ) else { continue }
 
                 guard let transport = TransportFactory.create(

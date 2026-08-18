@@ -406,8 +406,12 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
                 var streamReference = _serializer.TryConvertTo<StreamReference>(argument);
                 if (streamReference != null && !string.IsNullOrEmpty(streamReference.Uri)) {
                     var httpClient = new HttpClient();
-                    var res = await httpClient.GetAsync(new Uri(streamReference.Uri), HttpCompletionOption.ResponseHeadersRead);
-                    return await res.Content.ReadAsStreamAsync();
+                    using (var request = await FileTransferHttp.AuthorizeAsync(
+                        new HttpRequestMessage(HttpMethod.Get, new Uri(streamReference.Uri)), _accessTokenProvider)) {
+                        var res = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                        res.EnsureSuccessStatusCode();
+                        return await res.Content.ReadAsStreamAsync();
+                    }
                 }
             }
 
@@ -474,8 +478,11 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
                     using (var httpClient = new HttpClient()) {
                         using (var content = new StreamContent(stream)) {
                             content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-                            var response = await httpClient.PostAsync(uploadUrl, content);
-                            response.EnsureSuccessStatusCode();
+                            using (var request = await FileTransferHttp.AuthorizeAsync(
+                                new HttpRequestMessage(HttpMethod.Post, uploadUrl) { Content = content }, _accessTokenProvider)) {
+                                var response = await httpClient.SendAsync(request);
+                                response.EnsureSuccessStatusCode();
+                            }
                         }
                     }
 
@@ -491,8 +498,11 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             using (var httpClient = new HttpClient()) {
                 using (var content = new StreamContent(stream)) {
                     content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-                    var response = await httpClient.PostAsync(uploadUrl, content);
-                    response.EnsureSuccessStatusCode();
+                    using (var request = await FileTransferHttp.AuthorizeAsync(
+                        new HttpRequestMessage(HttpMethod.Post, uploadUrl) { Content = content }, _accessTokenProvider)) {
+                        var response = await httpClient.SendAsync(request);
+                        response.EnsureSuccessStatusCode();
+                    }
                 }
             }
 

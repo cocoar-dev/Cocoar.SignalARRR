@@ -60,10 +60,19 @@ namespace Cocoar.SignalARRR.Server {
                             return PolicyAuthorizationResult.Forbid();
                         }
 
-                        // Re-validation succeeded — set cert on synthetic context so auth handlers can find it
-                        if (clientContext.ClientCertificate != null) {
-                            ctx.Connection.ClientCertificate = clientContext.ClientCertificate;
-                        }
+                        // Revalidation *is* the authentication for a connection-bound credential, so
+                        // this returns here instead of falling through to the scheme loop below.
+                        //
+                        // Falling through re-authenticated from scratch against the synthetic context
+                        // built above, which carries nothing from the connection's original request —
+                        // no cookie, no Negotiate handshake, no header. Only a client certificate
+                        // survived, because it is copied across explicitly. Everything else was denied
+                        // the moment the auth cache expired, while a stream on the same connection
+                        // kept running: the per-element re-auth goes through AuthorizeWithPrincipal,
+                        // which trusts the revalidated principal. Same credential, same connection,
+                        // two answers.
+                        clientContext.ExtendAuthCache();
+                        return await AuthorizeWithPrincipal(clientContext, methodInfo);
                     } else {
                         // Previously threw ArgumentNullException with the message passed as the
                         // parameter name, so a client whose token had simply expired got a mangled

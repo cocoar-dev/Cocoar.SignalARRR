@@ -52,6 +52,10 @@ namespace Cocoar.SignalARRR.Server {
 
         private TimeSpan _authCacheDuration;
 
+        // Read once per connection rather than per message: HasTransportLevelCredentials runs on the
+        // dispatch path and once per streamed element.
+        private IReadOnlyList<string>? _connectionBoundSchemes;
+
         public ClientContext(HARRR hub, HubCallerContext hubCallerContext) {
             Id = hubCallerContext.ConnectionId;
             var httpContext = hubCallerContext.GetHttpContext()!;
@@ -61,8 +65,9 @@ namespace Cocoar.SignalARRR.Server {
             HARRRType = hub.GetType();
 
             // Get configured auth cache duration (default: 3 minutes)
-            _authCacheDuration = ServiceProvider.GetService<SignalARRRServerOptions>()?.AuthCacheDuration
-                ?? TimeSpan.FromMinutes(3);
+            var serverOptions = ServiceProvider.GetService<SignalARRRServerOptions>();
+            _authCacheDuration = serverOptions?.AuthCacheDuration ?? TimeSpan.FromMinutes(3);
+            _connectionBoundSchemes = serverOptions?.ConnectionBoundSchemes;
 
             // If the user was already authenticated during SignalR negotiate (hub has [Authorize]),
             // initialize the cache so the first method call doesn't trigger an unnecessary challenge.
@@ -104,6 +109,16 @@ namespace Cocoar.SignalARRR.Server {
         internal void AddGroup(string groupName) => _groups.Add(groupName);
         internal void RemoveGroup(string groupName) => _groups.Remove(groupName);
 
+
+        /// <summary>
+        /// Marks the cached authentication good for another <c>AuthCacheDuration</c>.
+        /// </summary>
+        /// <remarks>
+        /// Called after a successful transport-level revalidation. Without it every message would
+        /// revalidate again, and for a client certificate that means chain building — potentially
+        /// CRL/OCSP network I/O — on the dispatch hot path.
+        /// </remarks>
+        internal void ExtendAuthCache() => UserValidUntil = DateTime.UtcNow.Add(_authCacheDuration);
 
         internal void SetPrincipal(ClaimsPrincipal claimsPrincipal) {
             this.User = claimsPrincipal ?? new ClaimsPrincipal();
@@ -176,7 +191,7 @@ namespace Cocoar.SignalARRR.Server {
 
             if (await revalidationService.RevalidateAsync(this)) {
                 // Revalidation succeeded — extend cache
-                UserValidUntil = DateTime.UtcNow.Add(_authCacheDuration);
+                ExtendAuthCache();
 
                 // Run policy evaluation with the existing principal
                 var authentication = new SignalARRRAuthentication(ServiceProvider);
@@ -192,7 +207,7 @@ namespace Cocoar.SignalARRR.Server {
         /// to a message. See <see cref="TransportCredentialPolicy"/>.
         /// </summary>
         internal bool HasTransportLevelCredentials() =>
-            TransportCredentialPolicy.IsTransportLevel(ClientCertificate, User);
+            TransportCredentialPolicy.IsTransportLevel(ClientCertificate, User, _connectionBoundSchemes);
 
         private AuthenticationMode DetectAuthenticationMode() {
             if (HasTransportLevelCredentials()) {

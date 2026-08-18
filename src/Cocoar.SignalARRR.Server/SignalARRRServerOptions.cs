@@ -20,6 +20,29 @@ namespace Cocoar.SignalARRR.Server {
         public TimeSpan AuthCacheDuration { get; set; } = TimeSpan.FromMinutes(3);
 
         /// <summary>
+        /// Authentication schemes to treat as bound to the connection, in addition to the built-in
+        /// set (Negotiate, NTLM, Kerberos, Windows, Certificate). Empty by default.
+        /// </summary>
+        /// <remarks>
+        /// A connection-bound credential is revalidated server-side when the auth cache expires, and
+        /// the client is never challenged for a token. That is only sound when the credential really
+        /// does live as long as the connection, because revalidation can do no more than ask the
+        /// cached principal — plus the expiry stated on its ticket, which is always enforced.
+        /// <para>
+        /// <c>"Cookies"</c> is the case this exists for. A cookie is genuinely established at
+        /// connection time and there is no per-message credential to send, but SignalARRR cannot
+        /// tell it apart from a bearer identity by inspection, and assuming the wrong one is how a
+        /// bearer token escaped its own expiry in an earlier version. So it is your declaration to
+        /// make, not ours to guess: adding a scheme here says its lifetime is the connection's.
+        /// </para>
+        /// <para>
+        /// Register an <see cref="ITransportAuthRevalidationService"/> to check more than the ticket
+        /// expiry — a session store lookup, for instance.
+        /// </para>
+        /// </remarks>
+        public List<string> ConnectionBoundSchemes { get; } = new List<string>();
+
+        /// <summary>
         /// Whether to check certificate revocation (CRL/OCSP) during transport-level auth revalidation.
         /// Default: true.
         /// </summary>

@@ -146,7 +146,9 @@ public final class HARRRConnection: @unchecked Sendable {
                 // what was registered here, and two token parameters could not be cancelled apart.
                 args.append(cancellationRef.id)
             } else if let streamRef = isStreamReference(anyCodable.value) {
-                let data = try await StreamReferenceResolver.resolve(streamRef)
+                // The endpoint carries the hub's authorization, so the request has to carry the credential.
+                let data = try await StreamReferenceResolver.resolve(
+                    streamRef, authorization: await accessTokenFactory())
                 args.append(data)
             } else {
                 args.append(anyCodable.value)
@@ -164,7 +166,9 @@ public final class HARRRConnection: @unchecked Sendable {
             throw StreamReferenceError.downloadFailed("Invalid upload URL: \(uploadUrl)")
         }
 
-        var request = URLRequest(url: url)
+        // The endpoint carries the hub's authorization, so the request has to carry the credential.
+        var request = StreamReferenceResolver.authorizedRequest(
+            url: url, authorization: await accessTokenFactory())
         request.httpMethod = "POST"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.httpBody = data
@@ -249,9 +253,14 @@ public final class HARRRConnection: @unchecked Sendable {
         allowedTransports: [TransportType] = [.webSockets, .serverSentEvents, .longPolling],
         logLevel: SignalRLogLevel = .info
     ) async -> HARRRConnection {
+        // The same factory authenticates both the connection and each message. They are separate
+        // mechanisms — the hub's own [Authorize] is checked at negotiate, a method's [Authorize] per
+        // message — and this convenience overload assumes one credential covers both. Build the
+        // client yourself to give them different ones.
         let client = SignalRWebSocketClient(
             url: url,
             hubProtocol: hubProtocol,
+            accessTokenFactory: accessTokenFactory,
             serverTimeout: serverTimeout,
             keepAliveInterval: keepAliveInterval,
             handshakeTimeout: handshakeTimeout,

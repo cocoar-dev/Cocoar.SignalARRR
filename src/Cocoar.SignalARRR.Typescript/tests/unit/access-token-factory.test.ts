@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import * as signalR from '@microsoft/signalr';
 import { HARRRConnection } from '../../src/harrr-connection.js';
 import type { ClientRequestMessage } from '../../src/models/client-request-message.js';
+import { resolveStreamReference, transferAuthHeaders } from '../../src/models/stream-reference.js';
 
 /**
  * The field on the wire is a `string`. A factory that returns a promise — which is what every
@@ -247,5 +248,51 @@ describe('outgoing arguments on the stream path', () => {
     expect(frames[0]!.target).toBe('RequestUploadSlot');
     const message = messageOf(frames.find(f => f.target === 'StreamMessage')!);
     expect(message.Arguments[0]).toEqual({ Uri: 'https://host/hub/upload/slot-1' });
+  });
+});
+
+describe('file transfer credentials', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('builds a Bearer header from a bare token and passes a scheme through verbatim', () => {
+    // Mirrors the server, which prefixes 'Bearer ' only when the credential carries no scheme.
+    expect(transferAuthHeaders('abc')).toEqual({ Authorization: 'Bearer abc' });
+    expect(transferAuthHeaders('Basic dXNlcjpwdw==')).toEqual({ Authorization: 'Basic dXNlcjpwdw==' });
+    expect(transferAuthHeaders(undefined)).toEqual({});
+    expect(transferAuthHeaders('')).toEqual({});
+  });
+
+  it('sends the credential when downloading a stream reference', async () => {
+    // The endpoint carries the hub's [Authorize], so a bare fetch got 401 and the argument never
+    // reached the handler.
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      requests.push({ url, init });
+      return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) };
+    }) as unknown as typeof fetch;
+
+    await resolveStreamReference({ Uri: 'https://host/hub/download/1' }, TOKEN);
+
+    expect((requests[0]!.init!.headers as Record<string, string>)['Authorization']).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it('sends the credential when uploading, and surfaces a rejected upload', async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      requests.push({ url, init });
+      return { ok: false, status: 401, statusText: 'Unauthorized' };
+    }) as unknown as typeof fetch;
+    const { connection } = createStub(async () => TOKEN);
+
+    // The response used to be discarded, so a 401 produced a stream reference pointing at nothing.
+    await expect(connection.invoke('Alerts.Upload', new Blob(['x']))).rejects.toThrow('401');
+
+    const headers = requests[0]!.init!.headers as Record<string, string>;
+    expect(headers['Authorization']).toBe(`Bearer ${TOKEN}`);
+    expect(headers['Content-Type']).toBe('application/octet-stream');
   });
 });

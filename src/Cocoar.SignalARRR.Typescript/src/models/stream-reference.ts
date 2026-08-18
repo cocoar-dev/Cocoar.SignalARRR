@@ -25,28 +25,47 @@ export function isStreamReference(v: unknown): v is StreamReference {
   return Object.keys(obj).length === 1;
 }
 
+/**
+ * Builds the `Authorization` header for a file-transfer request.
+ *
+ * `/download/{id}` and `/upload/{id}` are ordinary HTTP endpoints: they carry the hub's
+ * authorization requirements but not its connection, so nothing authenticates them unless the
+ * request does. A bare `fetch` meant a hub with `[Authorize]` answered 401 to every stream argument
+ * and every stream return value.
+ *
+ * The `Bearer` convention matches the server's: a credential without a space is a bearer token, one
+ * with a space carries its own scheme.
+ */
+export function transferAuthHeaders(authorization?: string): Record<string, string> {
+  if (!authorization) return {};
+  return { Authorization: authorization.includes(' ') ? authorization : `Bearer ${authorization}` };
+}
+
 /** Resolve a StreamReference by downloading the data — returns the full content buffered in memory. */
-export async function resolveStreamReference(ref: StreamReference): Promise<ArrayBuffer> {
-  const response = await fetchStreamReference(ref);
+export async function resolveStreamReference(ref: StreamReference, authorization?: string): Promise<ArrayBuffer> {
+  const response = await fetchStreamReference(ref, authorization);
   return response.arrayBuffer();
 }
 
 /** Resolve a StreamReference as a ReadableStream — for large files, avoids buffering in memory. */
-export async function resolveStreamReferenceAsStream(ref: StreamReference): Promise<ReadableStream<Uint8Array>> {
-  const response = await fetchStreamReference(ref);
+export async function resolveStreamReferenceAsStream(
+  ref: StreamReference,
+  authorization?: string,
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await fetchStreamReference(ref, authorization);
   if (!response.body) {
     throw new Error('StreamReference: response has no body stream');
   }
   return response.body;
 }
 
-async function fetchStreamReference(ref: StreamReference): Promise<Response> {
+async function fetchStreamReference(ref: StreamReference, authorization?: string): Promise<Response> {
   const url = ref.Uri;
   const scheme = url.split(':')[0]?.toLowerCase();
   if (scheme !== 'http' && scheme !== 'https') {
     throw new Error(`StreamReference: unsupported URI scheme '${scheme}'`);
   }
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: transferAuthHeaders(authorization) });
   if (!response.ok) {
     throw new Error(`StreamReference: download failed (${response.status} ${response.statusText})`);
   }

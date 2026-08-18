@@ -229,7 +229,12 @@ enum TransportFactory {
     }
 
     /// Build the transport URL from the base hub URL and connection token.
-    static func transportURL(base: String, connectionToken: String, type: TransportType) -> URL? {
+    /// - Parameter accessToken: travels as the `access_token` query item, the convention SignalR
+    ///   uses for WebSocket and SSE because neither can carry a header portably. The server side of
+    ///   that convention is `UseSignalARRRAccessTokenValidation`, or JwtBearer's `OnMessageReceived`.
+    static func transportURL(
+        base: String, connectionToken: String, type: TransportType, accessToken: String? = nil
+    ) -> URL? {
         // Build via URLComponents so an existing query string on the hub URL is preserved and the
         // `id` connection token is appended as a proper query item (string concatenation produced
         // ".../hub?user=x?id=..." for a hub URL that already carried a query). URLComponents also
@@ -241,6 +246,9 @@ enum TransportFactory {
         }
         var queryItems = components.queryItems ?? []
         queryItems.append(URLQueryItem(name: "id", value: connectionToken))
+        if let accessToken, !accessToken.isEmpty {
+            queryItems.append(URLQueryItem(name: "access_token", value: accessToken))
+        }
         components.queryItems = queryItems
         return components.url
     }

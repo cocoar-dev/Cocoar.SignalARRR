@@ -19,10 +19,18 @@ namespace Cocoar.SignalARRR.Server {
         MessageLevel,
 
         /// <summary>
-        /// Transport-level authentication (client certificates, cookies, Windows/Negotiate).
+        /// Transport-level authentication (client certificates, Windows/Negotiate/NTLM/Kerberos, and
+        /// any scheme the application declares in <c>SignalARRRServerOptions.ConnectionBoundSchemes</c>
+        /// — cookies being the usual one).
         /// The client authenticates at connection time; no token is sent per message.
         /// On cache expiry, the server re-validates the stored credentials server-side.
         /// </summary>
+        /// <remarks>
+        /// Cookies are deliberately not detected automatically: a cookie identity is indistinguishable
+        /// from a bearer identity by inspection, and treating a bearer one as connection-bound is how
+        /// a token could once outlive its own expiry. Declaring the scheme is the application saying
+        /// the credential lasts as long as the connection.
+        /// </remarks>
         TransportLevel
     }
 }
