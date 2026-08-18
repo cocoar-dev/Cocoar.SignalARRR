@@ -16,7 +16,7 @@ namespace Cocoar.SignalARRR.Server {
             _options = serviceProvider.GetService<SignalARRRServerOptions>() ?? new SignalARRRServerOptions();
         }
 
-        public Task<bool> RevalidateAsync(ClientContext clientContext, CancellationToken cancellationToken = default) {
+        public Task<RevalidationResult> RevalidateAsync(ClientContext clientContext, CancellationToken cancellationToken = default) {
             if (clientContext.ClientCertificate != null) {
                 return ValidateCertificateAsync(clientContext.ClientCertificate);
             }
@@ -26,26 +26,28 @@ namespace Cocoar.SignalARRR.Server {
             // is authenticated" is tautological: it was authenticated once, and asking it again can
             // never say otherwise, so the credential's own lifetime would never be enforced.
             if (!clientContext.HasTransportLevelCredentials()) {
-                return Task.FromResult(false);
+                return Task.FromResult(RevalidationResult.Deny());
             }
 
-            return Task.FromResult(!TransportCredentialPolicy.IsExpired(clientContext.User));
+            return Task.FromResult(TransportCredentialPolicy.IsExpired(clientContext.User)
+                ? RevalidationResult.Deny()
+                : RevalidationResult.Valid());
         }
 
-        private Task<bool> ValidateCertificateAsync(X509Certificate2 cert) {
+        private Task<RevalidationResult> ValidateCertificateAsync(X509Certificate2 cert) {
             // Basic expiry check (NotAfter/NotBefore are in local time)
             var now = DateTime.Now;
             if (cert.NotAfter < now || cert.NotBefore > now) {
-                return Task.FromResult(false);
+                return Task.FromResult(RevalidationResult.Deny());
             }
 
             // Custom validator takes precedence
             if (_options.CustomCertificateValidator != null) {
-                return Task.FromResult(_options.CustomCertificateValidator(cert));
+                return Task.FromResult<RevalidationResult>(_options.CustomCertificateValidator(cert));
             }
 
             if (!_options.ValidateCertificateRevocation) {
-                return Task.FromResult(true);
+                return Task.FromResult(RevalidationResult.Valid());
             }
 
             // X509Chain is not thread-safe — create per call.
@@ -55,7 +57,7 @@ namespace Cocoar.SignalARRR.Server {
                 chain.ChainPolicy.RevocationMode = _options.CertificateRevocationMode;
                 chain.ChainPolicy.RevocationFlag = X509RevocationFlag.EndCertificateOnly;
                 chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
-                return chain.Build(cert);
+                return (RevalidationResult)chain.Build(cert);
             });
         }
     }

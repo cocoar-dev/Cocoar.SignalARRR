@@ -43,8 +43,16 @@ namespace Cocoar.SignalARRR.Server {
                 return PolicyAuthorizationResult.Success();
             }
 
+            // Carries the connection's own request facts — host, scheme, path, and the Items that
+            // middleware stamped before authentication ran. Without them an authentication handler
+            // that resolves anything from where the request arrived, a per-tenant issuer set being
+            // the usual case, has nothing to work with and fails closed.
             var ctx = new DefaultHttpContext();
             ctx.RequestServices = _serviceProvider;
+            clientContext.RequestSnapshot?.ApplyTo(ctx);
+            if (clientContext.ClientCertificate != null) {
+                ctx.Connection.ClientCertificate = clientContext.ClientCertificate;
+            }
 
             AuthenticateResult authenticateResult = AuthenticateResult.NoResult();
             if (clientContext.UserValidUntil < DateTime.UtcNow) {
@@ -56,7 +64,11 @@ namespace Cocoar.SignalARRR.Server {
                         var revalidationService = _serviceProvider.GetService<ITransportAuthRevalidationService>()
                             ?? new DefaultTransportAuthRevalidationService(_serviceProvider);
 
-                        if (!await revalidationService.RevalidateAsync(clientContext)) {
+                        var revalidation = await revalidationService.RevalidateAsync(clientContext);
+                        if (revalidation.Outcome != RevalidationOutcome.Valid) {
+                            if (revalidation.Outcome == RevalidationOutcome.Abort) {
+                                clientContext.Abort();
+                            }
                             return PolicyAuthorizationResult.Forbid();
                         }
 
@@ -71,7 +83,7 @@ namespace Cocoar.SignalARRR.Server {
                         // kept running: the per-element re-auth goes through AuthorizeWithPrincipal,
                         // which trusts the revalidated principal. Same credential, same connection,
                         // two answers.
-                        clientContext.ExtendAuthCache();
+                        clientContext.ExtendAuthCache(revalidation.ValidFor);
                         return await AuthorizeWithPrincipal(clientContext, methodInfo);
                     } else {
                         // No credential to check and none coming: the client authenticated its
@@ -168,9 +180,15 @@ namespace Cocoar.SignalARRR.Server {
                 return PolicyAuthorizationResult.Success();
             }
 
+            // Same treatment as the authentication context above: an authorization requirement that
+            // reads the HttpContext — a tenant check, a host-derived policy — saw an empty one.
             var ctx = new DefaultHttpContext();
             ctx.RequestServices = _serviceProvider;
             ctx.User = clientContext.User;
+            clientContext.RequestSnapshot?.ApplyTo(ctx);
+            if (clientContext.ClientCertificate != null) {
+                ctx.Connection.ClientCertificate = clientContext.ClientCertificate;
+            }
 
             var ticket = new AuthenticationTicket(
                 clientContext.User,

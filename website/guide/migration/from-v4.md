@@ -101,6 +101,25 @@ already produced a silent wire bug in this release.
 The .NET Framework client always took its provider explicitly and needs no change. Swift takes one on
 `HARRRConnection.create` and now has a separate one on `SignalRWebSocketClient` for the connection.
 
+### `ITransportAuthRevalidationService` returns a result, not a bool
+
+*Only if you implemented it. Most applications use the built-in one and change nothing.*
+
+```csharp
+// Before
+public Task<bool> RevalidateAsync(ClientContext c, CancellationToken ct = default)
+    => Task.FromResult(StillGood(c));
+
+// After
+public Task<RevalidationResult> RevalidateAsync(ClientContext c, CancellationToken ct = default)
+    => Task.FromResult<RevalidationResult>(StillGood(c));   // bool converts implicitly
+```
+
+The signature change is the whole migration; a `bool` still converts, meaning `Valid()` or `Deny()`.
+What the result adds is a third outcome, `Abort()`, which drops the connection instead of only
+refusing the call, and an optional validity window that overrides `AuthCacheDuration` for that
+connection. See [Authorization](/guide/server/authorization).
+
 ### The entry points moved to the conventional namespaces
 
 Registration and endpoint mapping now live where the rest of ASP.NET Core puts them. If your `using`
