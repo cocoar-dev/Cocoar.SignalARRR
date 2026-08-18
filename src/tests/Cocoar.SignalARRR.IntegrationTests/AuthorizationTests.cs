@@ -270,13 +270,13 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         [Fact]
-        public async Task TokenChallenge_WithoutAMessageCredential_IsRejected() {
-            // The breaking half of separating the two credentials. A transport token authenticates
-            // the connection at negotiate and nothing after that: it is checked once, and the
-            // principal it produced is cached. When that cache expires the server needs fresh
-            // material, which on the ordinary call path can only come from the message — and this
-            // connection sends none, because SignalARRR no longer helps itself to SignalR's
-            // provider. Configure WithAuthorization to make this connection keep working.
+        public async Task WithoutAMessageCredential_TheConnectionKeepsItsNegotiatedPrincipal() {
+            // A client that authenticates only its connection — no WithAuthorization — behaves the
+            // way it would under plain SignalR: the principal established at negotiate carries it.
+            // This used to be a flat denial once the cache expired, which caught nothing: the
+            // connection is authenticated, the principal is right there, and denying hit valid
+            // sessions exactly as hard as expired ones. The expiry a principal states is still
+            // honoured, which is more than SignalR does — see the unit tests for that half.
             var ct = TestContext.Current.CancellationToken;
             _connection = CreateConnectionWithTransportTokenOnly(() => Task.FromResult<string?>("transport-only"));
             await _connection.StartAsync(ct);
@@ -288,7 +288,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             await http.PostAsync(
                 $"{_fixture.ServerUrl}/__test/expire-auth-cache?connectionId={_connection.ConnectionId}", null, ct);
 
-            await Assert.ThrowsAnyAsync<Exception>(async () => await typedClient.GetNameAsync());
+            Assert.Equal("AuthMethodNameAsync", await typedClient.GetNameAsync());
         }
 
         [Fact]

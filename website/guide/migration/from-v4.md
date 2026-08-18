@@ -83,21 +83,14 @@ const connection = HARRRConnection.create(
 );
 ```
 
-**How you notice if you miss it:** the connection still opens and the first calls still succeed,
-because the server caches the principal it authenticated at negotiate. Once `AuthCacheDuration`
-passes — three minutes by default — calls start failing as unauthorized. So test past that window,
-or set the cache duration low while you check.
+**How you notice if you miss it:** mostly you do not, and that is deliberate. A connection that
+authenticates only its transport keeps working on the principal it negotiated with, the way it would
+under plain SignalR — the expiry stated on that principal is still enforced, so an `exp` in the past
+stops it. What you lose without a message credential is the refresh: the server can no longer catch a
+revoked credential, and cannot ask for a new one, so a long-lived connection runs on the identity it
+started with until its stated expiry.
 
-A running stream shows it worse. Authorization is re-checked per streamed element, and that is the
-one path where the server actively sends `ChallengeAuthentication`. With a message credential the
-client answers, the cache is extended and the stream carries on; without one it answers with
-nothing and the stream **dies mid-flight**, after having worked for minutes. If your application
-holds long-lived streams, this is where a missing `WithAuthorization` will find you.
-
-Note that this is stricter than plain SignalR, deliberately. There, a connection authenticated at
-negotiate stays authenticated for as long as the socket lives — a token that expired hours ago still
-gets through. SignalARRR re-checks, which is only workable because the client can hand it something
-fresh. That is what the message credential is for.
+Configure it if your tokens are short-lived and refreshed, which is the usual reason for having them.
 
 **Why it is worth the change:** the two credentials are not always the same. A single-use connection
 ticket belongs on the connection and has no business being resent with every message — which is what

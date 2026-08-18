@@ -74,11 +74,32 @@ namespace Cocoar.SignalARRR.Server {
                         clientContext.ExtendAuthCache();
                         return await AuthorizeWithPrincipal(clientContext, methodInfo);
                     } else {
-                        // Previously threw ArgumentNullException with the message passed as the
-                        // parameter name, so a client whose token had simply expired got a mangled
-                        // argument error instead of an authentication challenge -- and clients that
-                        // key off the error type to trigger a token refresh could not recognise it.
-                        return PolicyAuthorizationResult.Challenge();
+                        // No credential to check and none coming: the client authenticated its
+                        // connection and sends nothing per message.
+                        //
+                        // This used to be a flat denial, which caught nothing. Nothing was found to
+                        // be invalid — the connection is authenticated, the principal is right here,
+                        // and SignalR itself would keep honouring it for the life of the socket. The
+                        // denial hit valid sessions exactly as hard as expired ones, three minutes
+                        // in, and mid-flight for a running stream. That is an availability failure
+                        // wearing a security posture: an application that wants access to stop after
+                        // a fixed window sets AuthCacheDuration and configures a credential.
+                        //
+                        // So fall back to the principal established at connection time — but honour
+                        // the expiry it states, which SignalR does not do at all once negotiate is
+                        // past. Weaker than either configured mode, stronger than plain SignalR.
+                        // Revocation still goes unnoticed; nothing can notice it without a credential
+                        // to check.
+                        //
+                        // The cache is deliberately not extended: the expiry check is cheap, and
+                        // extending would let a token outlive its own `exp` by up to one cache
+                        // duration. An unauthenticated principal needs no special case — policy
+                        // evaluation rejects it, which is the right authority for that decision.
+                        if (TransportCredentialPolicy.IsExpired(clientContext.User)) {
+                            return PolicyAuthorizationResult.Forbid();
+                        }
+
+                        return await AuthorizeWithPrincipal(clientContext, methodInfo);
                     }
                 } else {
                     if (!authorization.Contains(" ")) {
