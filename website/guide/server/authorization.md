@@ -110,17 +110,25 @@ const connection = HARRRConnection.create(builder => {
 });
 ```
 
-### Automatic token challenge
+### When the auth cache expires
 
-When a client's token expires during an active connection, SignalARRR doesn't disconnect it. Instead, the next authorized method call triggers a **challenge flow**:
+When a client's token expires during an active connection, SignalARRR doesn't disconnect it. What happens next depends on whether there is a message to carry a fresh credential.
 
-1. Server detects the cached authentication has expired
+**On an ordinary call**, there is. Every client-to-server message already carries the credential in its `Authorization` field, so the server simply validates that one against the configured scheme and continues — no round trip, nothing for the client to do beyond having configured a credential. A client that sends none is rejected here; there is nobody to ask, because the call is already in flight.
+
+**On a running stream**, there is not. Authorization is re-checked for every streamed element, and those elements are not messages the client sends — so the server has to ask:
+
+1. Server detects the cached authentication has expired while the stream is running
 2. Server sends `ChallengeAuthentication` to the client (via SignalR's native client results)
-3. Client's message credential (`WithAuthorization`, `authorization`, `accessTokenFactory` — see the client guides) is called to get a fresh token
-4. Client returns the new token directly from the handler
-5. Server validates the new token against the configured authentication scheme and continues the request
+3. The client's message credential (`WithAuthorization`, `authorization` — see the client guides) is called
+4. Client returns the credential directly from the handler
+5. Server validates it, extends the cache, and the stream continues
 
-This happens transparently — no client-side code needed beyond providing a token factory.
+This is the only path that challenges. It happens transparently — no client-side code beyond configuring the credential — but without one the stream ends with an authorization error mid-flight.
+
+::: tip Stricter than plain SignalR, on purpose
+SignalR authenticates a connection once at negotiate and never revisits it: a token that expired hours ago keeps working until the socket drops. SignalARRR re-checks after `AuthCacheDuration`, which is only workable because the client can supply something fresh — through the message credential, or through server-side re-validation for transport-level credentials.
+:::
 
 When `[Authorize]` is used without specifying a scheme (the common case), SignalARRR automatically uses the default authentication scheme configured via `AddAuthentication()`.
 

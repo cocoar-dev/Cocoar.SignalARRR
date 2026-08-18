@@ -88,6 +88,17 @@ because the server caches the principal it authenticated at negotiate. Once `Aut
 passes — three minutes by default — calls start failing as unauthorized. So test past that window,
 or set the cache duration low while you check.
 
+A running stream shows it worse. Authorization is re-checked per streamed element, and that is the
+one path where the server actively sends `ChallengeAuthentication`. With a message credential the
+client answers, the cache is extended and the stream carries on; without one it answers with
+nothing and the stream **dies mid-flight**, after having worked for minutes. If your application
+holds long-lived streams, this is where a missing `WithAuthorization` will find you.
+
+Note that this is stricter than plain SignalR, deliberately. There, a connection authenticated at
+negotiate stays authenticated for as long as the socket lives — a token that expired hours ago still
+gets through. SignalARRR re-checks, which is only workable because the client can hand it something
+fresh. That is what the message credential is for.
+
 **Why it is worth the change:** the two credentials are not always the same. A single-use connection
 ticket belongs on the connection and has no business being resent with every message — which is what
 the old behaviour did, with no way to stop it short of reaching into the client's private state. And
