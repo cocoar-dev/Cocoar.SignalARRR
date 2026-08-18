@@ -130,6 +130,8 @@ This is the only path that challenges. It happens transparently — no client-si
 
 A client can legitimately authenticate its connection and nothing else — a certificate, a cookie, a bearer token passed only to SignalR's own `AccessTokenProvider`. When the cache expires there is nothing to validate and nothing to ask for, so SignalARRR falls back to the principal the connection was established with, exactly as SignalR would.
 
+Such a client is challenged once, answers with nothing, and is not asked again — otherwise a stream would cost a round trip per element for an answer that is never going to change. It is asked again as soon as a message does arrive carrying a credential, so a user signing in mid-connection is picked up.
+
 With one addition: **the expiry that principal states is honoured.** If it carries an `exp` claim in the past, the call is rejected. Plain SignalR never looks at `exp` again once negotiate is done, so a token that expired hours ago keeps working there until the socket drops; here it does not.
 
 That gives three levels, and none of them is weaker than SignalR:
@@ -167,9 +169,9 @@ builder.Services.AddSignalARRR(options =>
 });
 ```
 
-Adding a scheme is a statement that the credential lasts as long as the connection. Without it, a cookie-authenticated client is treated as message-level: it is challenged for a token once `AuthCacheDuration` has passed, has none to give, and every `[Authorize]` call is rejected from that point on.
+Adding a scheme is a statement that the credential lasts as long as the connection. What it buys you is **active re-validation**: once the cache lapses the server runs `ITransportAuthRevalidationService` for that connection rather than falling back to the principal it negotiated with.
 
-Re-validation of a declared scheme checks the expiry stated on the principal's ticket. To check more than that — a session store lookup, for instance — register an `ITransportAuthRevalidationService`.
+Without it a cookie client is not broken — it takes the fallback described above and keeps working on its negotiated principal, with that principal's stated expiry enforced. Declaring the scheme is what lets you check more than an `exp` claim: a session store lookup, a revocation list, whatever your `ITransportAuthRevalidationService` implements. The built-in one checks the ticket's expiry, and the certificate chain when there is a certificate.
 
 ### Client certificate authentication
 
@@ -303,8 +305,9 @@ public class AppHub : HARRR
 }
 ```
 
-- Client A connects with a token and `WithAuthorization` → message-level auth, credential resent per call, challenge on expiry
-- Client B connects with a client certificate → transport-level auth, server-side re-validation, no credential in the message
+- Client A connects with a token and `WithAuthorization` → message-level auth: the credential travels with every call and is re-validated once the cache lapses, and a running stream is challenged for a fresh one
+- Client B connects with a client certificate → transport-level auth: re-validated server-side, no credential in the message, never challenged
+- Client C connects with a token but configures no `WithAuthorization` → runs on the principal it negotiated with, with that principal's stated expiry enforced
 
 ## Auth cache
 

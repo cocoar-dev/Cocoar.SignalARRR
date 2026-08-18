@@ -54,10 +54,12 @@ var connection = HARRRConnection.Create(
 
 Usually it is one credential, so you pass the same factory to both — as above. They are separate because they answer different questions, and because they are not always the same thing: a single-use connection ticket belongs on the connection and has no business being resent with every message.
 
-The message credential is what a challenge refreshes: when the server's auth cache expires it asks for fresh material, and `WithAuthorization` is what provides it. Without it, a connection authenticated only at the transport works until the cache expires (`AuthCacheDuration`, three minutes by default) and is rejected after that — unless its credentials are transport-level, see below.
+The message credential is what keeps a long-lived connection current. It travels with every call, and it is what answers a challenge while a stream is running — so the server can re-check the credential rather than trusting the one it saw at negotiate.
+
+A connection without it is not cut off: once the server's auth cache lapses it falls back to the principal established at negotiate, the way plain SignalR would, and the expiry stated on that principal is still enforced. What you lose is the refresh — the server can no longer catch a revoked credential, and cannot ask you for a new one.
 
 ::: warning Changed in 5.0.0
-SignalARRR used to take the message credential from SignalR's `AccessTokenProvider` automatically, by reflecting into two levels of its private fields. It no longer does. If your client authenticates with a token, add `WithAuthorization` — otherwise calls start failing once the server's auth cache expires.
+SignalARRR used to take the message credential from SignalR's `AccessTokenProvider` automatically, by reflecting into two levels of its private fields. It no longer does. If your tokens are short-lived and refreshed — the usual reason for having them — add `WithAuthorization`, or the connection will run on the identity it started with until that identity's stated expiry.
 :::
 
 `WithAuthorization` also accepts a `Func<string>` or a plain `string` for a credential that does not change.

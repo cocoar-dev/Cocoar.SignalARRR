@@ -151,12 +151,14 @@ Usually it is one credential, so you pass the same factory to both — as above.
 
 `authorization` may be synchronous, `async`, or a plain string. The client awaits it before every call.
 
-Token challenges are handled automatically — when the server detects an expired token, it sends a `ChallengeAuthentication` message, and the client calls `authorization()` to get a fresh one. That is also what keeps a connection working past the server's auth cache (`AuthCacheDuration`, three minutes by default): without `authorization`, a client authenticated only at the transport is rejected once the cache expires.
+Token challenges are handled automatically — while a stream is running the server may send a `ChallengeAuthentication` message, and the client calls `authorization()` to answer it.
+
+A connection without `authorization` is not cut off: once the server's auth cache lapses it falls back to the principal established at negotiate, the way plain SignalR would, and the expiry stated on that principal is still enforced. What you lose is the refresh — the server can no longer catch a revoked credential, and cannot ask you for a new one.
 
 A failing factory surfaces where the call does: `invoke()` and `send()` reject, and `stream()` reports the error to the subscriber — the stream is opened only once the credential is in hand.
 
 ::: warning Changed in 5.0.0
-The client used to take the message credential from SignalR's `accessTokenFactory` automatically, by reading private fields off the connection. It no longer does. If your client authenticates with a token, add `authorization` — otherwise calls start failing once the server's auth cache expires.
+The client used to take the message credential from SignalR's `accessTokenFactory` automatically, by reading private fields off the connection. It no longer does. If your tokens are short-lived and refreshed — the usual reason for having them — add `authorization`, or the connection will run on the identity it started with until that identity's stated expiry.
 :::
 
 ## Connection events
