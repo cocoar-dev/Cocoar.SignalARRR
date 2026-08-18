@@ -179,14 +179,56 @@ public class TransportAuthOnMessagePathTests {
         Assert.True(result.Forbidden);
     }
 
+    // ---- no credential at all falls back to the connection's own principal ------------------
+
     [Fact]
-    public async Task A_message_level_client_without_a_token_is_still_challenged() {
+    public async Task A_client_that_sends_no_credential_keeps_the_principal_it_connected_with() {
+        // This was a flat denial, and it caught nothing: the connection is authenticated, the
+        // principal is right here, and SignalR itself would honour it for the life of the socket.
+        // Denying hit valid sessions exactly as hard as expired ones, three minutes in.
         var context = ContextWith("Bearer", AuthenticationMode.MessageLevel);
 
         var result = await Authentication().Authorize(context, string.Empty, ProtectedMethod());
 
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task The_fallback_still_honours_an_expiry_the_principal_states() {
+        // Which makes it stricter than plain SignalR, where `exp` is never looked at again once
+        // negotiate is past. A token that has actually expired stops working; one that has not, does not.
+        var expired = new Claim("exp", DateTimeOffset.UtcNow.AddHours(-1).ToUnixTimeSeconds().ToString());
+        var context = ContextWith("Bearer", AuthenticationMode.MessageLevel, extraClaims: expired);
+
+        var result = await Authentication().Authorize(context, string.Empty, ProtectedMethod());
+
         Assert.False(result.Succeeded);
-        Assert.True(result.Challenged);
+        Assert.True(result.Forbidden);
+    }
+
+    [Fact]
+    public async Task The_fallback_does_not_let_an_anonymous_connection_through() {
+        // No special case in the fallback for this: policy evaluation rejects an unauthenticated
+        // principal, which is the right authority for the decision.
+        var context = (ClientContext)RuntimeHelpers.GetUninitializedObject(typeof(ClientContext));
+        context.SetPrincipal(new ClaimsPrincipal(new ClaimsIdentity()));
+        context.AuthMode = AuthenticationMode.None;
+        context.UserValidUntil = DateTime.UtcNow.AddMinutes(-1);
+
+        var result = await Authentication().Authorize(context, string.Empty, ProtectedMethod());
+
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task The_fallback_does_not_extend_the_cache() {
+        // Extending it would let a token outlive its own `exp` by up to one cache duration. The
+        // expiry check is cheap enough to run per message.
+        var context = ContextWith("Bearer", AuthenticationMode.MessageLevel);
+
+        await Authentication().Authorize(context, string.Empty, ProtectedMethod());
+
+        Assert.True(context.UserValidUntil < DateTime.UtcNow);
     }
 
     [Fact]

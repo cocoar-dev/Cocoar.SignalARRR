@@ -114,7 +114,7 @@ const connection = HARRRConnection.create(builder => {
 
 When a client's token expires during an active connection, SignalARRR doesn't disconnect it. What happens next depends on whether there is a message to carry a fresh credential.
 
-**On an ordinary call**, there is. Every client-to-server message already carries the credential in its `Authorization` field, so the server simply validates that one against the configured scheme and continues — no round trip, nothing for the client to do beyond having configured a credential. A client that sends none is rejected here; there is nobody to ask, because the call is already in flight.
+**On an ordinary call**, there is. Every client-to-server message already carries the credential in its `Authorization` field, so the server simply validates that one against the configured scheme and continues — no round trip, nothing for the client to do beyond having configured a credential.
 
 **On a running stream**, there is not. Authorization is re-checked for every streamed element, and those elements are not messages the client sends — so the server has to ask:
 
@@ -124,11 +124,23 @@ When a client's token expires during an active connection, SignalARRR doesn't di
 4. Client returns the credential directly from the handler
 5. Server validates it, extends the cache, and the stream continues
 
-This is the only path that challenges. It happens transparently — no client-side code beyond configuring the credential — but without one the stream ends with an authorization error mid-flight.
+This is the only path that challenges. It happens transparently — no client-side code beyond configuring the credential.
 
-::: tip Stricter than plain SignalR, on purpose
-SignalR authenticates a connection once at negotiate and never revisits it: a token that expired hours ago keeps working until the socket drops. SignalARRR re-checks after `AuthCacheDuration`, which is only workable because the client can supply something fresh — through the message credential, or through server-side re-validation for transport-level credentials.
-:::
+### If the client has no credential to give
+
+A client can legitimately authenticate its connection and nothing else — a certificate, a cookie, a bearer token passed only to SignalR's own `AccessTokenProvider`. When the cache expires there is nothing to validate and nothing to ask for, so SignalARRR falls back to the principal the connection was established with, exactly as SignalR would.
+
+With one addition: **the expiry that principal states is honoured.** If it carries an `exp` claim in the past, the call is rejected. Plain SignalR never looks at `exp` again once negotiate is done, so a token that expired hours ago keeps working there until the socket drops; here it does not.
+
+That gives three levels, and none of them is weaker than SignalR:
+
+| What the client configures | On cache expiry | Catches |
+|---|---|---|
+| A message credential | validated fresh against the scheme | expiry **and** revocation |
+| A transport-level scheme (see below) | `ITransportAuthRevalidationService` — certificate chain, revocation, your own checks | whatever you check |
+| Neither | cached principal, `exp` enforced | expiry |
+
+Revocation cannot be caught in the third row: noticing it requires a credential to re-check, and there is none. If that matters, configure one of the first two.
 
 When `[Authorize]` is used without specifying a scheme (the common case), SignalARRR automatically uses the default authentication scheme configured via `AddAuthentication()`.
 
