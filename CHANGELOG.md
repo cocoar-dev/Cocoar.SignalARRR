@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **TypeScript client — an asynchronous `accessTokenFactory` broke every call the client made**: the factory was typed and called as `() => string`, although SignalR's own contract is `string | Promise<string>` and every OAuth-backed application returns the promise. Typing it away did not make it synchronous: the promise object was serialized into `ClientRequestMessage.Authorization`, arrived at the server as `{}`, and the message — whose `Authorization` is a `string` — failed to bind. Every `invoke`, `send` and `stream` on that connection died with `Error binding arguments`, which names the wrong thing entirely; server-to-client calls kept working, since they carry no such message, so the connection looked healthy and the failure read like an authorization problem in the application. The factory is now awaited on all three paths, exactly as both .NET clients and the Swift client have always done. Reported by AlertHub against 5.0.0-beta.1; it affected every published version.
+
+  Two consequences worth knowing. `stream()` still returns its `IStreamResult` synchronously, but the stream is opened only once the token is in hand, so a factory that rejects is reported to the subscriber's `error()` instead of being thrown out of `stream()` — for `invoke` and `send` it rejects the returned promise, as before. And a token challenge was never affected: SignalR awaits the return value of a client-result handler, so a promise resolved correctly there.
+
+- **TypeScript client — binary arguments were not uploaded on the stream path**: `invoke` and `send` replace a `Blob`, `ArrayBuffer` or `Buffer` argument with a stream reference and upload the bytes over HTTP, but `stream` skipped that step and sent the object raw, because the message had to be built synchronously. It now prepares its arguments like the other two, matching `PrepareStreamArguments` in the .NET client and `buildClientRequest` in the Swift one.
+
 ---
 
 ## [5.0.0]

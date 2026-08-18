@@ -124,17 +124,19 @@ The server must also have MessagePack enabled (`.AddMessagePackProtocol()`). Bot
 
 ## Authentication
 
-Provide a token factory through SignalR's connection options:
+Provide a token factory through SignalR's connection options. It may be synchronous or `async` — the client awaits it before every call, and the resolved token travels with each message:
 
 ```ts
 const connection = HARRRConnection.create(builder => {
     builder.withUrl('https://localhost:5001/apphub', {
-        accessTokenFactory: () => getAuthToken(),
+        accessTokenFactory: async () => await getAuthToken(),
     });
 });
 ```
 
 Token challenges are handled automatically — when the server detects an expired token, it sends a `ChallengeAuthentication` message, and the client calls `accessTokenFactory()` to get a fresh token.
+
+A failing factory surfaces where the call does: `invoke()` and `send()` reject, and `stream()` reports the error to the subscriber — the stream is opened only once the token is in hand.
 
 ## Connection events
 
