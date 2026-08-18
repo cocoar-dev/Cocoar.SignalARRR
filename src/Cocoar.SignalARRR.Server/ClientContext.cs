@@ -56,6 +56,12 @@ namespace Cocoar.SignalARRR.Server {
         // dispatch path and once per streamed element.
         private IReadOnlyList<string>? _connectionBoundSchemes;
 
+        /// <summary>
+        /// Set when the client answers an authentication challenge with nothing, so it is not asked
+        /// again for every subsequent streamed element. Cleared when a credential does arrive.
+        /// </summary>
+        private bool _clientHasNoCredentialToGive;
+
         public ClientContext(HARRR hub, HubCallerContext hubCallerContext) {
             Id = hubCallerContext.ConnectionId;
             var httpContext = hubCallerContext.GetHttpContext()!;
@@ -121,6 +127,9 @@ namespace Cocoar.SignalARRR.Server {
         internal void ExtendAuthCache() => UserValidUntil = DateTime.UtcNow.Add(_authCacheDuration);
 
         internal void SetPrincipal(ClaimsPrincipal claimsPrincipal) {
+            // Reached only by validating a credential the client sent, so it evidently has one now.
+            _clientHasNoCredentialToGive = false;
+
             this.User = claimsPrincipal ?? new ClaimsPrincipal();
             UserIdentifier = ResolveUserIdentifier(UserIdentifier, this.User);
 
@@ -156,10 +165,30 @@ namespace Cocoar.SignalARRR.Server {
                 return await RevalidateTransportAuth(methodInfo);
             }
 
-            // Message-level or undetermined: challenge the client for a fresh token
-            var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(HARRRType);
-            var harrrContext = (IClientContextDispatcher)ServiceProvider.GetRequiredService(hubContextType);
-            var res = await harrrContext.Challenge(Id);
+            // Message-level or undetermined: challenge the client for a fresh token — unless it has
+            // already told us it has none.
+            //
+            // A challenge is a round trip to the client, and this method runs per streamed element.
+            // A client that authenticates only its connection answers every one of them with an
+            // empty string, so asking again per element buys nothing and costs a round trip each
+            // time. It used to be self-limiting only because the empty answer killed the stream;
+            // now that the connection falls back to its negotiated principal instead, the asking
+            // would go on for as long as the stream does.
+            //
+            // Deliberately not solved by extending the auth cache here: the fallback leaves the
+            // stamp in the past on purpose, so that the expiry stated on the principal keeps being
+            // checked per element rather than once per cache duration. It is the *asking* that is
+            // wasteful, not the checking.
+            var res = string.Empty;
+            if (!_clientHasNoCredentialToGive) {
+                var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(HARRRType);
+                var harrrContext = (IClientContextDispatcher)ServiceProvider.GetRequiredService(hubContextType);
+                res = await harrrContext.Challenge(Id);
+
+                // Cleared again as soon as any message arrives carrying a credential, so a client
+                // that acquires one later — a user signing in mid-connection — is asked again.
+                _clientHasNoCredentialToGive = string.IsNullOrWhiteSpace(res);
+            }
 
             // If the challenge came back empty and the mode is still undetermined, this client may
             // be transport-authenticated and simply have no token to give.
