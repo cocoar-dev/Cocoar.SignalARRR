@@ -48,6 +48,24 @@ let connection = await HARRRConnection.create(
 
 Token challenges are handled automatically — when the server detects an expired token, the client calls `accessTokenFactory` to get a fresh token.
 
+The factory authenticates two separate things, and this overload uses it for both:
+
+- **the connection** — sent as an `Authorization` header on the negotiate request and as the `access_token` query item on the transport URL, which is what SignalR itself does for WebSocket and SSE. This is what an `[Authorize]` attribute *on the hub class* checks, and without it such a hub rejects the connection at `/negotiate` with 401.
+- **each message** — travels in `ClientRequestMessage.Authorization`. This is what `[Authorize]` on a method or a `ServerMethods` class checks, and it is what answers a token challenge.
+
+To give them different credentials, build the `SignalRWebSocketClient` yourself and pass its own factory:
+
+```swift
+let client = SignalRWebSocketClient(
+    url: "https://localhost:5001/apphub",
+    accessTokenFactory: { await connectionTicket() },   // authenticates the connection
+)
+let connection = await HARRRConnection.create(
+    client: client,
+    accessTokenFactory: { await apiToken() },           // authenticates each message
+)
+```
+
 ## All options
 
 ```swift

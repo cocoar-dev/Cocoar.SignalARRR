@@ -210,7 +210,10 @@ namespace Cocoar.SignalARRR.Client {
                     using var httpClient = new System.Net.Http.HttpClient();
                     using var content = new System.Net.Http.StreamContent(stream);
                     content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
-                    var response = await httpClient.PostAsync(uploadUrl, content);
+                    using var request = await FileTransferHttp.AuthorizeAsync(
+                        new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, uploadUrl) { Content = content },
+                        _connectionContext.AccessTokenProvider);
+                    var response = await httpClient.SendAsync(request);
                     response.EnsureSuccessStatusCode();
 
                     args[i] = new Common.RemoteReferenceTypes.StreamReference { Uri = uploadUrl };

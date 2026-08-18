@@ -2,7 +2,7 @@ import * as signalR from '@microsoft/signalr';
 import { ClientRequestMessage } from './models/client-request-message.js';
 import { ServerRequestMessage } from './models/server-request-message.js';
 import { asCancellationTokenReference } from './models/cancellation-token-reference.js';
-import { isStreamReference, resolveStreamReference } from './models/stream-reference.js';
+import { isStreamReference, resolveStreamReference, transferAuthHeaders } from './models/stream-reference.js';
 import { parseHARRRError } from './models/harrr-error.js';
 import { HARRRConnectionOptions } from './harrr-connection-options.js';
 import { CancellationManager } from './cancellation-manager.js';
@@ -127,8 +127,9 @@ export class HARRRConnection {
         // token here, and two token parameters could not be cancelled apart.
         args.push(this._cancellationManager.create(cancellationRef.Id));
       } else if (isStreamReference(arg)) {
-        // Download the stream data via HTTP and pass as ArrayBuffer
-        args.push(await resolveStreamReference(arg));
+        // Download the stream data via HTTP and pass as ArrayBuffer. The endpoint carries the hub's
+        // authorization, so the request has to carry the credential.
+        args.push(await resolveStreamReference(arg, await this._resolveAuthorization()));
       } else {
         args.push(arg);
       }
@@ -187,11 +188,20 @@ export class HARRRConnection {
     } else {
       body = String(data);
     }
-    await fetch(uploadUrl, {
+    const response = await fetch(uploadUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        ...transferAuthHeaders(await this._resolveAuthorization()),
+      },
       body,
     });
+    if (!response.ok) {
+      // Previously the response was discarded, so a rejected upload — 401 from a hub with
+      // [Authorize] being the likely one — produced a stream reference pointing at nothing, and the
+      // failure surfaced much later as an unrelated server-side error.
+      throw new Error(`StreamReference: upload failed (${response.status} ${response.statusText})`);
+    }
 
     return { Uri: uploadUrl };
   }
