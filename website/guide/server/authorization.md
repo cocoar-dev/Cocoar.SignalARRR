@@ -103,7 +103,7 @@ var connection = HARRRConnection.Create(builder =>
 ```ts
 const connection = HARRRConnection.create(builder => {
     builder.withUrl('https://localhost:5001/apphub', {
-        accessTokenFactory: () => getAuthToken(),
+        accessTokenFactory: async () => await getAuthToken(),
     });
 });
 ```

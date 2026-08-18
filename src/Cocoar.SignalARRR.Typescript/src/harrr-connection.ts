@@ -9,7 +9,14 @@ import { CancellationManager } from './cancellation-manager.js';
 
 export class HARRRConnection {
   private _hubConnection: signalR.HubConnection;
-  private _accessTokenFactory: () => string = () => '';
+  // SignalR's contract is `() => string | Promise<string>`, and every OAuth-backed application
+  // returns the promise. Typing the field as synchronous did not make it so: the promise itself was
+  // serialised into `ClientRequestMessage.Authorization`, arrived as `{}`, and the server — where
+  // the field is a `string` — failed to bind the whole message. Every invoke, send and stream on
+  // that connection died with "Error binding arguments", while server-to-client calls kept working
+  // because they carry no such message. Both .NET clients and the Swift client await the token on
+  // every send path; this one now does too.
+  private _accessTokenFactory: () => string | Promise<string> = () => '';
   private _serverRequestHandlers = new Map<string, (...args: unknown[]) => unknown>();
   private _serverStreamHandlers = new Map<string, (...args: unknown[]) => AsyncIterable<unknown>>();
   private _cancellationManager = new CancellationManager();
@@ -54,10 +61,12 @@ export class HARRRConnection {
       (conn?.['_options'] as Record<string, unknown> | undefined)?.['accessTokenFactory'] ??
       conn?.['_accessTokenFactory'];
     if (typeof factory === 'function') {
-      this._accessTokenFactory = factory as () => string;
+      this._accessTokenFactory = factory as () => string | Promise<string>;
     }
 
-    // Native client results — return values are sent back to the server automatically by SignalR
+    // Native client results — return values are sent back to the server automatically by SignalR.
+    // A promise is fine here without awaiting it ourselves: SignalR awaits the return value of a
+    // client-result handler before completing the invocation.
     this._hubConnection.on('ChallengeAuthentication', (req: ServerRequestMessage) => {
       return this._accessTokenFactory();
     });
@@ -231,35 +240,43 @@ export class HARRRConnection {
     this._hubConnection.onreconnected(callback);
   }
 
-  public async invoke<T>(methodName: string, ...args: unknown[]): Promise<T> {
+  /** Resolves the token factory, sync or async, to the string the message field expects. */
+  private async _resolveAuthorization(): Promise<string> {
+    return (await this._accessTokenFactory()) ?? '';
+  }
+
+  private async _buildRequest(methodName: string, args: unknown[]): Promise<ClientRequestMessage> {
     const preparedArgs = await this._prepareOutgoingArgs(args);
-    const msg: ClientRequestMessage = {
+    return {
       Method: methodName,
       Arguments: preparedArgs,
-      Authorization: this._accessTokenFactory(),
+      Authorization: await this._resolveAuthorization(),
     };
+  }
+
+  public async invoke<T>(methodName: string, ...args: unknown[]): Promise<T> {
+    const msg = await this._buildRequest(methodName, args);
     return this._hubConnection
       .invoke<T>('InvokeMessageResult', msg)
       .catch(err => Promise.reject(this._extractException(err)));
   }
 
   public async send(methodName: string, ...args: unknown[]): Promise<void> {
-    const preparedArgs = await this._prepareOutgoingArgs(args);
-    const msg: ClientRequestMessage = {
-      Method: methodName,
-      Arguments: preparedArgs,
-      Authorization: this._accessTokenFactory(),
-    };
+    const msg = await this._buildRequest(methodName, args);
     return this._hubConnection.send('SendMessage', msg);
   }
 
+  /**
+   * `IStreamResult` has to be handed back synchronously, but building the message is asynchronous —
+   * the token has to be awaited, and binary arguments have to be uploaded first, which this path
+   * used to skip entirely. The result is therefore deferred: it starts the real stream once the
+   * message is ready and forwards to whoever subscribed in the meantime.
+   */
   public stream<T>(methodName: string, ...args: unknown[]): signalR.IStreamResult<T> {
-    const msg: ClientRequestMessage = {
-      Method: methodName,
-      Arguments: args,
-      Authorization: this._accessTokenFactory(),
-    };
-    return this._hubConnection.stream<T>('StreamMessage', msg);
+    const pending = this._buildRequest(methodName, args).then(msg =>
+      this._hubConnection.stream<T>('StreamMessage', msg),
+    );
+    return new DeferredStreamResult<T>(pending);
   }
 
   public on(methodName: string, newMethod: (...args: any[]) => void): void {
@@ -307,6 +324,45 @@ export class HARRRConnection {
   private _extractException(error: unknown): { type: string; message: string } {
     const parsed = parseHARRRError(error);
     return { type: parsed.Type, message: parsed.Message };
+  }
+}
+
+/**
+ * An `IStreamResult` whose underlying stream is not open yet.
+ *
+ * Subscribers registered before the stream exists are attached as soon as it does; a failure while
+ * preparing the message — a rejecting token factory, a failed upload — reaches them through
+ * `error()` rather than being thrown out of `stream()`, which is where a caller can observe it.
+ * Disposing before the stream opens means it is never subscribed to at all.
+ */
+class DeferredStreamResult<T> implements signalR.IStreamResult<T> {
+  constructor(private readonly _pending: Promise<signalR.IStreamResult<T>>) {
+    // The rejection is delivered to subscribers below. This keeps it from also counting as an
+    // unhandled rejection when nobody subscribes, which in Node terminates the process.
+    this._pending.catch(() => undefined);
+  }
+
+  public subscribe(subscriber: signalR.IStreamSubscriber<T>): signalR.ISubscription<T> {
+    let inner: signalR.ISubscription<T> | undefined;
+    let disposed = false;
+
+    this._pending.then(
+      stream => {
+        if (disposed) return;
+        inner = stream.subscribe(subscriber);
+      },
+      err => {
+        if (disposed) return;
+        subscriber.error(err);
+      },
+    );
+
+    return {
+      dispose: () => {
+        disposed = true;
+        inner?.dispose();
+      },
+    };
   }
 }
 
