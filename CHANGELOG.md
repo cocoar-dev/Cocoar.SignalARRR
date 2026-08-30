@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [5.0.0]
+## [5.0.0] - 2026-08-30
 
 Results of a full code review of the server and the .NET client. Several entries below are
 security fixes for paths that were reachable by any connected client — two of them without
