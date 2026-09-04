@@ -2,23 +2,27 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-    <AssemblyName>Cocoar.SignalARRR.Server.Backplane.Redis</AssemblyName>
+    <AssemblyName>Cocoar.SignalARRR.Server.Backplane.Postgres</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cocoar.SignalARRR.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <Authors>Bernhard Windisch</Authors>
     <Company>-</Company>
-    <Description>Redis backplane for SignalARRR — multi-node broadcasts, cluster-wide client queries and a distributed connection registry. Add this package only when running more than one server node.</Description>
-    <PackageTags>signalr;rpc;signalarrr;server;backplane;redis;scaleout</PackageTags>
+    <Description>PostgreSQL backplane for SignalARRR — multi-node broadcasts, cluster-wide client queries and a distributed connection registry over LISTEN/NOTIFY, for deployments whose only stateful dependency is Postgres. Add this package only when running more than one server node.</Description>
+    <PackageTags>signalr;rpc;signalarrr;server;backplane;postgres;postgresql;npgsql;scaleout</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</PackageProjectUrl>
     <RepositoryUrl>https://github.com/cocoar-dev/Cocoar.SignalARRR</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageId>Cocoar.SignalARRR.Server.Backplane.Redis</PackageId>
-    <Product>Cocoar.SignalARRR.Server.Backplane.Redis</Product>
+    <PackageId>Cocoar.SignalARRR.Server.Backplane.Postgres</PackageId>
+    <Product>Cocoar.SignalARRR.Server.Backplane.Postgres</Product>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,7 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
 
   <ItemGroup>

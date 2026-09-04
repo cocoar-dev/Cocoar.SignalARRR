@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **PostgreSQL backplane** (`Cocoar.SignalARRR.Server.Backplane.Postgres`, `AddSignalARRRPostgresBackplane`): the same cluster behaviour as the Redis package — cross-node broadcasts, targeted calls, cluster queries, groups and presence — over the PostgreSQL primary an application already has, for deployments whose only stateful dependency is Postgres. `LISTEN`/`NOTIFY` carries the traffic; the connection registry and node heartbeats are rows, and liveness is judged on the database clock so nodes need not agree on the time. Envelopes above the 8 kB notification limit travel through an unlogged table in the same transaction as the notification, in arrival order, invisibly to the caller. The schema is created on first start (`WithAutoCreateSchema(false)` plus `SignalARRRPostgresBackplaneSchema.GetCreateScript()` for migration-managed databases) and doubles as the isolation unit for applications sharing a database. Documented limits: primary only, a direct connection for the listener (no transaction-pooling PgBouncer), and a throughput ceiling in the low thousands of cross-node messages per second against Redis's hundreds of thousands — two orders of magnitude above what an application-level backplane sees in practice. The full multi-node test suite runs against both providers.
+
+### Fixed
+
+- **A node restarting under a stable node id kept its predecessor's registrations alive**: the new process refreshed the heartbeat, so the connections a crashed predecessor had registered under the same id were never swept — they were routed to, forever, and never answered. Both backplanes now clear whatever the store holds under their node id on startup; a fresh process serves no connections.
+
+### Internal
+
+- The transport-independent half of the Redis backplane — envelope routing, invoke/response correlation, cluster query collection by node identity, the heartbeat loop with self-eviction recovery, and the stale-node sweep — moved into an internal base class in the server assembly. The Redis package now implements only its transport and its store; the Postgres package implements the same two and nothing else. Behaviour is unchanged; the contracts stay internal (AF-3).
+
 ---
 
 ## [5.0.0] - 2026-08-30

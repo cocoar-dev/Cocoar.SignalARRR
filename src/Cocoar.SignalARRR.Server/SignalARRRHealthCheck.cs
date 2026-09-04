@@ -48,7 +48,11 @@ namespace Cocoar.SignalARRR.Server {
 
                 var ping = await health.PingAsync(cancellationToken).ConfigureAwait(false);
                 if (ping == null) {
-                    return HealthCheckResult.Unhealthy("The backplane store is unreachable.", data: data);
+                    // "Unreachable" covers both directions: a store that does not answer, and a
+                    // subscription that is down while queries still work — the Postgres listener
+                    // reports the latter here, because a node that cannot hear the cluster is not
+                    // serving it, however healthy its database connection looks.
+                    return HealthCheckResult.Unhealthy("The backplane is unreachable.", data: data);
                 }
 
                 data["pingMs"] = ping.Value.TotalMilliseconds;
