@@ -81,14 +81,16 @@ For full setup guides, streaming, authorization, and server-to-client calls, see
 - **Server-to-client calls from anywhere** — inject `ClientManager` in controllers, background services, etc.
 - **Four clients** — .NET, .NET Framework, TypeScript/JavaScript, Swift
 - **Typed broadcasts** — `WithHub<T>().WithGroup().SendAsync<T>()` for groups and filtered clients
-- **Redis-compatible multi-node backplane** — opt-in scale-out with Redis, Valkey, or Garnet
+- **Multi-node backplane** — opt-in scale-out over Redis/Valkey/Garnet, or over the PostgreSQL you already run
 
-## Redis-compatible backplane
+## Multi-node backplane
 
 SignalARRR stays pure in-memory by default. If you do **not** configure a backplane, behavior remains single-node and process-local exactly as before.
 
-For multi-node scale-out, add the `Cocoar.SignalARRR.Server.Backplane.Redis` package and opt in.
-It is a separate package as of 5.0, so single-node applications do not carry `StackExchange.Redis`:
+For multi-node scale-out, add one of the two backplane packages and opt in. They are separate
+packages, so single-node applications carry neither `StackExchange.Redis` nor `Npgsql`.
+
+**Redis-compatible** — `Cocoar.SignalARRR.Server.Backplane.Redis`:
 
 ```csharp
 builder.Services.AddSignalARRR(b =>
@@ -101,6 +103,22 @@ builder.Services.AddSignalARRRRedisBackplane(options => options
 ```
 
 This works with **Redis**, **Valkey**, and **Garnet** because SignalARRR talks to a Redis-compatible backend via `StackExchange.Redis`.
+
+**PostgreSQL** — `Cocoar.SignalARRR.Server.Backplane.Postgres`, for deployments whose only stateful
+dependency is Postgres. It uses `LISTEN`/`NOTIFY` for delivery and a row per connection and node
+for the registry, and creates its schema on first start:
+
+```csharp
+builder.Services.AddSignalARRRPostgresBackplane(options => options
+    .WithConnectionString(connectionString)
+    .WithSchema("signalarrr")
+    .WithNodeId($"{Environment.MachineName}-api-1"));
+```
+
+Both provide the same cluster behaviour. Redis has the far higher throughput ceiling; Postgres
+spares you a second stateful service. The [backplane guide](https://docs.cocoar.dev/signalarrr/guide/server/backplane)
+has the comparison and the operational notes (primary only, no transaction-pooling PgBouncer for the
+listener, 8 kB notification boundary handled via a table).
 
 ### What becomes cluster-aware
 
@@ -122,7 +140,7 @@ This works with **Redis**, **Valkey**, and **Garnet** because SignalARRR talks t
 - **Transient transport**: the backplane distributes live messages; it is not a durable queue or event store.
 - **Eventual convergence**: connection, group, user, and attribute metadata propagate quickly, but not atomically across all nodes. Right after connect/disconnect/group changes there can be a short convergence window.
 - **Crash cleanup**: dead nodes are removed by heartbeat + timeout sweep. Tune `WithHeartbeatInterval(...)` and `WithNodeTimeout(...)` if you want faster stale-node cleanup.
-- **Safe fallback**: without `AddSignalARRRRedisBackplane(...)`, all APIs continue to use the old in-memory single-node path.
+- **Safe fallback**: without a backplane registration, all APIs continue to use the old in-memory single-node path.
 
 ## Connection loss semantics
 

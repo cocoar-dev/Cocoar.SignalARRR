@@ -11,12 +11,95 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Xunit;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
-    [Collection("Backplane")]
-    public sealed class BackplaneIntegrationTests {
+    /// <summary>
+    /// The cross-node behaviour every backplane has to provide, run once per provider: the
+    /// concrete classes at the bottom of this file bind it to the Redis and the Postgres cluster.
+    /// </summary>
+    /// <remarks>
+    /// Their names contain "BackplaneIntegrationTests" on purpose: the CI workflows exclude the
+    /// Docker-dependent backplane tests on macOS and Windows with the substring filter
+    /// <c>FullyQualifiedName!~BackplaneIntegrationTests</c>.
+    /// </remarks>
+    public abstract class BackplaneIntegrationTestsBase {
         private readonly MultiNodeSignalARRRServerFixture _fixture;
 
-        public BackplaneIntegrationTests(MultiNodeSignalARRRServerFixture fixture) {
+        protected BackplaneIntegrationTestsBase(MultiNodeSignalARRRServerFixture fixture) {
             _fixture = fixture;
+        }
+
+        /// <summary>
+        /// An envelope that does not fit a Postgres notification (under 8 kB) has to travel through
+        /// the table-backed path — and arrive intact, in one piece, on the other node. The Redis
+        /// backplane has no such boundary; there the test is a plain size check.
+        /// </summary>
+        [Fact]
+        public async Task PushNotification_CrossNode_LargePayloadArrivesIntact() {
+            var ct = TestContext.Current.CancellationToken;
+            var handler = new TestServerPushClientImpl();
+            const int size = 64 * 1024;
+
+            var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl1}/signalr/testhub"));
+            connection.RegisterInterface<ITestServerPushClient, TestServerPushClientImpl>(handler);
+            await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connection, ct);
+
+            try {
+                using var http = new HttpClient();
+                await WaitForCrossNodeVisibility(_fixture.ServerUrl2, connection, ct);
+                var connectionId = Uri.EscapeDataString(connection.ConnectionId ?? string.Empty);
+                var response = await http.PostAsync(
+                    $"{_fixture.ServerUrl2}/__test/push-notification-sized?connectionId={connectionId}&size={size}",
+                    null,
+                    ct);
+
+                response.EnsureSuccessStatusCode();
+                Assert.True(await handler.PushReceived.WaitAsync(TimeSpan.FromSeconds(10), ct));
+                Assert.True(TestShared.SizedTestPayload.IsValid(handler.LastPushMessage, size),
+                    $"Expected a {size}-character payload, got {handler.LastPushMessage?.Length} characters.");
+            } finally {
+                await connection.StopAsync(ct);
+                await connection.DisposeAsync();
+            }
+        }
+
+        /// <summary>
+        /// The same boundary for an awaited call, in both directions: the request envelope carries
+        /// an oversized argument, and the response envelope carries the oversized result back.
+        /// </summary>
+        /// <remarks>
+        /// 20 kB, not 64: the result travels client-to-server over SignalR, whose hub rejects
+        /// messages above its default 32 kB receive limit. That limit is the test server's, not the
+        /// backplane's, and 20 kB is still well past the 8 kB notification boundary.
+        /// </remarks>
+        [Fact]
+        public async Task Invoke_CrossNode_LargeArgumentAndResultRoundTrip() {
+            var ct = TestContext.Current.CancellationToken;
+            const int size = 20 * 1024;
+
+            var connection = HARRRConnection.Create(builder => builder.WithUrl($"{_fixture.ServerUrl1}/signalr/testhub"));
+            connection.RegisterInterface<TestShared.ITestClientMethods, BackplaneNixCounter>(new BackplaneNixCounter());
+            await connection.StartAsync(ct);
+            await TestHelper.WaitForClientRegistration(_fixture.ServerUrl1, connection, ct);
+
+            try {
+                using var http = new HttpClient();
+                await WaitForCrossNodeVisibility(_fixture.ServerUrl2, connection, ct);
+                var connectionId = Uri.EscapeDataString(connection.ConnectionId ?? string.Empty);
+                var response = await http.PostAsync(
+                    $"{_fixture.ServerUrl2}/__test/trigger-client-getbyid-sized?connectionId={connectionId}&size={size}",
+                    null,
+                    ct);
+
+                var body = await response.Content.ReadAsStringAsync(ct);
+                Assert.True(response.IsSuccessStatusCode, $"Expected success, got {(int)response.StatusCode}: {body}");
+
+                var result = JsonSerializer.Deserialize<JsonElement>(body);
+                Assert.Equal(size, result.GetProperty("length").GetInt32());
+                Assert.True(result.GetProperty("valid").GetBoolean(), "The round-tripped payload was corrupted.");
+            } finally {
+                await connection.StopAsync(ct);
+                await connection.DisposeAsync();
+            }
         }
 
         [Fact]
@@ -436,7 +519,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
         [Fact]
         public async Task ActiveCleanup_RemovesStalePresenceAfterNodeCrash() {
-            using var isolatedFixture = new MultiNodeSignalARRRServerFixture(
+            using var isolatedFixture = _fixture.CreateIsolatedFixture(
                 heartbeatInterval: TimeSpan.FromMilliseconds(200),
                 nodeTimeout: TimeSpan.FromMilliseconds(900));
 
@@ -624,7 +707,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
         [Fact]
         public async Task InvokeAll_RemainsOperationalAfterRemoteNodeCrashAndCleanup() {
-            using var isolatedFixture = new MultiNodeSignalARRRServerFixture(
+            using var isolatedFixture = _fixture.CreateIsolatedFixture(
                 heartbeatInterval: TimeSpan.FromMilliseconds(200),
                 nodeTimeout: TimeSpan.FromMilliseconds(900));
 
@@ -811,6 +894,18 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                     return _messages.ToArray();
                 }
             }
+        }
+    }
+
+    [Collection("Backplane")]
+    public sealed class BackplaneIntegrationTests : BackplaneIntegrationTestsBase {
+        public BackplaneIntegrationTests(RedisMultiNodeSignalARRRServerFixture fixture) : base(fixture) {
+        }
+    }
+
+    [Collection("PostgresBackplane")]
+    public sealed class PostgresBackplaneIntegrationTests : BackplaneIntegrationTestsBase {
+        public PostgresBackplaneIntegrationTests(PostgresMultiNodeSignalARRRServerFixture fixture) : base(fixture) {
         }
     }
 }

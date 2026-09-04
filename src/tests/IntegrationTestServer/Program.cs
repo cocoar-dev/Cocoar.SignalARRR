@@ -59,36 +59,66 @@ builder.Services.AddSingleton<IUserIdProvider, QueryStringUserIdProvider>();
 builder.Services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(TestHub).Assembly));
 builder.Services.AddSignalARRRHealthChecks();
 
+// The multi-node fixture picks the backplane per test collection: SIGNALARRR_BACKPLANE_PROVIDER is
+// "redis" (default) or "postgres". The isolation prefix names Redis keys or the Postgres schema.
 var backplaneConnectionString = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CONNECTION_STRING");
 if (!string.IsNullOrWhiteSpace(backplaneConnectionString)) {
-    builder.Services.AddSignalARRRRedisBackplane(options => {
-        options.WithConnectionString(backplaneConnectionString);
+    var backplaneProvider = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_PROVIDER");
+    var channelPrefix = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CHANNEL_PREFIX");
+    var nodeId = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_NODE_ID");
+    var heartbeatIntervalMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_HEARTBEAT_INTERVAL_MS");
+    var nodeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_NODE_TIMEOUT_MS");
+    var invokeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_INVOKE_TIMEOUT_MS");
 
-        var channelPrefix = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CHANNEL_PREFIX");
-        if (!string.IsNullOrWhiteSpace(channelPrefix)) {
-            options.WithChannelPrefix(channelPrefix);
-        }
+    if (string.Equals(backplaneProvider, "postgres", StringComparison.OrdinalIgnoreCase)) {
+        builder.Services.AddSignalARRRPostgresBackplane(options => {
+            options.WithConnectionString(backplaneConnectionString);
 
-        var nodeId = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_NODE_ID");
-        if (!string.IsNullOrWhiteSpace(nodeId)) {
-            options.WithNodeId(nodeId);
-        }
+            if (!string.IsNullOrWhiteSpace(channelPrefix)) {
+                options.WithSchema(channelPrefix);
+            }
 
-        var heartbeatIntervalMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_HEARTBEAT_INTERVAL_MS");
-        if (int.TryParse(heartbeatIntervalMs, out var heartbeatInterval)) {
-            options.WithHeartbeatInterval(TimeSpan.FromMilliseconds(heartbeatInterval));
-        }
+            if (!string.IsNullOrWhiteSpace(nodeId)) {
+                options.WithNodeId(nodeId);
+            }
 
-        var nodeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_NODE_TIMEOUT_MS");
-        if (int.TryParse(nodeTimeoutMs, out var nodeTimeout)) {
-            options.WithNodeTimeout(TimeSpan.FromMilliseconds(nodeTimeout));
-        }
+            if (int.TryParse(heartbeatIntervalMs, out var heartbeatInterval)) {
+                options.WithHeartbeatInterval(TimeSpan.FromMilliseconds(heartbeatInterval));
+            }
 
-        var invokeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_INVOKE_TIMEOUT_MS");
-        if (int.TryParse(invokeTimeoutMs, out var invokeTimeout)) {
-            options.WithInvokeTimeout(TimeSpan.FromMilliseconds(invokeTimeout));
-        }
-    });
+            if (int.TryParse(nodeTimeoutMs, out var nodeTimeout)) {
+                options.WithNodeTimeout(TimeSpan.FromMilliseconds(nodeTimeout));
+            }
+
+            if (int.TryParse(invokeTimeoutMs, out var invokeTimeout)) {
+                options.WithInvokeTimeout(TimeSpan.FromMilliseconds(invokeTimeout));
+            }
+        });
+    } else {
+        builder.Services.AddSignalARRRRedisBackplane(options => {
+            options.WithConnectionString(backplaneConnectionString);
+
+            if (!string.IsNullOrWhiteSpace(channelPrefix)) {
+                options.WithChannelPrefix(channelPrefix);
+            }
+
+            if (!string.IsNullOrWhiteSpace(nodeId)) {
+                options.WithNodeId(nodeId);
+            }
+
+            if (int.TryParse(heartbeatIntervalMs, out var heartbeatInterval)) {
+                options.WithHeartbeatInterval(TimeSpan.FromMilliseconds(heartbeatInterval));
+            }
+
+            if (int.TryParse(nodeTimeoutMs, out var nodeTimeout)) {
+                options.WithNodeTimeout(TimeSpan.FromMilliseconds(nodeTimeout));
+            }
+
+            if (int.TryParse(invokeTimeoutMs, out var invokeTimeout)) {
+                options.WithInvokeTimeout(TimeSpan.FromMilliseconds(invokeTimeout));
+            }
+        });
+    }
 }
 
 var app = builder.Build();
@@ -575,6 +605,30 @@ app.MapSignalARRRTest("/__test/push-notification", (context, clientManager) => {
     var typedClient = clientManager.GetTypedMethods<Cocoar.SignalARRR.Tests.SharedModels.ITestServerPushClient>(connectionId);
     typedClient.PushNotification(message);
     return "Sent";
+});
+
+// A push whose payload the server generates, so a test can send far more than fits in a query
+// string — the Postgres backplane routes envelopes above its notification limit through a table.
+app.MapSignalARRRTest("/__test/push-notification-sized", (context, clientManager) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId) || !int.TryParse(context.Request.Query["size"].ToString(), out var size))
+        return Results.BadRequest("Missing connectionId or size");
+
+    var typedClient = clientManager.GetTypedMethods<Cocoar.SignalARRR.Tests.SharedModels.ITestServerPushClient>(connectionId);
+    typedClient.PushNotification(TestShared.SizedTestPayload.Create(size));
+    return "Sent";
+});
+
+// The same for an awaited call: the argument and the returned value are both oversized, which
+// exercises the table-backed path for a request and for its response.
+app.MapSignalARRRTest("/__test/trigger-client-getbyid-sized", async (context, clientManager) => {
+    var connectionId = context.Request.Query["connectionId"].ToString();
+    if (string.IsNullOrWhiteSpace(connectionId) || !int.TryParse(context.Request.Query["size"].ToString(), out var size))
+        return Results.BadRequest("Missing connectionId or size");
+
+    var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
+    var result = await Task.Run(() => typedClient.GetById(TestShared.SizedTestPayload.Create(size)));
+    return (object)new { Length = result.Length, Valid = TestShared.SizedTestPayload.IsValid(result, size) };
 });
 
 app.MapSignalARRRTest("/__test/request-client-info", async (context, clientManager) => {

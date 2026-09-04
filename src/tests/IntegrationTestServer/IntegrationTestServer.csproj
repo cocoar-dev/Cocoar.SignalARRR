@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server.Backplane.Redis\Cocoar.SignalARRR.Server.Backplane.Redis.csproj" />
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.Server.Backplane.Postgres\Cocoar.SignalARRR.Server.Backplane.Postgres.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Tests.SharedModels\Cocoar.SignalARRR.Tests.SharedModels.csproj" />
     <ProjectReference Include="..\TestShared\TestShared.csproj" />
   </ItemGroup>

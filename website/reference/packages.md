@@ -9,6 +9,7 @@ SignalARRR is distributed as multiple NuGet packages and one npm package. Choose
 | `Cocoar.SignalARRR.Contracts` | net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute + Roslyn source generator. Reference from shared interface projects. |
 | `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | net8.0 / net9.0 / net10.0 | Multi-node scale-out: `AddSignalARRRRedisBackplane`. Add only when running more than one node — this is where the `StackExchange.Redis` dependency lives. |
+| `Cocoar.SignalARRR.Server.Backplane.Postgres` | net8.0 / net9.0 / net10.0 | Multi-node scale-out over PostgreSQL `LISTEN`/`NOTIFY`: `AddSignalARRRPostgresBackplane`. For deployments whose only stateful dependency is Postgres — this is where the `Npgsql` dependency lives. |
 | `Cocoar.SignalARRR.Client` | net8.0 / net9.0 / net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. |
 | `Cocoar.SignalARRR.Client.FullFramework` | netstandard2.0 (.NET Framework 4.6.2+) | Client for .NET Framework — typed proxies via `DispatchProxy`, streaming via polyfills. |
 | `Cocoar.SignalARRR.DynamicProxy` | net8.0 / net9.0 / net10.0 | Optional runtime proxy fallback via `DispatchProxy`. For plugin/dynamic scenarios. |
@@ -92,8 +93,8 @@ targets: [
 </ItemGroup>
 ```
 
-Optional multi-node scale-out — a separate package, so single-node applications do not pull in
-`StackExchange.Redis`:
+Optional multi-node scale-out — separate packages, so single-node applications pull in neither
+`StackExchange.Redis` nor `Npgsql`. Pick one:
 
 ```xml
 <ItemGroup>
@@ -107,6 +108,20 @@ builder.Services.AddSignalARRRRedisBackplane(options => options
 ```
 
 This backplane is Redis-compatible and works with Redis, Valkey, and Garnet.
+
+```xml
+<ItemGroup>
+  <PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Postgres" Version="5.*" />
+</ItemGroup>
+```
+
+```csharp
+builder.Services.AddSignalARRRPostgresBackplane(options => options
+    .WithConnectionString("Host=db;Database=app;Username=app;Password=..."));
+```
+
+This backplane uses the PostgreSQL primary your application already has; see
+[Backplane & Clustering](/guide/server/backplane) for how to choose between the two.
 
 ### .NET Client (Console / WPF / etc.)
 

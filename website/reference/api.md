@@ -17,6 +17,12 @@ services.AddSignalARRRRedisBackplane(options => options
     .WithChannelPrefix("my-app")
     .WithNodeId("node-1"));
 
+// Requires the Cocoar.SignalARRR.Server.Backplane.Postgres package
+services.AddSignalARRRPostgresBackplane(options => options
+    .WithConnectionString("Host=db;Database=app;Username=app;Password=...")
+    .WithSchema("signalarrr")
+    .WithNodeId("node-1"));
+
 // IEndpointRouteBuilder extension
 app.MapSignalARRRHub<THub>(path);
 app.MapSignalARRRHub<THub>(path, configureOptions);
@@ -115,6 +121,24 @@ send/invoke methods resolve across the whole cluster.
 | `WithInvokeTimeout(TimeSpan)` | Timeout for cross-node invoke aggregation |
 | `WithHeartbeatInterval(TimeSpan)` | Heartbeat interval for dead-node detection |
 | `WithNodeTimeout(TimeSpan)` | Time after which a node is considered stale |
+
+### SignalARRRPostgresBackplaneOptionsBuilder
+
+| Method | Description |
+|--------|-------------|
+| `WithConnectionString(string)` | Npgsql connection string of the PostgreSQL primary |
+| `WithSchema(string)` | Schema for the backplane's tables; also names the notification channels, so it isolates applications sharing a database. Lowercase identifier, max 50 chars. Default `signalarrr` |
+| `WithAutoCreateSchema(bool)` | Create schema and tables on startup (default `true`); off, the tables must exist — see `SignalARRRPostgresBackplaneSchema.GetCreateScript` |
+| `WithNodeId(string)` | Set a stable logical node identifier |
+| `WithInvokeTimeout(TimeSpan)` | Timeout for cross-node invoke aggregation |
+| `WithHeartbeatInterval(TimeSpan)` | Heartbeat interval for dead-node detection |
+| `WithNodeTimeout(TimeSpan)` | Time after which a node is considered stale; must exceed the heartbeat interval |
+
+### SignalARRRPostgresBackplaneSchema
+
+| Member | Description |
+|--------|-------------|
+| `GetCreateScript(string schema = "signalarrr")` | The idempotent DDL (`IF NOT EXISTS`) for the backplane's schema, tables and indexes, for operators who apply it through migrations |
 
 ### Presence models
 

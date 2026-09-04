@@ -4,18 +4,41 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using Cocoar.SignalARRR.TestInfrastructure;
+using Npgsql;
+using StackExchange.Redis;
 using Xunit;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
-    public sealed class MultiNodeSignalARRRServerFixture : IDisposable {
-        private readonly string _redisContainerName;
-        private readonly int _redisPort;
+    /// <summary>Which backplane package a multi-node fixture wires the two servers with.</summary>
+    public enum BackplaneProvider {
+        Redis,
+        Postgres
+    }
+
+    /// <summary>
+    /// Two IntegrationTestServer processes sharing one backplane store in a Docker container.
+    /// </summary>
+    /// <remarks>
+    /// The provider decides the container (Redis or Postgres) and the environment the servers
+    /// read their backplane configuration from. Everything a test does goes through the servers'
+    /// HTTP test endpoints; the two store accessors at the bottom exist for the resilience tests,
+    /// which have to make a node look dead from the outside.
+    /// </remarks>
+    public class MultiNodeSignalARRRServerFixture : IDisposable {
+        private readonly string _containerName;
+        private readonly int _storePort;
         private readonly Process _server1;
         private readonly Process _server2;
         private readonly TimeSpan? _heartbeatInterval;
         private readonly TimeSpan? _nodeTimeout;
         private readonly TimeSpan? _invokeTimeout;
+
+        private ConnectionMultiplexer? _redis;
+        private NpgsqlDataSource? _postgres;
+
+        public BackplaneProvider Provider { get; }
 
         public string ServerUrl1 { get; }
         public string ServerUrl2 { get; }
@@ -27,59 +50,135 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         public const string NodeId2 = "node-2";
 
         /// <summary>
-        /// Connection string of this fixture's Redis instance, so a test can act on the backplane's
-        /// state directly — for instance to make a node look dead while it keeps running.
+        /// Connection string of this fixture's store, so a test can act on the backplane's state
+        /// directly — for instance to make a node look dead while it keeps running.
         /// </summary>
-        public string RedisConnectionString { get; }
+        public string ConnectionString { get; }
 
-        /// <summary>Key prefix this fixture's nodes use, unique per fixture.</summary>
+        /// <summary>
+        /// The isolation prefix this fixture's nodes use, unique per fixture: the Redis key prefix,
+        /// or the Postgres schema.
+        /// </summary>
         public string ChannelPrefix { get; }
 
-        /// <summary>The key whose presence tells the other nodes that <paramref name="nodeId"/> is alive.</summary>
-        public string HeartbeatKey(string nodeId) => $"{ChannelPrefix}:nodes:{nodeId}:heartbeat";
-
-        /// <summary>The set of connection ids <paramref name="nodeId"/> has registered.</summary>
-        public string NodeConnectionsKey(string nodeId) => $"{ChannelPrefix}:nodes:{nodeId}:connections";
-
-        public MultiNodeSignalARRRServerFixture() : this(null, null) {
+        protected MultiNodeSignalARRRServerFixture(BackplaneProvider provider) : this(provider, null, null) {
         }
 
-        internal MultiNodeSignalARRRServerFixture(TimeSpan? heartbeatInterval, TimeSpan? nodeTimeout, TimeSpan? invokeTimeout = null) {
+        internal MultiNodeSignalARRRServerFixture(BackplaneProvider provider, TimeSpan? heartbeatInterval, TimeSpan? nodeTimeout, TimeSpan? invokeTimeout = null) {
+            Provider = provider;
             _heartbeatInterval = heartbeatInterval;
             _nodeTimeout = nodeTimeout;
             _invokeTimeout = invokeTimeout;
-            _redisContainerName = $"signalarrr-redis-{Guid.NewGuid():N}";
-            _redisPort = StartRedisContainer(_redisContainerName);
-            WaitForPort(_redisPort);
+
+            var suffix = Guid.NewGuid().ToString("N");
+            _containerName = $"signalarrr-{provider.ToString().ToLowerInvariant()}-{suffix}";
+
+            switch (provider) {
+                case BackplaneProvider.Redis:
+                    _storePort = StartContainer(_containerName, "redis:7-alpine", 6379, environment: null);
+                    WaitForPort(_storePort);
+                    ConnectionString = $"127.0.0.1:{_storePort},abortConnect=false";
+                    ChannelPrefix = $"signalarrr-tests-{suffix}";
+                    break;
+
+                case BackplaneProvider.Postgres:
+                    _storePort = StartContainer(_containerName, "postgres:16-alpine", 5432, environment: "-e POSTGRES_PASSWORD=signalarrr");
+                    ConnectionString = $"Host=127.0.0.1;Port={_storePort};Username=postgres;Password=signalarrr;Database=postgres;Timeout=5";
+                    WaitForPostgres(ConnectionString);
+                    // A schema name: lowercase, underscores, and short enough for the channel suffixes.
+                    ChannelPrefix = $"signalarrr_tests_{suffix}";
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(provider));
+            }
 
             var tfm = $"net{Environment.Version.Major}.0";
             var serverAssemblyPath = IntegrationTestServerPathResolver.GetAssemblyPath(tfm);
 
-            var channelPrefix = $"signalarrr-tests-{Guid.NewGuid():N}";
-            var connectionString = $"127.0.0.1:{_redisPort},abortConnect=false";
-
-            ChannelPrefix = channelPrefix;
-            RedisConnectionString = connectionString;
-
-            _server1 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId1, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl1);
-            _server2 = StartServerProcess(serverAssemblyPath, connectionString, channelPrefix, NodeId2, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl2);
+            _server1 = StartServerProcess(serverAssemblyPath, provider, ConnectionString, ChannelPrefix, NodeId1, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl1);
+            _server2 = StartServerProcess(serverAssemblyPath, provider, ConnectionString, ChannelPrefix, NodeId2, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl2);
 
             ServerUrl1 = serverUrl1;
             ServerUrl2 = serverUrl2;
         }
 
+        /// <summary>A second, independent two-node cluster on the same provider, with its own store and timings.</summary>
+        public MultiNodeSignalARRRServerFixture CreateIsolatedFixture(TimeSpan? heartbeatInterval = null, TimeSpan? nodeTimeout = null, TimeSpan? invokeTimeout = null) {
+            return new MultiNodeSignalARRRServerFixture(Provider, heartbeatInterval, nodeTimeout, invokeTimeout);
+        }
+
         public void Dispose() {
             StopProcess(_server1);
             StopProcess(_server2);
-            StopRedisContainer(_redisContainerName);
+            _redis?.Dispose();
+            _postgres?.Dispose();
+            StopContainer(_containerName);
         }
 
         public void KillServer1() => StopProcess(_server1);
 
         public void KillServer2() => StopProcess(_server2);
 
+        // --- Store access for the resilience tests ---
+
+        /// <summary>
+        /// Erases <paramref name="nodeId"/>'s heartbeat once. The node rewrites it every interval,
+        /// so a test that wants the cluster to believe the node died has to call this in a loop.
+        /// </summary>
+        public async Task SuppressHeartbeatOnceAsync(string nodeId) {
+            switch (Provider) {
+                case BackplaneProvider.Redis:
+                    await GetRedis().GetDatabase().KeyDeleteAsync($"{ChannelPrefix}:nodes:{nodeId}:heartbeat");
+                    break;
+
+                case BackplaneProvider.Postgres:
+                    await using (var command = GetPostgres().CreateCommand($"DELETE FROM \"{ChannelPrefix}\".nodes WHERE node_id = $1")) {
+                        command.Parameters.AddWithValue(nodeId);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Whether the store currently shows <paramref name="nodeId"/> as a live member — the same
+        /// state the other node reads before it decides whom to wait for in a cluster query.
+        /// </summary>
+        public async Task<bool> IsNodeAliveInStoreAsync(string nodeId) {
+            switch (Provider) {
+                case BackplaneProvider.Redis: {
+                    var db = GetRedis().GetDatabase();
+                    return await db.SetContainsAsync($"{ChannelPrefix}:nodes", nodeId)
+                        && await db.KeyExistsAsync($"{ChannelPrefix}:nodes:{nodeId}:heartbeat");
+                }
+
+                case BackplaneProvider.Postgres: {
+                    await using var command = GetPostgres().CreateCommand(
+                        $"SELECT EXISTS (SELECT 1 FROM \"{ChannelPrefix}\".nodes WHERE node_id = $1 AND last_seen > now() - $2::interval)");
+                    command.Parameters.AddWithValue(nodeId);
+                    command.Parameters.AddWithValue(_nodeTimeout ?? TimeSpan.FromSeconds(20));
+                    return await command.ExecuteScalarAsync() is true;
+                }
+
+                default:
+                    return false;
+            }
+        }
+
+        private ConnectionMultiplexer GetRedis() {
+            return _redis ??= ConnectionMultiplexer.Connect(ConnectionString);
+        }
+
+        private NpgsqlDataSource GetPostgres() {
+            return _postgres ??= NpgsqlDataSource.Create(ConnectionString);
+        }
+
+        // --- Processes ---
+
         private static Process StartServerProcess(
             string serverAssemblyPath,
+            BackplaneProvider provider,
             string connectionString,
             string channelPrefix,
             string nodeId,
@@ -101,6 +200,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             };
 
             process.StartInfo.Environment["SERVER_URL_FILE"] = urlFile;
+            process.StartInfo.Environment["SIGNALARRR_BACKPLANE_PROVIDER"] = provider.ToString().ToLowerInvariant();
             process.StartInfo.Environment["SIGNALARRR_BACKPLANE_CONNECTION_STRING"] = connectionString;
             process.StartInfo.Environment["SIGNALARRR_BACKPLANE_CHANNEL_PREFIX"] = channelPrefix;
             process.StartInfo.Environment["SIGNALARRR_BACKPLANE_NODE_ID"] = nodeId;
@@ -139,8 +239,10 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             throw new TimeoutException("IntegrationTestServer did not start within 300 seconds.");
         }
 
+        // --- Containers ---
+
         /// <summary>
-        /// Starts this fixture's Redis container and returns the host port it was bound to.
+        /// Starts this fixture's store container and returns the host port it was bound to.
         /// </summary>
         /// <remarks>
         /// Docker picks the host port, and the container is asked afterwards which one it got. The
@@ -154,18 +256,18 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         /// bound. Letting Docker allocate removes the window entirely rather than narrowing it.
         /// </para>
         /// </remarks>
-        private static int StartRedisContainer(string containerName) {
-            StopRedisContainer(containerName);
+        private static int StartContainer(string containerName, string image, int containerPort, string? environment) {
+            StopContainer(containerName);
 
             // An empty host port means "Docker, choose one" -- it binds and reserves atomically.
-            var (exitCode, _, stderr) = RunDocker($"run -d --name {containerName} -p 127.0.0.1::6379 redis:7-alpine");
+            var (exitCode, _, stderr) = RunDocker($"run -d --name {containerName} {environment} -p 127.0.0.1::{containerPort} {image}");
             if (exitCode != 0) {
-                throw new InvalidOperationException($"Could not start Redis container: {stderr}");
+                throw new InvalidOperationException($"Could not start {image} container: {stderr}");
             }
 
-            var (portExit, portOutput, portError) = RunDocker($"port {containerName} 6379/tcp");
+            var (portExit, portOutput, portError) = RunDocker($"port {containerName} {containerPort}/tcp");
             if (portExit != 0) {
-                throw new InvalidOperationException($"Could not read the Redis container's host port: {portError}");
+                throw new InvalidOperationException($"Could not read the {image} container's host port: {portError}");
             }
 
             // One line per binding, "127.0.0.1:49153". Take the first and keep only the port.
@@ -175,7 +277,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var separator = firstLine?.LastIndexOf(':') ?? -1;
             if (separator < 0 || !int.TryParse(firstLine!.Substring(separator + 1), out var hostPort)) {
                 throw new InvalidOperationException(
-                    $"Could not parse the Redis container's host port from '{portOutput}'.");
+                    $"Could not parse the {image} container's host port from '{portOutput}'.");
             }
 
             return hostPort;
@@ -226,10 +328,33 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 Thread.Sleep(250);
             }
 
-            throw new TimeoutException($"Redis container did not open port {port} in time.");
+            throw new TimeoutException($"Store container did not open port {port} in time.");
         }
 
-        private static void StopRedisContainer(string containerName) {
+        /// <summary>
+        /// Waits until Postgres accepts a real connection. An open port is not enough here: the
+        /// image initializes the cluster first and only then starts the server that listens on TCP,
+        /// so the first successful login is the readiness signal.
+        /// </summary>
+        private static void WaitForPostgres(string connectionString) {
+            var deadline = DateTime.UtcNow.AddSeconds(90);
+            Exception? last = null;
+            while (DateTime.UtcNow < deadline) {
+                try {
+                    using var connection = new NpgsqlConnection(connectionString);
+                    connection.Open();
+                    return;
+                } catch (Exception ex) {
+                    last = ex;
+                }
+
+                Thread.Sleep(250);
+            }
+
+            throw new TimeoutException($"Postgres container did not accept connections in time: {last?.Message}");
+        }
+
+        private static void StopContainer(string containerName) {
             // Failure is fine and expected on the pre-start call: there is nothing to remove yet.
             RunDocker($"rm -f {containerName}");
         }
@@ -250,7 +375,23 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
     }
 
+    /// <summary>The shared two-node cluster on the Redis backplane.</summary>
+    public sealed class RedisMultiNodeSignalARRRServerFixture : MultiNodeSignalARRRServerFixture {
+        public RedisMultiNodeSignalARRRServerFixture() : base(BackplaneProvider.Redis) {
+        }
+    }
+
+    /// <summary>The shared two-node cluster on the Postgres backplane.</summary>
+    public sealed class PostgresMultiNodeSignalARRRServerFixture : MultiNodeSignalARRRServerFixture {
+        public PostgresMultiNodeSignalARRRServerFixture() : base(BackplaneProvider.Postgres) {
+        }
+    }
+
     [CollectionDefinition("Backplane")]
-    public sealed class BackplaneSignalARRCollection : ICollectionFixture<MultiNodeSignalARRRServerFixture> {
+    public sealed class BackplaneSignalARRCollection : ICollectionFixture<RedisMultiNodeSignalARRRServerFixture> {
+    }
+
+    [CollectionDefinition("PostgresBackplane")]
+    public sealed class PostgresBackplaneSignalARRCollection : ICollectionFixture<PostgresMultiNodeSignalARRRServerFixture> {
     }
 }

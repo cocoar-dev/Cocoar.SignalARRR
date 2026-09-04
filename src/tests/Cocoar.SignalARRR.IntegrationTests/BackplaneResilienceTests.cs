@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Client;
 using Microsoft.AspNetCore.SignalR.Client;
-using StackExchange.Redis;
 using Xunit;
 
 namespace Cocoar.SignalARRR.IntegrationTests {
@@ -20,16 +19,20 @@ namespace Cocoar.SignalARRR.IntegrationTests {
     /// it died — which is the case a GC pause, thread pool starvation or a brief partition produces.
     /// <para>
     /// Each test builds its own fixture with compressed heartbeat timings, so it runs in seconds
-    /// rather than the production 5 s / 20 s.
+    /// rather than the production 5 s / 20 s. The concrete classes at the bottom bind the tests to
+    /// one backplane provider each; the heartbeat and sweep logic they exercise is shared, but the
+    /// store each provider keeps it in is not.
     /// </para>
     /// </remarks>
     // Named to contain "BackplaneIntegrationTests": the CI workflows exclude Docker-dependent
     // backplane tests with the substring filter FullyQualifiedName!~BackplaneIntegrationTests.
-    // A class outside that pattern runs on macOS and Windows, where there is no Redis container.
-    public class BackplaneIntegrationTestsResilience {
+    // A class outside that pattern runs on macOS and Windows, where there is no store container.
+    public abstract class BackplaneIntegrationTestsResilienceBase {
 
         private static readonly TimeSpan Heartbeat = TimeSpan.FromMilliseconds(200);
         private static readonly TimeSpan NodeTimeout = TimeSpan.FromMilliseconds(900);
+
+        protected abstract BackplaneProvider Provider { get; }
 
         /// <summary>
         /// A node evicted from the registry while still running must put its connections back.
@@ -44,7 +47,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         /// </remarks>
         [Fact]
         public async Task A_node_declared_dead_while_running_re_registers_its_connections() {
-            using var fixture = new MultiNodeSignalARRRServerFixture(Heartbeat, NodeTimeout);
+            using var fixture = new MultiNodeSignalARRRServerFixture(Provider, Heartbeat, NodeTimeout);
             var ct = TestContext.Current.CancellationToken;
 
             var connection = HARRRConnection.Create(builder =>
@@ -58,19 +61,15 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 // The other node can see it: this is the state the eviction destroys.
                 await WaitForPresenceCount(fixture.ServerUrl2, "role", "admin", 1, ct);
 
-                using var redis = await ConnectionMultiplexer.ConnectAsync(fixture.RedisConnectionString);
-                var db = redis.GetDatabase();
-                var heartbeatKey = fixture.HeartbeatKey(MultiNodeSignalARRRServerFixture.NodeId1);
-
                 // Node 1 keeps running and keeps serving this client — the cluster is merely made to
-                // believe it died. A single delete is not enough: node 1 rewrites the key every
-                // heartbeat interval, so the gap is shorter than node 2's sweep and the eviction
-                // never reliably happens. Suppressing it for longer than NodeTimeout is what a GC
-                // pause or a brief partition actually looks like from the outside.
+                // believe it died. A single erase is not enough: node 1 rewrites its heartbeat every
+                // interval, so the gap is shorter than node 2's sweep and the eviction never reliably
+                // happens. Suppressing it for longer than NodeTimeout is what a GC pause or a brief
+                // partition actually looks like from the outside.
                 using var suppression = new CancellationTokenSource();
                 var suppress = Task.Run(async () => {
                     while (!suppression.IsCancellationRequested) {
-                        await db.KeyDeleteAsync(heartbeatKey);
+                        await fixture.SuppressHeartbeatOnceAsync(MultiNodeSignalARRRServerFixture.NodeId1);
                         await Task.Delay(20);
                     }
                 }, CancellationToken.None);
@@ -137,7 +136,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var invokeTimeout = TimeSpan.FromSeconds(2);
 
             using var fixture = new MultiNodeSignalARRRServerFixture(
-                Heartbeat, nodeTimeout: TimeSpan.FromMinutes(5), invokeTimeout: invokeTimeout);
+                Provider, Heartbeat, nodeTimeout: TimeSpan.FromMinutes(5), invokeTimeout: invokeTimeout);
             var ct = TestContext.Current.CancellationToken;
 
             var connection = HARRRConnection.Create(builder =>
@@ -150,13 +149,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
 
                 // Node 1 has to know node 2 before it dies — otherwise the query never waits on it
                 // and the test would prove nothing. This is exactly the state
-                // GetActiveRemoteNodeIdsAsync reads: membership in the node set plus a live
-                // heartbeat key.
-                using var redis = await ConnectionMultiplexer.ConnectAsync(fixture.RedisConnectionString);
-                var db = redis.GetDatabase();
+                // GetActiveRemoteNodeIdsAsync reads: a known node with a live heartbeat.
                 await WaitFor(
-                    async () => await db.SetContainsAsync($"{fixture.ChannelPrefix}:nodes", MultiNodeSignalARRRServerFixture.NodeId2)
-                        && await db.KeyExistsAsync(fixture.HeartbeatKey(MultiNodeSignalARRRServerFixture.NodeId2)),
+                    () => fixture.IsNodeAliveInStoreAsync(MultiNodeSignalARRRServerFixture.NodeId2),
                     $"node 1 to see '{MultiNodeSignalARRRServerFixture.NodeId2}' as a live peer", ct);
 
                 fixture.KillServer2();
@@ -249,5 +244,13 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             }
             public System.IO.Stream GetFileStream(string content) => throw new NotSupportedException();
         }
+    }
+
+    public sealed class BackplaneIntegrationTestsResilience : BackplaneIntegrationTestsResilienceBase {
+        protected override BackplaneProvider Provider => BackplaneProvider.Redis;
+    }
+
+    public sealed class BackplaneIntegrationTestsResiliencePostgres : BackplaneIntegrationTestsResilienceBase {
+        protected override BackplaneProvider Provider => BackplaneProvider.Postgres;
     }
 }
