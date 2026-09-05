@@ -24,8 +24,9 @@ namespace Cocoar.SignalARRR.Server {
         public RedisSignalARRRBackplane(
             SignalARRRRedisBackplaneOptions options,
             LocalSignalARRRBackplaneDispatcher localDispatcher,
+            ClusterSubjectRegistry clusterSubjects,
             ILogger<RedisSignalARRRBackplane> logger)
-            : base(options.NodeId, options.InvokeTimeout, options.HeartbeatInterval, options.NodeTimeout, localDispatcher, logger) {
+            : base(options.NodeId, options.InvokeTimeout, options.HeartbeatInterval, options.NodeTimeout, localDispatcher, clusterSubjects, logger) {
             _options = options;
         }
 

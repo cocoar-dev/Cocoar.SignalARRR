@@ -32,6 +32,7 @@ namespace Cocoar.SignalARRR.Tests {
             public Task<IReadOnlyList<SignalARRRBackplaneInvokeResult>> InvokeQueryAsync(Type hubType, SignalARRRBackplaneTargetKind targetKind, ServerRequestMessage message, Type resultType, string? groupName = null, string? userId = null, bool singleResult = false, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<SignalARRRBackplaneInvokeResult>>(Array.Empty<SignalARRRBackplaneInvokeResult>());
             public Task PublishGroupCommandAsync(Type? hubType, string connectionId, string groupName, SignalARRRBackplaneGroupAction action, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task<IReadOnlyList<string>> GetActiveNodesAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+            public Task PublishClusterEventAsync(string subject, string payloadJson, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         private static IServiceCollection MinimalSignalARRR(IServiceCollection services) {

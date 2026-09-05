@@ -34,6 +34,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         private readonly TimeSpan? _heartbeatInterval;
         private readonly TimeSpan? _nodeTimeout;
         private readonly TimeSpan? _invokeTimeout;
+        private readonly bool? _catchUp;
 
         private ConnectionMultiplexer? _redis;
         private NpgsqlDataSource? _postgres;
@@ -64,11 +65,12 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         protected MultiNodeSignalARRRServerFixture(BackplaneProvider provider) : this(provider, null, null) {
         }
 
-        internal MultiNodeSignalARRRServerFixture(BackplaneProvider provider, TimeSpan? heartbeatInterval, TimeSpan? nodeTimeout, TimeSpan? invokeTimeout = null) {
+        internal MultiNodeSignalARRRServerFixture(BackplaneProvider provider, TimeSpan? heartbeatInterval, TimeSpan? nodeTimeout, TimeSpan? invokeTimeout = null, bool? catchUp = null) {
             Provider = provider;
             _heartbeatInterval = heartbeatInterval;
             _nodeTimeout = nodeTimeout;
             _invokeTimeout = invokeTimeout;
+            _catchUp = catchUp;
 
             var suffix = Guid.NewGuid().ToString("N");
             _containerName = $"signalarrr-{provider.ToString().ToLowerInvariant()}-{suffix}";
@@ -96,8 +98,8 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             var tfm = $"net{Environment.Version.Major}.0";
             var serverAssemblyPath = IntegrationTestServerPathResolver.GetAssemblyPath(tfm);
 
-            _server1 = StartServerProcess(serverAssemblyPath, provider, ConnectionString, ChannelPrefix, NodeId1, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl1);
-            _server2 = StartServerProcess(serverAssemblyPath, provider, ConnectionString, ChannelPrefix, NodeId2, _heartbeatInterval, _nodeTimeout, _invokeTimeout, out var serverUrl2);
+            _server1 = StartServerProcess(serverAssemblyPath, provider, ConnectionString, ChannelPrefix, NodeId1, _heartbeatInterval, _nodeTimeout, _invokeTimeout, _catchUp, out var serverUrl1);
+            _server2 = StartServerProcess(serverAssemblyPath, provider, ConnectionString, ChannelPrefix, NodeId2, _heartbeatInterval, _nodeTimeout, _invokeTimeout, _catchUp, out var serverUrl2);
 
             ServerUrl1 = serverUrl1;
             ServerUrl2 = serverUrl2;
@@ -166,6 +168,23 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             }
         }
 
+        /// <summary>
+        /// Severs <paramref name="nodeId"/>'s subscription from the database side, the way a
+        /// network blip or a failover would. Postgres only: the listener session is identified by
+        /// its <c>application_name</c>. The node reconnects with backoff; what it does about the
+        /// messages published in between is what the catch-up tests are about.
+        /// </summary>
+        public async Task TerminateListenerAsync(string nodeId) {
+            if (Provider != BackplaneProvider.Postgres) {
+                throw new NotSupportedException("Only the Postgres fixture can terminate a listener session.");
+            }
+
+            await using var command = GetPostgres().CreateCommand(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = $1 AND pid <> pg_backend_pid()");
+            command.Parameters.AddWithValue($"signalarrr-backplane-listener:{nodeId}");
+            await command.ExecuteNonQueryAsync();
+        }
+
         private ConnectionMultiplexer GetRedis() {
             return _redis ??= ConnectionMultiplexer.Connect(ConnectionString);
         }
@@ -185,6 +204,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             TimeSpan? heartbeatInterval,
             TimeSpan? nodeTimeout,
             TimeSpan? invokeTimeout,
+            bool? catchUp,
             out string serverUrl) {
             var urlFile = Path.Combine(Path.GetTempPath(), $"signalarrr-test-{Guid.NewGuid()}.url");
 
@@ -212,6 +232,9 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             }
             if (invokeTimeout.HasValue) {
                 process.StartInfo.Environment["SIGNALARRR_BACKPLANE_INVOKE_TIMEOUT_MS"] = ((int)invokeTimeout.Value.TotalMilliseconds).ToString();
+            }
+            if (catchUp.HasValue) {
+                process.StartInfo.Environment["SIGNALARRR_BACKPLANE_CATCH_UP"] = catchUp.Value ? "true" : "false";
             }
             process.Start();
 

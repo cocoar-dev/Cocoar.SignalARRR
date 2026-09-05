@@ -52,6 +52,18 @@ namespace Cocoar.SignalARRR.Server {
             "signalarrr.backplane.self_evictions",
             description: "Times this node found its own heartbeat gone and re-registered its live connections — another node had already wiped them.");
 
+        public static readonly Counter<long> BackplaneListenerReconnects = SignalARRRTelemetry.Meter.CreateCounter<long>(
+            "signalarrr.backplane.listener.reconnects",
+            description: "Times this node's subscription to the backplane dropped and was re-established. Each one is a window in which cluster messages were missed, unless catch-up replayed them.");
+
+        public static readonly Counter<long> BackplaneMessagesReplayed = SignalARRRTelemetry.Meter.CreateCounter<long>(
+            "signalarrr.backplane.messages.replayed",
+            description: "Messages read back from the store after a subscription drop, because the node's cursor was behind. Postgres backplane with catch-up only.");
+
+        public static readonly Counter<long> BackplaneCatchUpGaps = SignalARRRTelemetry.Meter.CreateCounter<long>(
+            "signalarrr.backplane.catch_up.gaps",
+            description: "Subscription drops that outlasted the message retention, so part of what was missed could no longer be replayed. Any non-zero value is a real loss.");
+
         public static void RecordConnectionPhase(Histogram<double> histogram, string hub, string phase, double elapsedMs) {
             histogram.Record(elapsedMs,
                 new KeyValuePair<string, object?>("signalarrr.hub", hub),

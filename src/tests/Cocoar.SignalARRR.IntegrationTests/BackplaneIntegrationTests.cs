@@ -102,6 +102,94 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             }
         }
 
+        /// <summary>
+        /// A cluster subject event raised on one node reaches the subscriber on that node and the
+        /// subscriber on the other node — once each. Not zero on the remote node (the relay
+        /// works), not two on the local one (no echo).
+        /// </summary>
+        [Fact]
+        public async Task ClusterSubject_EventRaisedOnOneNode_ReachesBothNodesExactlyOnce() {
+            var ct = TestContext.Current.CancellationToken;
+            var prefix = $"once-{Guid.NewGuid():N}-";
+            using var http = new HttpClient();
+
+            var response = await http.PostAsync($"{_fixture.ServerUrl1}/__test/cluster-subject-publish?value={prefix}a", null, ct);
+            response.EnsureSuccessStatusCode();
+
+            await WaitForClusterEvents(_fixture.ServerUrl1, prefix, 1, ct);
+            await WaitForClusterEvents(_fixture.ServerUrl2, prefix, 1, ct);
+
+            // A duplicate would arrive right behind the original; give it the chance.
+            await Task.Delay(750, ct);
+            Assert.Equal(1, (await GetClusterEvents(_fixture.ServerUrl1, prefix, ct)).GetArrayLength());
+            Assert.Equal(1, (await GetClusterEvents(_fixture.ServerUrl2, prefix, ct)).GetArrayLength());
+        }
+
+        /// <summary>
+        /// Twenty events raised in a burst on one node arrive on the other in the order they were
+        /// raised — the per-subject relay loop and the sequential hand-off on the receiver.
+        /// </summary>
+        [Fact]
+        public async Task ClusterSubject_BurstOfEvents_ArrivesInOrderOnTheOtherNode() {
+            var ct = TestContext.Current.CancellationToken;
+            var prefix = $"order-{Guid.NewGuid():N}-";
+            const int count = 20;
+            using var http = new HttpClient();
+
+            for (var i = 0; i < count; i++) {
+                var response = await http.PostAsync($"{_fixture.ServerUrl2}/__test/cluster-subject-publish?value={prefix}{i:D2}", null, ct);
+                response.EnsureSuccessStatusCode();
+            }
+
+            await WaitForClusterEvents(_fixture.ServerUrl1, prefix, count, ct);
+
+            var received = (await GetClusterEvents(_fixture.ServerUrl1, prefix, ct))
+                .EnumerateArray().Select(e => e.GetProperty("value").GetString()).ToArray();
+            Assert.Equal(Enumerable.Range(0, count).Select(i => $"{prefix}{i:D2}"), received);
+        }
+
+        /// <summary>
+        /// An event well above the Postgres notification limit arrives intact on the other node,
+        /// and an awaited publish returns only once the backplane has it.
+        /// </summary>
+        [Fact]
+        public async Task ClusterSubject_LargeAwaitedEvent_ArrivesIntactOnTheOtherNode() {
+            var ct = TestContext.Current.CancellationToken;
+            var prefix = $"large-{Guid.NewGuid():N}-";
+            const int size = 64 * 1024;
+            using var http = new HttpClient();
+
+            var response = await http.PostAsync($"{_fixture.ServerUrl1}/__test/cluster-subject-publish?value={prefix}big&size={size}&awaited=true", null, ct);
+            response.EnsureSuccessStatusCode();
+
+            await WaitForClusterEvents(_fixture.ServerUrl2, prefix, 1, ct);
+
+            var received = (await GetClusterEvents(_fixture.ServerUrl2, prefix, ct))[0];
+            Assert.Equal(size, received.GetProperty("payloadLength").GetInt32());
+            Assert.True(received.GetProperty("payloadValid").GetBoolean(), "The relayed payload was corrupted.");
+        }
+
+        private static async Task<JsonElement> GetClusterEvents(string serverUrl, string prefix, CancellationToken cancellationToken) {
+            using var http = new HttpClient();
+            var response = await http.GetAsync($"{serverUrl}/__test/cluster-subject-received?prefix={Uri.EscapeDataString(prefix)}", cancellationToken);
+            response.EnsureSuccessStatusCode();
+            return JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(cancellationToken));
+        }
+
+        private static async Task WaitForClusterEvents(string serverUrl, string prefix, int expected, CancellationToken cancellationToken) {
+            var last = -1;
+            for (var i = 0; i < 100; i++) {
+                last = (await GetClusterEvents(serverUrl, prefix, cancellationToken)).GetArrayLength();
+                if (last >= expected) {
+                    return;
+                }
+
+                await Task.Delay(100, cancellationToken);
+            }
+
+            throw new TimeoutException($"'{serverUrl}' saw {last} cluster event(s) with prefix '{prefix}', expected {expected}.");
+        }
+
         [Fact]
         public async Task PushNotification_CrossNode_ClientReceives() {
             var ct = TestContext.Current.CancellationToken;

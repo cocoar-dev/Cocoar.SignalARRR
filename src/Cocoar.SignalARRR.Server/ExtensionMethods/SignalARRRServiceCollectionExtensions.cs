@@ -37,6 +37,7 @@ namespace Microsoft.Extensions.DependencyInjection {
             // *before* AddSignalARRR would otherwise get the disabled default appended afterwards
             // and silently win, leaving a configured cluster running single-node.
             serviceCollection.TryAddSingleton<LocalSignalARRRBackplaneDispatcher>();
+            serviceCollection.TryAddSingleton<ClusterSubjectRegistry>();
             serviceCollection.TryAddSingleton<ISignalARRRBackplane, DisabledSignalARRRBackplane>();
             serviceCollection.TryAddSingleton<ISignalARRRConnectionRegistry, DisabledSignalARRRConnectionRegistry>();
             serviceCollection.AddSingleton<ClientManager>(sp => new ClientManager(sp.GetRequiredService<IHARRRClientManager>(), sp));

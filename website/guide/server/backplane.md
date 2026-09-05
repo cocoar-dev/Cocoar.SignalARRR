@@ -13,18 +13,20 @@ They differ in what they ask of your infrastructure and in how much traffic they
 | | `Backplane.Redis` | `Backplane.Postgres` |
 |---|---|---|
 | Needs | A Redis, Valkey or Garnet instance | The PostgreSQL primary your application already uses |
-| Transport | Pub/Sub, in memory | `LISTEN`/`NOTIFY`, plus a table for envelopes above 8 kB |
+| Transport | Pub/Sub, in memory | `LISTEN`/`NOTIFY`, envelopes in an unlogged table |
 | Registry | Hash and sets per key | One row per connection, one per node |
-| Throughput ceiling | Hundreds of thousands of cross-node messages per second | Low thousands per second; `NOTIFY` serializes at commit and large envelopes cost a row write |
+| After a subscription drop | Messages published in between are lost | Replayed from the node's cursor, in order (catch-up, on by default) |
+| Throughput ceiling | Hundreds of thousands of cross-node messages per second | Low thousands per second; `NOTIFY` serializes at commit and each envelope costs a row write |
 | Latency | Sub-millisecond | Single-digit milliseconds |
 | Housekeeping | Key TTLs | Sweeps run by the nodes themselves |
-| Best for | High realtime volume, or Redis already in the stack | Deployments whose only stateful dependency is Postgres |
+| Best for | High realtime volume, or Redis already in the stack | Deployments whose only stateful dependency is Postgres, or that want a reconnect to miss nothing |
 
 Pick Redis when cross-node volume is a design parameter. Pick Postgres when you would otherwise be
 adding a second stateful service — its ceiling is two orders of magnitude above what an
 application-level backplane sees in practice, and one fewer service to run, back up, monitor and
-secure is a real saving. Switching later is a package reference and one registration call; nothing
-else in the application changes.
+secure is a real saving — or when a node that briefly loses its subscription must not miss anything:
+Pub/Sub has no history to read back, a table does. Switching later is a package reference and one
+registration call; nothing else in the application changes.
 
 ## Redis-compatible backplane
 
@@ -87,13 +89,51 @@ channel; the reply to a call travels back on the responses channel. Connection r
 node heartbeats are rows in the `connections` and `nodes` tables, and liveness is judged on the
 database clock alone, so the nodes need not agree on the time.
 
-A notification payload must stay under 8 kB. An envelope that fits is sent inline. A larger one —
-a push carrying a sizeable object graph, a cluster query result with many items — is written to the
-unlogged `messages` table in the same transaction as the `NOTIFY`, which then carries only the row
-id; the receiving node reads the row and drops it from consideration once a retention sweep removes
-it two minutes later. That extra write and read is the price of the larger payload, and it is why
-the throughput ceiling above is lower than Redis's. The boundary is invisible to your code: both
-paths deliver the same envelope, in the same order.
+Every envelope is written to the unlogged `messages` table in the same transaction as the
+`NOTIFY`, which carries only the row id, the origin node and the target node. Each receiving node
+decides from that alone whether the row concerns it and, if so, reads it. Receivers never delete
+rows; a retention sweep on every heartbeat removes rows older than `MessageRetention`, five minutes
+by default. Postgres delivers notifications after commit, so a row is always visible by the time it
+is read. That write and read per message is why the throughput ceiling above is lower than Redis's,
+and it is what makes catch-up possible.
+
+With catch-up off, envelopes under 8 kB — the notification payload limit — travel inline and only
+larger ones take the table; a subscription drop then loses what was published in between, exactly
+as with Redis.
+
+### Catch-up after a subscription drop
+
+Each node remembers the id of the last message it saw. When its listener connection drops — a
+failover, a proxy idle-timeout, a network blip — the node reconnects with backoff, resubscribes
+first, and then reads every row past its cursor that is addressed to it, in id order, before it
+resumes live delivery. Rows that show up both in that backlog and as a live notification are
+recognized by id and handed on once. Nothing is delivered twice, and the order a client sees is
+the order the messages were published in.
+
+This holds for every kind of traffic the backplane carries: a push that fell into the gap arrives
+late rather than never, a group command is applied, a cluster query is answered if the asking node
+is still waiting. A fresh node starts at the current end of the table; it serves no connections
+yet, so nothing before it subscribed can concern it.
+
+The retention is the limit. An outage longer than `MessageRetention` is reported as a gap — a
+warning naming the outage length and a `signalarrr.backplane.catch_up.gaps` counter — rather than
+passed over silently; that silence is the failure mode catch-up exists to remove. Size the
+retention to the longest subscription outage you want to survive in full:
+
+```csharp
+builder.Services.AddSignalARRRPostgresBackplane(options => options
+    .WithConnectionString(connectionString)
+    .WithMessageRetention(TimeSpan.FromMinutes(15)));
+
+// Or opt out and take the Redis contract: inline notifications, no replay.
+builder.Services.AddSignalARRRPostgresBackplane(options => options
+    .WithConnectionString(connectionString)
+    .WithCatchUp(false));
+```
+
+Two counters make the behaviour visible: `signalarrr.backplane.listener.reconnects` (each one a
+window in which messages were missed) and `signalarrr.backplane.messages.replayed` (what catch-up
+read back). Both are on the `Cocoar.SignalARRR` meter.
 
 ### Schema and permissions
 
@@ -130,9 +170,10 @@ identifiers at 63 bytes.
   established, naming this as the likely cause.
 - **Connections per node.** One long-lived listener connection, plus ordinary pooled connections
   for publishing and registry lookups — count them when sizing `max_connections`.
-- **Transient delivery, as with Redis.** If the listener connection drops, the node reconnects
-  with backoff and misses whatever was published in between. The registry lives in tables and loses
-  nothing. The health check reports the node unhealthy while its listener is down.
+- **A subscription drop is recovered, not survived.** If the listener connection drops, the node
+  reconnects with backoff and replays what it missed (see above); with catch-up off it misses it,
+  as with Redis. The registry lives in tables and loses nothing either way. The health check reports
+  the node unhealthy while its listener is down.
 - **Sweeps instead of TTLs.** Node timeouts, orphaned registrations and message retention are
   cleaned up by the nodes on every heartbeat; there is nothing for you to schedule.
 
@@ -149,6 +190,57 @@ internal base for everything that is not transport or storage, so a third first-
 a smaller job than it looks.
 :::
 
+## Cluster-aware observables
+
+The backplane routes the *target* of a send: a push to a connection, a group or a user finds the
+node that holds it. It never saw the *source* of a server stream. A hub method that returns an
+`IObservable<T>` fed by an in-process subject — an event dispatcher, a change feed — streams only
+what its own process raised, and a client on another node never sees those events. Applications
+built in that subscribe style got nothing from the backplane and had to relay events themselves.
+
+A **cluster subject** closes the gap. It is an observable whose events reach subscribers on every
+node, relayed over the backplane transport already in place:
+
+```csharp
+// Registration — one subject per event type, the name is cluster-wide
+builder.Services.AddSignalARRRPostgresBackplane(...);
+builder.Services.AddSignalARRRClusterSubject<OrderChanged>("orders");
+
+// Producer, anywhere in the application
+public sealed class OrderService(IClusterSubject<OrderChanged> orders) {
+    public async Task ChangeAsync(Order order) {
+        // ...
+        orders.OnNext(new OrderChanged(order.Id, order.Version));   // local now, other nodes fire-and-forget
+    }
+}
+
+// Hub: a server stream that is cluster-wide without knowing it
+public sealed class OrdersHub(IClusterSubject<OrderChanged> orders) : HARRR {
+    public IObservable<OrderChangedDto> Subscribe(string tenant)
+        => orders.Where(e => e.Tenant == tenant).Select(Map);
+}
+```
+
+What the subject guarantees:
+
+- **Once locally, once remotely, never echoed.** Local subscribers see an event from `OnNext`;
+  subscribers on other nodes see it from the relay; a received event is never relayed again. Each
+  browser sees every event exactly once, from the node its connection is pinned to.
+- **In order.** Events raised on one node arrive on the others in the order they were raised — one
+  relay loop per subject, and sequential hand-off on the receiver.
+- **Fire-and-forget for the producer.** `OnNext` does not wait for the network; a relay failure
+  is logged, it does not fail the request. `PublishAsync` is the awaited variant for callers that
+  want to know the backplane has the event.
+- **No type names on the wire.** The event type is fixed at registration. A node deserializes
+  into it or drops the event with a warning, so a rolling update with mixed builds cannot make a
+  node materialize a type it does not know. Polymorphic payloads are yours to configure through
+  `ClusterSubjectOptions.SerializerOptions`.
+- **Delivery is the backplane's.** Transient with Redis; replayed after a subscription drop with
+  the Postgres catch-up. Without a backplane, the subject is a plain local one and nothing changes.
+
+One subject per event type: `IClusterSubject<T>` is resolved by `T`. Two subjects with the same
+name are refused at startup, because the name is how the nodes match events to subjects.
+
 ## Supported distributed operations
 
 With the backplane enabled, the following become cluster-aware:
@@ -163,6 +255,7 @@ With the backplane enabled, the following become cluster-aware:
 | `InvokeAllAsync(...)` | Collects results from matching clients across the cluster |
 | `InvokeOneAsync(...)` | Returns the first successful result across the cluster |
 | `AddToGroupAsync(...)` / `RemoveFromGroupAsync(...)` | Works for local and remote connections |
+| `IClusterSubject<T>.OnNext(...)` | Reaches the subject's subscribers on every node |
 
 ## Presence APIs
 

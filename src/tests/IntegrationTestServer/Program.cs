@@ -59,6 +59,11 @@ builder.Services.AddSingleton<IUserIdProvider, QueryStringUserIdProvider>();
 builder.Services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(TestHub).Assembly));
 builder.Services.AddSignalARRRHealthChecks();
 
+// A cluster subject plus a process-lifetime subscriber, so the multi-node tests can raise an
+// event on one node and ask each node what reached it.
+builder.Services.AddSignalARRRClusterSubject<ClusterTestEvent>("test-events");
+builder.Services.AddSingleton<ClusterSubjectProbe>();
+
 // The multi-node fixture picks the backplane per test collection: SIGNALARRR_BACKPLANE_PROVIDER is
 // "redis" (default) or "postgres". The isolation prefix names Redis keys or the Postgres schema.
 var backplaneConnectionString = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CONNECTION_STRING");
@@ -69,10 +74,15 @@ if (!string.IsNullOrWhiteSpace(backplaneConnectionString)) {
     var heartbeatIntervalMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_HEARTBEAT_INTERVAL_MS");
     var nodeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_NODE_TIMEOUT_MS");
     var invokeTimeoutMs = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_INVOKE_TIMEOUT_MS");
+    var catchUp = Environment.GetEnvironmentVariable("SIGNALARRR_BACKPLANE_CATCH_UP");
 
     if (string.Equals(backplaneProvider, "postgres", StringComparison.OrdinalIgnoreCase)) {
         builder.Services.AddSignalARRRPostgresBackplane(options => {
             options.WithConnectionString(backplaneConnectionString);
+
+            if (bool.TryParse(catchUp, out var catchUpEnabled)) {
+                options.WithCatchUp(catchUpEnabled);
+            }
 
             if (!string.IsNullOrWhiteSpace(channelPrefix)) {
                 options.WithSchema(channelPrefix);
@@ -122,6 +132,7 @@ if (!string.IsNullOrWhiteSpace(backplaneConnectionString)) {
 }
 
 var app = builder.Build();
+app.Services.GetRequiredService<ClusterSubjectProbe>();
 app.Lifetime.ApplicationStarted.Register(() => WriteDiagnostics("application-started"));
 app.Lifetime.ApplicationStopping.Register(() => WriteDiagnostics("application-stopping"));
 
@@ -629,6 +640,39 @@ app.MapSignalARRRTest("/__test/trigger-client-getbyid-sized", async (context, cl
     var typedClient = clientManager.GetTypedMethods<TestShared.ITestClientMethods>(connectionId);
     var result = await Task.Run(() => typedClient.GetById(TestShared.SizedTestPayload.Create(size)));
     return (object)new { Length = result.Length, Valid = TestShared.SizedTestPayload.IsValid(result, size) };
+});
+
+// Raises an event on this node's cluster subject. "awaited" publishes through PublishAsync,
+// which completes once the backplane has the event; otherwise OnNext, fire-and-forget.
+app.MapPost("/__test/cluster-subject-publish", async (HttpContext context) => {
+    var value = context.Request.Query["value"].ToString();
+    var size = int.TryParse(context.Request.Query["size"].ToString(), out var s) ? s : 0;
+    var awaited = string.Equals(context.Request.Query["awaited"].ToString(), "true", StringComparison.OrdinalIgnoreCase);
+    var subject = context.RequestServices.GetRequiredService<Cocoar.SignalARRR.Server.IClusterSubject<ClusterTestEvent>>();
+    var @event = new ClusterTestEvent(value, TestShared.SizedTestPayload.Create(size));
+
+    if (awaited) {
+        await subject.PublishAsync(@event, context.RequestAborted);
+    } else {
+        subject.OnNext(@event);
+    }
+
+    return Results.Ok("Published");
+});
+
+// The events this node's subscriber has seen whose value starts with the prefix, in order.
+app.MapGet("/__test/cluster-subject-received", (HttpContext context) => {
+    var prefix = context.Request.Query["prefix"].ToString();
+    var probe = context.RequestServices.GetRequiredService<ClusterSubjectProbe>();
+    var items = probe.Snapshot()
+        .Where(e => e.Value.StartsWith(prefix, StringComparison.Ordinal))
+        .Select(e => new {
+            value = e.Value,
+            payloadLength = e.Payload.Length,
+            payloadValid = TestShared.SizedTestPayload.IsValid(e.Payload, e.Payload.Length)
+        })
+        .ToList();
+    return Results.Ok(items);
 });
 
 app.MapSignalARRRTest("/__test/request-client-info", async (context, clientManager) => {

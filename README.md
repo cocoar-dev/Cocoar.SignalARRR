@@ -81,7 +81,7 @@ For full setup guides, streaming, authorization, and server-to-client calls, see
 - **Server-to-client calls from anywhere** — inject `ClientManager` in controllers, background services, etc.
 - **Four clients** — .NET, .NET Framework, TypeScript/JavaScript, Swift
 - **Typed broadcasts** — `WithHub<T>().WithGroup().SendAsync<T>()` for groups and filtered clients
-- **Multi-node backplane** — opt-in scale-out over Redis/Valkey/Garnet, or over the PostgreSQL you already run
+- **Multi-node backplane** — opt-in scale-out over Redis/Valkey/Garnet, or over the PostgreSQL you already run; with cluster subjects, server streams fed by an in-process observable become cluster-wide too
 
 ## Multi-node backplane
 
