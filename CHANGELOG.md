@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [5.1.0] - 2026-09-05
+
 ### Added
 
 - **Cluster subjects** (`AddSignalARRRClusterSubject<T>("name")`, `IClusterSubject<T>`): an observable whose events reach subscribers on every node. The backplane routed the *target* of a send but never saw the *source* of a server stream: a hub method returning an `IObservable<T>` fed by an in-process subject streamed only what its own process raised, and applications in the subscribe style had to build a relay themselves. A cluster subject relays each event over the backplane transport to the same-named subject on the other nodes. Once locally, once remotely, never echoed; in order per publishing node; fire-and-forget for the producer (`PublishAsync` for the awaited variant); the event type is fixed at registration so no type name travels on the wire and a mixed-build cluster drops what it cannot read, with a warning. Without a backplane it is a plain local subject. Delivery is the backplane's — transient with Redis, replayed after a subscription drop with the Postgres catch-up. The envelope kind is appended last, so an older node ignores it.
@@ -20,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **The server package no longer copies its skill into your repository on every build.** Until now a `.targets` file in the package wrote `skills/signalarrr/` into `.claude/skills/` and `.github/skills/` of any consuming project that had those folders — a silent write into your source tree, frozen at whatever the package contained. Install the skill deliberately instead (see above); files it already copied are yours to keep or delete.
+
+### Changed
+
+- **A lost Postgres listener connection is a warning, not an error.** It is routine — a proxy idle-timeout, a failover, a network blip — and the node is resubscribed within a second, with catch-up replaying whatever was missed; logging it as an error with a stack trace fired every alert on every idle-timeout. The warning names the cause; the error, with the exception, is reserved for reconnects that keep failing (third consecutive attempt, about 3.5 s in).
 
 ### Fixed
 
