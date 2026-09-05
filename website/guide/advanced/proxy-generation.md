@@ -1,3 +1,7 @@
+---
+description: "The Roslyn source generator behind typed proxies: setup, [SignalARRRContract], generated code and naming, return type classification, multi-assembly support, the DynamicProxy fallback, the ProxyCreator API"
+---
+
 # Proxy Generation
 
 SignalARRR uses a Roslyn source generator to produce typed proxy classes at compile time. This enables zero-reflection RPC calls and is AOT-compatible.

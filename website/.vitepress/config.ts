@@ -32,7 +32,7 @@ export const baseConfig = defineConfig({
       { text: 'Reference', link: '/reference/packages' },
       { text: 'Roadmap', link: '/roadmap/status' },
       { text: 'Changelog', link: '/changelog' },
-      { text: 'LLM Docs', link: '/llms-full.txt', target: '_blank' },
+      { text: 'LLM Docs', link: '/llms.txt', target: '_blank' },
       { text: 'NuGet', link: 'https://www.nuget.org/packages/Cocoar.SignalARRR.Server' },
     ],
 

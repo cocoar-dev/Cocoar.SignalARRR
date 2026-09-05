@@ -1,3 +1,7 @@
+---
+description: "Server-initiated cancellation of client operations: pass a CancellationToken to a client method and cancel it remotely, AbortSignal on the TypeScript client, and the CancelTokenFromServer flow underneath"
+---
+
 # Cancellation Propagation
 
 SignalARRR supports server-initiated cancellation of client operations. The server can pass a `CancellationToken` to a client method and cancel it remotely. On the TypeScript client, `CancellationToken` is converted to an `AbortSignal`.

@@ -1,3 +1,7 @@
+---
+description: How the three client ecosystems are tested against one shared IntegrationTestServer on real Kestrel, and what each suite covers
+---
+
 # Test Coverage
 
 All three client ecosystems (.NET, TypeScript, Swift) test against one shared `IntegrationTestServer` running real Kestrel. No mocking.

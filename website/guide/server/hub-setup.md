@@ -1,3 +1,7 @@
+---
+description: "Create a HARRR hub, register it with AddSignalARRR and MapSignalARRRHub<T>, enable MessagePack, run several hubs, tune connection options, and use the hub lifecycle and properties"
+---
+
 # Hub Setup
 
 The `HARRR` class is the SignalARRR hub base class. It extends ASP.NET Core's `Hub` with typed method dispatch, authorization, client context tracking, and streaming support.

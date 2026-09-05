@@ -1,3 +1,7 @@
+---
+description: "Declare the wire name of a contract interface (the ClassName|Method halves), the rules for it, versioning contracts side by side, and where wire names do not apply"
+---
+
 # Contract Wire Names
 
 A call through a contract interface travels under a name made of two halves, separated by `|`:

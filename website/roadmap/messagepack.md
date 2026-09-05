@@ -1,3 +1,7 @@
+---
+description: Status of the MessagePack hub protocol across the .NET, TypeScript and Swift clients
+---
+
 # MessagePack Protocol
 
 **Status:** Fully implemented across all clients (.NET, TypeScript, Swift).

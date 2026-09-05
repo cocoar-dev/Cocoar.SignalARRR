@@ -1,154 +1,126 @@
 ---
 name: signalarrr
 description: >
-  Typed bidirectional RPC over SignalR using Cocoar.SignalARRR.
-  Use when working with HARRR hubs, ServerMethods, HARRRConnection,
-  [SignalARRRContract] interfaces, streaming (IAsyncEnumerable, IObservable,
-  ChannelReader), server-to-client calls, SignalARRR authorization,
-  or the @cocoar/signalarrr TypeScript/JavaScript npm client.
+  Typed bidirectional RPC over ASP.NET Core SignalR with Cocoar.SignalARRR. Use when working
+  with HARRR hubs, ServerMethods<T>, [SignalARRRContract] interfaces, HARRRConnection on .NET,
+  the @cocoar/signalarrr npm client or the CocoarSignalARRR Swift package, server-to-client calls,
+  ClientManager and IClientQuery, item streaming (IAsyncEnumerable, IObservable, ChannelReader),
+  HTTP stream references, cancellation propagation, SignalARRR authorization, the Redis or
+  PostgreSQL backplane, or cluster subjects.
 metadata:
   author: Bernhard Windisch
-  version: "4.0"
+  version: "5.1"
+  source: https://docs.cocoar.dev/signalarrr/
 ---
 
 # Cocoar.SignalARRR
 
-SignalARRR extends ASP.NET Core SignalR with typed bidirectional RPC.
-Both server and client can call each other's methods through shared interfaces,
-with compile-time proxy generation, streaming, cancellation propagation, and
-ASP.NET Core authorization.
+SignalARRR extends ASP.NET Core SignalR with typed bidirectional RPC: server and client call
+each other's methods through shared interfaces, with compile-time proxies, item streaming, HTTP
+file transfer, cancellation propagation, ASP.NET Core authorization, and an optional multi-node
+backplane. This skill is the documentation, page by page, under `references/`. The index at the
+bottom says which page answers what.
 
-## When to use this skill
-
-Use this skill when:
-- Setting up a HARRR hub or ServerMethods class
-- Creating or configuring a HARRRConnection (C# or TypeScript client)
-- Defining `[SignalARRRContract]` interfaces for typed RPC
-- Implementing streaming with IAsyncEnumerable, IObservable, or ChannelReader
-- Server needs to call client methods and await responses
-- Configuring authorization on hub methods
-- Using the `@cocoar/signalarrr` npm package in a JavaScript/TypeScript project
-- Troubleshooting SignalARRR connection or invocation issues
-
-## Package structure
+## Packages
 
 | Package | Purpose |
 |---|---|
-| `Cocoar.SignalARRR.Server` | Server-side: HARRR hub, ServerMethods, auth, ClientManager |
-| `Cocoar.SignalARRR.Client` | Client-side .NET: HARRRConnection, typed proxies |
-| `Cocoar.SignalARRR.Contracts` | Shared: `[SignalARRRContract]` attribute + source generator (reference from shared interface projects) |
-| `Cocoar.SignalARRR.Common` | Wire protocol types (referenced automatically) |
-| `Cocoar.SignalARRR.ProxyGenerator` | Proxy factory infrastructure (referenced automatically) |
-| `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via DispatchProxy |
-| `Cocoar.SignalARRR.SourceGenerator` | Roslyn source generator (bundled in Contracts) |
+| `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects |
+| `Cocoar.SignalARRR.Server.Backplane.Redis` | Multi-node scale-out over Redis, Valkey or Garnet (`AddSignalARRRRedisBackplane`) |
+| `Cocoar.SignalARRR.Server.Backplane.Postgres` | Multi-node scale-out over the PostgreSQL primary the app already has (`AddSignalARRRPostgresBackplane`), with catch-up after a subscription drop |
+| `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers |
+| `Cocoar.SignalARRR.Client.FullFramework` | .NET Framework 4.6.2+ client: typed proxies via `DispatchProxy`, no item streaming |
+| `Cocoar.SignalARRR.Contracts` | `[SignalARRRContract]` attribute plus the source generator; reference from shared interface projects |
+| `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via `DispatchProxy`, for plugin scenarios |
+| `Cocoar.SignalARRR.Common`, `.ProxyGenerator`, `.SourceGenerator` | Referenced transitively; not added by hand |
 | `@cocoar/signalarrr` (npm) | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
+| `CocoarSignalARRR` (Swift Package) | Swift client for iOS, macOS, tvOS, watchOS with the `@HubProxy` macro |
 
-## Quick start
+## Things an assistant gets wrong without the docs
 
-### 1. Define shared interfaces
+- **`send` is fire-and-forget, `invoke` awaits a result, `stream` returns items.** On the .NET
+  client the return type of the contract method decides: `void`/`Task` → send, `Task<T>` → invoke,
+  `IAsyncEnumerable<T>`/`IObservable<T>`/`ChannelReader<T>` → stream. On TypeScript and Swift the
+  caller chooses the call explicitly.
+- **Every interface a `ServerMethods<T>` class implements is a public RPC surface**, whether or
+  not it carries `[SignalARRRContract]`. Hold collaborators as fields; do not implement their
+  interfaces on the class.
+- **`WithHub<T>()` returns an `IClientQuery`, not a sequence.** Filter with `WithGroup`, `WithUser`
+  and `WithAttribute`, which span the cluster; `WithLocalFilter(predicate)` and `LocalClients()`
+  are node-local by name.
+- **Server-to-client calls use SignalR client results natively.** Register handlers with
+  `RegisterInterface` (.NET), `onServerMethod` (TypeScript) or the interface handler (Swift)
+  before connecting; `On()` on the raw `HubConnection` is not the contract path.
+- **A `System.IO.Stream` parameter travels over HTTP, not the WebSocket.** Download endpoints are
+  one-time; uploads go through `RequestUploadSlot` and `POST /hub/upload/{id}`; slots per
+  connection are capped.
+- **Token clients configure the message credential.** Without it the server's
+  `ChallengeAuthentication` gets no answer and the connection is denied at the first authorized
+  call; transport-level auth (certificates, Negotiate, cookies) works without it.
+- **Unexpected exceptions do not carry their detail to the caller** — a fixed sentence plus a
+  correlation id. Throw `HARRRException(code, message)` for errors the caller is meant to act on.
+- **A backplane is a package and one registration call.** Redis and Postgres provide the same
+  cluster behaviour; the Postgres one replays messages missed during a subscription drop. Server
+  streams fed by an in-process observable are node-local unless the source is an
+  `IClusterSubject<T>` — one per event type, registered by name.
 
-In your shared project, reference `Cocoar.SignalARRR.Contracts`:
-
-```csharp
-[SignalARRRContract]
-public interface IChatHub {
-    Task SendMessage(string user, string message);
-    Task<List<string>> GetHistory();
-    IAsyncEnumerable<string> StreamMessages(CancellationToken ct);
-}
-
-[SignalARRRContract]
-public interface IChatClient {
-    void ReceiveMessage(string user, string message);
-    Task<string> GetClientName();
-}
-```
-
-### 2. Server setup
-
-```csharp
-// Program.cs
-services.AddSignalR();
-services.AddSignalARRR(options => options
-    .AddServerMethodsFrom(typeof(Program).Assembly));
-
-app.UseRouting();
-app.UseAuthentication();  // if using auth
-app.UseAuthorization();   // if using auth
-app.MapSignalARRRHub<ChatHub>("/chathub");
-```
-
-```csharp
-// Hub
-public class ChatHub : HARRR {
-    public ChatHub(IServiceProvider sp) : base(sp) { }
-}
-
-// Server methods (auto-discovered)
-public class ChatMethods : ServerMethods<ChatHub>, IChatHub {
-    public Task SendMessage(string user, string message) {
-        Clients.All.SendAsync("ReceiveMessage", user, message);
-        return Task.CompletedTask;
-    }
-
-    public Task<List<string>> GetHistory() => Task.FromResult(new List<string>());
-
-    public async IAsyncEnumerable<string> StreamMessages(
-        [EnumeratorCancellation] CancellationToken ct) {
-        while (!ct.IsCancellationRequested) {
-            yield return $"msg-{DateTime.Now:ss}";
-            await Task.Delay(1000, ct);
-        }
-    }
-}
-```
-
-### 3. Client setup
-
-```csharp
-var connection = HARRRConnection.Create(builder => {
-    builder.WithUrl("https://localhost:5001/chathub");
-});
-
-await connection.StartAsync();
-
-// Typed calls
-var chat = connection.GetTypedMethods<IChatHub>();
-await chat.SendMessage("Alice", "Hello!");
-var history = await chat.GetHistory();
-
-// Streaming
-await foreach (var msg in chat.StreamMessages(cancellationToken)) {
-    Console.WriteLine(msg);
-}
-```
-
-### 4. Server-to-client calls
-
-```csharp
-// Inside a ServerMethods class — use ClientContext
-var client = ClientContext.GetTypedMethods<IChatClient>();
-var name = await client.GetClientName();
-
-// Outside hub context — inject ClientManager
-public class NotificationService {
-    private readonly ClientManager _clients;
-    public NotificationService(ClientManager clients) => _clients = clients;
-
-    public void NotifyClient(string connectionId) {
-        var client = _clients.GetTypedMethods<IChatClient>(connectionId);
-        client.ReceiveMessage("System", "Hello from server!");
-    }
-}
-```
+<!-- Everything below is generated by website/scripts/sync-skill.mjs from the docs frontmatter. Edit the docs, not this file. -->
 
 ## Reference documentation
 
-For detailed API documentation, see:
-- [Getting Started](references/getting-started.md) — full setup walkthrough
-- [Server API](references/server-api.md) — HARRR, ServerMethods, ClientManager, AddSignalARRR
-- [Client API](references/client-api.md) — HARRRConnection, typed proxies, event handlers
-- [Streaming](references/streaming.md) — IAsyncEnumerable, IObservable, ChannelReader patterns
-- [Authorization](references/authorization.md) — [Authorize], hub-level inheritance, token flow
-- [Proxy Generation](references/proxy-generation.md) — [SignalARRRContract], source generator, DynamicProxy
-- [Migration from v2.x](references/migration-v4.md) — breaking changes and upgrade guide
+Each file under `references/` is one page of the documentation, copied verbatim. Read the one
+whose description matches the task; they are independent of each other.
+
+### Introduction
+
+- [Getting Started](references/guide/getting-started.md) — Install the packages, define a [SignalARRRContract] interface, implement it in a ServerMethods<T> class on a HARRR hub, and call it from the .NET, TypeScript and Swift clients
+
+### Server
+
+- [Hub Setup](references/guide/server/hub-setup.md) — Create a HARRR hub, register it with AddSignalARRR and MapSignalARRRHub<T>, enable MessagePack, run several hubs, tune connection options, and use the hub lifecycle and properties
+- [Server Methods](references/guide/server/server-methods.md) — Organize hub logic in ServerMethods<T> classes: auto-discovery, several classes per hub, why every declared interface is a public RPC surface, method naming, DI and [FromServices], server-to-client calls, custom names
+- [Authorization](references/guide/server/authorization.md) — [Authorize] at method, class and hub level; message-level token authentication with ChallengeAuthentication and the auth cache; transport-level authentication with client certificates, Negotiate and cookies; re-validation and mixed mode
+- [Client Manager](references/guide/server/client-manager.md) — ClientManager: query clients with IClientQuery, single-client calls, SendAsync / InvokeAllAsync / InvokeOneAsync, presence snapshots, groups, use from controllers and background services, ClientContext properties and custom attributes
+- [Contract Wire Names](references/guide/server/contracts-wire-names.md) — Declare the wire name of a contract interface (the ClassName|Method halves), the rules for it, versioning contracts side by side, and where wire names do not apply
+- [Backplane & Clustering](references/guide/server/backplane.md) — Multi-node clustering with the Redis-compatible or PostgreSQL backplane: choosing between them, catch-up after a subscription drop, schema and permissions, cluster subjects for cluster-wide observables, distributed operations, presence and cluster semantics
+
+### .NET client
+
+- [Connection Setup](references/guide/dotnet-client/connection-setup.md) — Create a HARRRConnection, authenticate with bearer tokens or client certificates, configure auto-reconnect, start and stop, handle errors and connection events, reach the underlying HubConnection
+- [Typed Methods](references/guide/dotnet-client/typed-methods.md) — Call server methods through GetTypedMethods<T>() proxies: return type mapping to invoke, send and stream, generic methods, proxy caching, and what the source generator needs
+- [Server-to-Client Handlers](references/guide/dotnet-client/server-to-client.md) — Handle server-to-client calls on the .NET client: define the contract, implement it, RegisterInterface before connecting, return values, why On() is for raw SignalR only, what happens when a handler throws
+
+### TypeScript client
+
+- [TypeScript Client Setup](references/guide/typescript-client/setup.md) — The @cocoar/signalarrr npm client: install, create a connection, invoke / send / stream, error handling, MessagePack, accessTokenFactory authentication, connection events and properties, method naming
+- [Server Method Handlers](references/guide/typescript-client/server-methods.md) — Handle server-to-client calls in TypeScript with onServerMethod(): wire names, return values, throwing and async handlers, chaining, and cancellation via AbortSignal
+
+### Swift client
+
+- [Swift Client Setup](references/guide/swift-client/setup.md) — The CocoarSignalARRR Swift package for iOS, macOS, tvOS and watchOS: installation, connection and options, authentication, invoke / send / stream, events, MessagePack, reconnection policy, transports, logging
+- [Typed Proxies & Server Methods](references/guide/swift-client/typed-proxies.md) — Swift typed proxies with the @HubProxy macro, server-to-client and streaming handlers, interface registration, cancellation support, and HTTP stream references
+
+### Item streaming
+
+- [Server-to-Client Streaming](references/guide/streaming/server-to-client.md) — Stream results from server methods with IAsyncEnumerable<T> (recommended), IObservable<T> or ChannelReader<T>, consume them on the .NET and TypeScript clients, and cancel a stream
+- [Client-to-Server Streaming](references/guide/streaming/client-to-server.md) — Stream items from a client to the server with StreamItemToServer and StreamCompleteToServer, handle the stream in a ServerMethods class, and deal with errors
+
+### Advanced
+
+- [HTTP Stream References](references/guide/advanced/http-streams.md) — HTTP stream references: a System.IO.Stream parameter in a server-to-client or client-to-server call travels over HTTP instead of the WebSocket — how it works, the endpoints, upload slots, limitations
+- [Proxy Generation](references/guide/advanced/proxy-generation.md) — The Roslyn source generator behind typed proxies: setup, [SignalARRRContract], generated code and naming, return type classification, multi-assembly support, the DynamicProxy fallback, the ProxyCreator API
+- [Cancellation Propagation](references/guide/advanced/cancellation.md) — Server-initiated cancellation of client operations: pass a CancellationToken to a client method and cancel it remotely, AbortSignal on the TypeScript client, and the CancelTokenFromServer flow underneath
+
+### Migration
+
+- [Migration from v4.x](references/guide/migration/from-v4.md) — Upgrade from 4.x to 5.0: WithHub<T>() returns IClientQuery, the message credential for token clients, the moved namespaces, the separate Redis backplane package, removed APIs, and exception detail that no longer reaches the caller
+- [Migration from v2.x](references/guide/migration/from-v2.md) — Upgrade from 2.x to 4.x: target frameworks, source-generated proxies instead of ImpromptuInterface, the authentication model, hub-level authorization inheritance, removed APIs and new packages
+
+### Reference
+
+- [Packages](references/reference/packages.md) — Every NuGet package, the npm package and the Swift package: purpose and target frameworks, which project references what, typical setups per project role, the dependency graph, and the bundled agent skill
+- [Client Comparison](references/reference/client-comparison.md) — Feature matrix of the four clients — .NET, .NET Framework, TypeScript, Swift: platforms, RPC, item streaming, server-to-client RPC, file transfer, authorization, proxies, transports, side-by-side API samples
+- [API Overview](references/reference/api.md) — The public API surface by package: server registration, HARRR, ServerMethods, ClientContext, ClientManager, IClientQuery, the backplane option builders, IClusterSubject<T>, HARRRConnection on .NET and TypeScript, common types
+- [Wire Protocol](references/reference/wire-protocol.md) — The SignalR hub methods and message types SignalARRR uses on the wire — InvokeMessage, InvokeServerMessage, ChallengeAuthentication, CancelTokenFromServer, streaming — with the protocol flows and method name resolution, for custom clients
+
+The same content is online at https://docs.cocoar.dev/signalarrr/ (index for LLMs: https://docs.cocoar.dev/signalarrr/llms.txt).

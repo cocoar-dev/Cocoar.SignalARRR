@@ -1,3 +1,7 @@
+---
+description: The production problems plain SignalR leaves open — magic strings, untyped server-to-client calls, growing hubs, token lifecycle, file transfer, item streaming — and what SignalARRR adds for each
+---
+
 # Why SignalARRR?
 
 ASP.NET Core SignalR is excellent for real-time communication. SignalARRR builds on top of it to solve the problems that emerge in production applications with complex server-client interactions.

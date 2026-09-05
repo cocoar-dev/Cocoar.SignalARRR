@@ -1,3 +1,7 @@
+---
+description: "Multi-node clustering with the Redis-compatible or PostgreSQL backplane: choosing between them, catch-up after a subscription drop, schema and permissions, cluster subjects for cluster-wide observables, distributed operations, presence and cluster semantics"
+---
+
 # Backplane & Clustering
 
 SignalARRR runs in pure in-memory single-node mode by default. If you never configure a backplane, all client tracking, groups, and filters stay local to the current process.

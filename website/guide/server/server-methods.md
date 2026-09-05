@@ -1,3 +1,7 @@
+---
+description: "Organize hub logic in ServerMethods<T> classes: auto-discovery, several classes per hub, why every declared interface is a public RPC surface, method naming, DI and [FromServices], server-to-client calls, custom names"
+---
+
 # Server Methods
 
 `ServerMethods<T>` classes let you organize hub logic into separate, focused classes instead of putting everything into a single hub. They are auto-discovered, support full dependency injection, and implement shared contract interfaces.

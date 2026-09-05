@@ -142,6 +142,20 @@ listener, 8 kB notification boundary handled via a table).
 - **Crash cleanup**: dead nodes are removed by heartbeat + timeout sweep. Tune `WithHeartbeatInterval(...)` and `WithNodeTimeout(...)` if you want faster stale-node cleanup.
 - **Safe fallback**: without a backplane registration, all APIs continue to use the old in-memory single-node path.
 
+## Agent skill
+
+The server package ships an [Agent Skill](https://agentskills.io/): the documentation, page by
+page, with an index that says which page answers what. Install it into your project with
+[agentskills-cli](https://mysticmind.github.io/agentskills-cli/) and Claude Code, Copilot, Cursor
+or Codex know the library:
+
+```bash
+agentskills-cli add Cocoar.SignalARRR.Server
+```
+
+The docs site also serves [llms.txt](https://docs.cocoar.dev/signalarrr/llms.txt) for assistants
+that read documentation by URL.
+
 ## Connection loss semantics
 
 What happens to in-flight work when a connection drops — worth knowing before you rely on it:

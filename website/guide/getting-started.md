@@ -1,3 +1,7 @@
+---
+description: "Install the packages, define a [SignalARRRContract] interface, implement it in a ServerMethods<T> class on a HARRR hub, and call it from the .NET, TypeScript and Swift clients"
+---
+
 # Getting Started
 
 SignalARRR enables typed bidirectional RPC over ASP.NET Core SignalR. Define shared interfaces, implement them on the server, and call them from .NET or TypeScript clients with full type safety.

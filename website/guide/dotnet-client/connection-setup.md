@@ -1,3 +1,7 @@
+---
+description: Create a HARRRConnection, authenticate with bearer tokens or client certificates, configure auto-reconnect, start and stop, handle errors and connection events, reach the underlying HubConnection
+---
+
 # Connection Setup
 
 `HARRRConnection` wraps ASP.NET Core's `HubConnection` with typed RPC support. Create one using the static factory method.

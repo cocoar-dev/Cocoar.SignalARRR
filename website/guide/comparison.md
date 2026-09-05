@@ -1,3 +1,7 @@
+---
+description: "SignalARRR against gRPC and REST: when each fits, and where SignalARRR has the edge — bidirectional RPC, shared interfaces instead of .proto files, push with a response, file transfer, auth on persistent connections"
+---
+
 # SignalARRR vs. gRPC vs. REST
 
 Choosing a communication framework is one of the first architectural decisions in a distributed system. This page compares SignalARRR with the two most common alternatives — gRPC and REST APIs — and explains when each shines and where SignalARRR has an edge.

@@ -1,3 +1,7 @@
+---
+description: "Upgrade from 2.x to 4.x: target frameworks, source-generated proxies instead of ImpromptuInterface, the authentication model, hub-level authorization inheritance, removed APIs and new packages"
+---
+
 # Migration from v2.x
 
 SignalARRR v4 is a major release with significant architectural changes. This guide covers all breaking changes and the steps to upgrade.

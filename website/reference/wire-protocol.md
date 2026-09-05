@@ -1,3 +1,7 @@
+---
+description: The SignalR hub methods and message types SignalARRR uses on the wire — InvokeMessage, InvokeServerMessage, ChallengeAuthentication, CancelTokenFromServer, streaming — with the protocol flows and method name resolution, for custom clients
+---
+
 # Wire Protocol
 
 SignalARRR communicates over standard SignalR using a fixed set of hub methods. This page documents the protocol for advanced use cases and custom client implementations.

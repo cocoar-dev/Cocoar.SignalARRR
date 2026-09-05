@@ -1,3 +1,7 @@
+---
+description: Implementation status of every feature across the .NET server and the .NET, TypeScript and Swift clients
+---
+
 # Feature Status
 
 Current implementation status across all platforms. See [Client Comparison](/reference/client-comparison) for a detailed side-by-side comparison with code examples.

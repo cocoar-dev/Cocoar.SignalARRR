@@ -1,3 +1,7 @@
+---
+description: "Every NuGet package, the npm package and the Swift package: purpose and target frameworks, which project references what, typical setups per project role, the dependency graph, and the bundled agent skill"
+---
+
 # Packages
 
 SignalARRR is distributed as multiple NuGet packages and one npm package. Choose the packages that match your project's role.
@@ -156,6 +160,30 @@ The FullFramework client uses `DispatchProxy` at runtime. Define the same interf
   }
 }
 ```
+
+## Agent skill
+
+`Cocoar.SignalARRR.Server` ships an [Agent Skill](https://agentskills.io/) — a `SKILL.md` plus
+this documentation page by page as reference files — so a coding assistant in your project knows
+the library's API and the mistakes it would otherwise make. It sits in a `skills/` folder at the
+package root and takes no part in your build or your IDE: nothing is copied or shown anywhere
+unless you install it.
+
+With [agentskills-cli](https://mysticmind.github.io/agentskills-cli/):
+
+```bash
+dotnet tool install --global agentskills-cli
+agentskills-cli add Cocoar.SignalARRR.Server
+```
+
+That places the skill in `.claude/skills/` for Claude Code and `.agents/skills/` for Cursor,
+Codex, Copilot and other agents that read the standard; `-g` installs it globally instead. Without
+the tool, copy `skills/signalarrr/` out of the package into the same folders by hand.
+
+The skill is generated from these docs, so it says what the docs say for the version you
+reference. The same content is available online as [llms.txt](/llms.txt) (an index with one line
+per page) and [llms-full.txt](/llms-full.txt) (everything in one file) for assistants that fetch
+documentation by URL.
 
 ## Dependency graph
 

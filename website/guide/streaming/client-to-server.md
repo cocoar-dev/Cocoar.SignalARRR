@@ -1,3 +1,7 @@
+---
+description: Stream items from a client to the server with StreamItemToServer and StreamCompleteToServer, handle the stream in a ServerMethods class, and deal with errors
+---
+
 # Client-to-Server Streaming
 
 

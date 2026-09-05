@@ -1,3 +1,7 @@
+---
+description: "The public API surface by package: server registration, HARRR, ServerMethods, ClientContext, ClientManager, IClientQuery, the backplane option builders, IClusterSubject<T>, HARRRConnection on .NET and TypeScript, common types"
+---
+
 # API Overview
 
 This page lists the public API surface of SignalARRR across all packages.
