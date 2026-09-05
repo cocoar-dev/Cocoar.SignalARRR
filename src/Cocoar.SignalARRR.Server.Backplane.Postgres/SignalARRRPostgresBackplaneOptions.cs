@@ -31,6 +31,22 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public bool AutoCreateSchema { get; set; } = true;
 
+        /// <summary>
+        /// Whether a node replays what it missed while its subscription was down. On, every
+        /// envelope is written to the <c>messages</c> table and the notification carries only its
+        /// id, so a node that reconnects reads everything past its cursor before resuming live
+        /// delivery. Off, envelopes that fit a notification travel inline and a subscription drop
+        /// loses whatever was published in between — the Redis backplane's contract. Default on.
+        /// </summary>
+        public bool CatchUp { get; set; } = true;
+
+        /// <summary>
+        /// How long a table-backed envelope stays readable. With <see cref="CatchUp"/> this is the
+        /// longest subscription outage that can be replayed in full; a longer one is reported as a
+        /// gap. Default five minutes.
+        /// </summary>
+        public TimeSpan MessageRetention { get; set; } = TimeSpan.FromMinutes(5);
+
         public string NodeId { get; set; } = $"{Environment.MachineName}-{Guid.NewGuid():N}";
         public TimeSpan InvokeTimeout { get; set; } = TimeSpan.FromSeconds(15);
         public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(5);
@@ -45,6 +61,10 @@ namespace Cocoar.SignalARRR.Server {
                 throw new InvalidOperationException(
                     $"SignalARRR Postgres backplane schema '{Schema}' is not valid: use lowercase letters, digits and underscores, " +
                     $"starting with a letter or underscore, at most {MaxSchemaLength} characters.");
+            }
+
+            if (MessageRetention <= TimeSpan.Zero) {
+                throw new InvalidOperationException("SignalARRR Postgres backplane MessageRetention must be positive.");
             }
 
             if (NodeTimeout <= HeartbeatInterval) {
@@ -71,6 +91,18 @@ namespace Cocoar.SignalARRR.Server {
         /// <summary>Create the tables on startup (default) or expect them to exist; see <see cref="SignalARRRPostgresBackplaneOptions.AutoCreateSchema"/>.</summary>
         public SignalARRRPostgresBackplaneOptionsBuilder WithAutoCreateSchema(bool autoCreateSchema) {
             _options.AutoCreateSchema = autoCreateSchema;
+            return this;
+        }
+
+        /// <summary>Replay missed messages after a subscription drop (default) or accept the loss; see <see cref="SignalARRRPostgresBackplaneOptions.CatchUp"/>.</summary>
+        public SignalARRRPostgresBackplaneOptionsBuilder WithCatchUp(bool catchUp) {
+            _options.CatchUp = catchUp;
+            return this;
+        }
+
+        /// <summary>How long messages stay replayable; see <see cref="SignalARRRPostgresBackplaneOptions.MessageRetention"/>.</summary>
+        public SignalARRRPostgresBackplaneOptionsBuilder WithMessageRetention(TimeSpan retention) {
+            _options.MessageRetention = retention;
             return this;
         }
 

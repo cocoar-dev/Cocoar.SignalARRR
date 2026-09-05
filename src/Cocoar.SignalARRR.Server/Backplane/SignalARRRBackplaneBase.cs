@@ -35,6 +35,7 @@ namespace Cocoar.SignalARRR.Server {
     /// </remarks>
     internal abstract class SignalARRRBackplaneBase : ISignalARRRBackplane, ISignalARRRConnectionRegistry, ISignalARRRBackplaneHealth, IHostedService, IDisposable {
         private readonly LocalSignalARRRBackplaneDispatcher _localDispatcher;
+        private readonly ClusterSubjectRegistry _clusterSubjects;
         private readonly ILogger _logger;
         private readonly TimeSpan _invokeTimeout;
         private readonly TimeSpan _heartbeatInterval;
@@ -60,12 +61,14 @@ namespace Cocoar.SignalARRR.Server {
             TimeSpan heartbeatInterval,
             TimeSpan nodeTimeout,
             LocalSignalARRRBackplaneDispatcher localDispatcher,
+            ClusterSubjectRegistry clusterSubjects,
             ILogger logger) {
             NodeId = nodeId;
             NodeTimeout = nodeTimeout;
             _invokeTimeout = invokeTimeout;
             _heartbeatInterval = heartbeatInterval;
             _localDispatcher = localDispatcher;
+            _clusterSubjects = clusterSubjects;
             _logger = logger;
         }
 
@@ -361,6 +364,17 @@ namespace Cocoar.SignalARRR.Server {
             return nodes;
         }
 
+        public Task PublishClusterEventAsync(string subject, string payloadJson, CancellationToken cancellationToken = default) {
+            var envelope = new SignalARRRBackplaneEnvelope {
+                OriginNodeId = NodeId,
+                Kind = SignalARRRBackplaneEnvelopeKind.ClusterEvent,
+                ClusterSubject = subject,
+                PayloadJson = payloadJson
+            };
+
+            return PublishCommandAsync(envelope);
+        }
+
         // --- ISignalARRRConnectionRegistry ---
 
         public Task RegisterConnectionAsync(ClientContext clientContext, CancellationToken cancellationToken = default) {
@@ -458,6 +472,11 @@ namespace Cocoar.SignalARRR.Server {
                         break;
                     case SignalARRRBackplaneEnvelopeKind.GroupCommand:
                         await HandleGroupCommandAsync(envelope).ConfigureAwait(false);
+                        break;
+                    case SignalARRRBackplaneEnvelopeKind.ClusterEvent:
+                        if (!string.IsNullOrEmpty(envelope.ClusterSubject) && envelope.PayloadJson != null) {
+                            _clusterSubjects.Dispatch(envelope.ClusterSubject!, envelope.PayloadJson);
+                        }
                         break;
                 }
             } catch (Exception ex) {

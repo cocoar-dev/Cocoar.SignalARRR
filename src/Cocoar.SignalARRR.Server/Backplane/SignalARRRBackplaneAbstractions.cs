@@ -12,7 +12,14 @@ namespace Cocoar.SignalARRR.Server {
         InvokeQueryRequest,
         InvokeQueryResult,
         InvokeQueryCompleted,
-        GroupCommand
+        GroupCommand,
+
+        /// <summary>
+        /// An application event for a cluster subject (<see cref="IClusterSubject{T}"/>).
+        /// Appended last on purpose: kinds go over the wire as numbers, and an older node that
+        /// does not know this one deserializes it, finds no handler, and ignores it.
+        /// </summary>
+        ClusterEvent
     }
 
     internal enum SignalARRRBackplaneTargetKind {
@@ -60,6 +67,12 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public string? ErrorJson { get; set; }
         public SignalARRRBackplaneGroupAction? GroupAction { get; set; }
+
+        /// <summary>The subject an application event belongs to (<see cref="SignalARRRBackplaneEnvelopeKind.ClusterEvent"/>). Additive.</summary>
+        public string? ClusterSubject { get; set; }
+
+        /// <summary>The event, serialized by its subject's own serializer; the backplane never looks inside.</summary>
+        public string? PayloadJson { get; set; }
     }
 
     internal sealed class SignalARRRConnectionRegistration {
@@ -170,6 +183,12 @@ namespace Cocoar.SignalARRR.Server {
         /// is disabled. Previously there was no way to ask (O-8).
         /// </summary>
         Task<IReadOnlyList<string>> GetActiveNodesAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Fans an application event out to the subject named <paramref name="subject"/> on every
+        /// other node (<see cref="IClusterSubject{T}"/>). The payload is opaque to the backplane.
+        /// </summary>
+        Task PublishClusterEventAsync(string subject, string payloadJson, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -237,6 +256,10 @@ namespace Cocoar.SignalARRR.Server {
 
         public Task<IReadOnlyList<string>> GetActiveNodesAsync(CancellationToken cancellationToken = default) {
             return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+        }
+
+        public Task PublishClusterEventAsync(string subject, string payloadJson, CancellationToken cancellationToken = default) {
+            return Task.CompletedTask;
         }
     }
 

@@ -13,9 +13,12 @@ namespace Cocoar.SignalARRR.Server {
         /// table that carries envelopes too large for a notification payload.
         /// </summary>
         /// <remarks>
-        /// <c>messages</c> is unlogged on purpose: it holds live traffic for a few seconds, and the
-        /// backplane promises transient delivery only, so losing it on a crash costs nothing while
-        /// skipping the write-ahead log makes every large publish cheaper.
+        /// <c>messages</c> is unlogged on purpose: it holds live traffic for minutes, not history,
+        /// and a crash of the database loses every subscription along with it, so nothing would be
+        /// left to replay to anyway. Skipping the write-ahead log makes every publish cheaper. The
+        /// origin and target columns let a node that catches up after a subscription drop read only
+        /// the rows meant for it; the two <c>ALTER TABLE</c> statements bring a table created by
+        /// 5.1.0-beta.1 up to date.
         /// </remarks>
         public static string GetCreateScript(string schema = "signalarrr") {
             if (string.IsNullOrWhiteSpace(schema)) {
@@ -48,10 +51,15 @@ CREATE INDEX IF NOT EXISTS connections_groups_idx ON {s}.connections USING gin (
 CREATE INDEX IF NOT EXISTS connections_attribute_keys_idx ON {s}.connections USING gin (attribute_keys);
 
 CREATE UNLOGGED TABLE IF NOT EXISTS {s}.messages (
-    id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    created_at  timestamptz NOT NULL DEFAULT now(),
-    payload     text NOT NULL
+    id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    origin_node_id  text NOT NULL DEFAULT '',
+    target_node_id  text NULL,
+    payload         text NOT NULL
 );
+
+ALTER TABLE {s}.messages ADD COLUMN IF NOT EXISTS origin_node_id text NOT NULL DEFAULT '';
+ALTER TABLE {s}.messages ADD COLUMN IF NOT EXISTS target_node_id text NULL;
 ";
         }
 

@@ -23,6 +23,9 @@ services.AddSignalARRRPostgresBackplane(options => options
     .WithSchema("signalarrr")
     .WithNodeId("node-1"));
 
+// An observable whose events reach subscribers on every node (cluster subjects)
+services.AddSignalARRRClusterSubject<OrderChanged>("orders");
+
 // IEndpointRouteBuilder extension
 app.MapSignalARRRHub<THub>(path);
 app.MapSignalARRRHub<THub>(path, configureOptions);
@@ -129,10 +132,26 @@ send/invoke methods resolve across the whole cluster.
 | `WithConnectionString(string)` | Npgsql connection string of the PostgreSQL primary |
 | `WithSchema(string)` | Schema for the backplane's tables; also names the notification channels, so it isolates applications sharing a database. Lowercase identifier, max 50 chars. Default `signalarrr` |
 | `WithAutoCreateSchema(bool)` | Create schema and tables on startup (default `true`); off, the tables must exist — see `SignalARRRPostgresBackplaneSchema.GetCreateScript` |
+| `WithCatchUp(bool)` | Replay messages missed while the subscription was down (default `true`); off, they are lost, as with Redis |
+| `WithMessageRetention(TimeSpan)` | How long messages stay replayable, and the longest outage catch-up covers in full. Default 5 minutes |
 | `WithNodeId(string)` | Set a stable logical node identifier |
 | `WithInvokeTimeout(TimeSpan)` | Timeout for cross-node invoke aggregation |
 | `WithHeartbeatInterval(TimeSpan)` | Heartbeat interval for dead-node detection |
 | `WithNodeTimeout(TimeSpan)` | Time after which a node is considered stale; must exceed the heartbeat interval |
+
+### IClusterSubject&lt;T&gt;
+
+Registered with `AddSignalARRRClusterSubject<T>(name, configure?)`; resolved by `T`. See
+[Cluster-aware observables](/guide/server/backplane#cluster-aware-observables).
+
+| Member | Description |
+|--------|-------------|
+| `Name` | The cluster-wide name events are matched by |
+| `OnNext(T)` | Raise for local subscribers now and for the other nodes fire-and-forget |
+| `PublishAsync(T, CancellationToken)` | Raise and await the hand-off to the backplane |
+| `Subscribe(IObserver<T>)` | It is an `IObservable<T>`: use it with Rx operators or return it from a hub stream method |
+
+`ClusterSubjectOptions.SerializerOptions` sets the `JsonSerializerOptions` events cross the wire with (default: web defaults).
 
 ### SignalARRRPostgresBackplaneSchema
 
