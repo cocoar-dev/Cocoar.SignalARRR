@@ -69,6 +69,13 @@ namespace Cocoar.SignalARRR.Server {
         private static readonly TimeSpan ListenerReconnectMaxDelay = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan ListenerStartupTimeout = TimeSpan.FromSeconds(30);
 
+        /// <summary>
+        /// Consecutive reconnect failures before the listener loss is logged as an error instead
+        /// of a warning: with the 0.5 s / 1 s / 2 s backoff this is the third try, about 3.5 s in,
+        /// which no idle-timeout or failover takes.
+        /// </summary>
+        private const int PersistentListenerFailureThreshold = 3;
+
         /// <summary>Ids replayed by a catch-up are remembered so their live notifications, if any arrive, are dropped; this bounds the set.</summary>
         private const int MaxRememberedReplayedIds = 10_000;
 
@@ -239,6 +246,7 @@ namespace Cocoar.SignalARRR.Server {
         private async Task RunListenerLoopAsync(ChannelWriter<IncomingMessage> incoming, CancellationToken cancellationToken) {
             var delay = ListenerReconnectMinDelay;
             var subscribedBefore = false;
+            var consecutiveFailures = 0;
 
             while (!cancellationToken.IsCancellationRequested) {
                 try {
@@ -272,6 +280,7 @@ namespace Cocoar.SignalARRR.Server {
                         _listening = true;
                         _listenerReady?.TrySetResult(true);
                         delay = ListenerReconnectMinDelay;
+                        consecutiveFailures = 0;
 
                         while (!cancellationToken.IsCancellationRequested) {
                             await connection.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -285,11 +294,25 @@ namespace Cocoar.SignalARRR.Server {
                 } catch (Exception ex) {
                     _lastListenerError = ex;
                     _listenerLostAtUtc ??= DateTime.UtcNow;
-                    Logger.LogError(ex,
-                        _options.CatchUp
-                            ? "SignalARRR Postgres backplane node {NodeId} lost its LISTEN connection; cluster messages will be replayed once it reconnects. Reconnecting in {Delay}."
-                            : "SignalARRR Postgres backplane node {NodeId} lost its LISTEN connection; cluster messages until it reconnects are lost. Reconnecting in {Delay}.",
-                        NodeId, delay);
+                    consecutiveFailures++;
+
+                    // A lost LISTEN connection is routine — a proxy idle-timeout, a failover, a
+                    // network blip — and it is back within a second; with catch-up nothing is even
+                    // missed. Logging it as an error with a stack trace fired every alert on every
+                    // idle-timeout. So: a warning that names the cause, and the error only once the
+                    // reconnects themselves keep failing, which is when someone should look.
+                    var consequence = _options.CatchUp
+                        ? "cluster messages will be replayed once it reconnects"
+                        : "cluster messages until it reconnects are lost";
+                    if (consecutiveFailures < PersistentListenerFailureThreshold) {
+                        Logger.LogWarning(
+                            "SignalARRR Postgres backplane node {NodeId} lost its LISTEN connection ({Reason}); {Consequence}. Reconnecting in {Delay}.",
+                            NodeId, ex.Message, consequence, delay);
+                    } else {
+                        Logger.LogError(ex,
+                            "SignalARRR Postgres backplane node {NodeId} cannot re-establish its LISTEN connection ({Attempts} attempts, down since {LostAtUtc:O}); {Consequence}. Reconnecting in {Delay}.",
+                            NodeId, consecutiveFailures, _listenerLostAtUtc, consequence, delay);
+                    }
 
                     try {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
