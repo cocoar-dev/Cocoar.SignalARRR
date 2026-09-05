@@ -1,3 +1,7 @@
+---
+description: "The CocoarSignalARRR Swift package for iOS, macOS, tvOS and watchOS: installation, connection and options, authentication, invoke / send / stream, events, MessagePack, reconnection policy, transports, logging"
+---
+
 # Swift Client Setup
 
 The `CocoarSignalARRR` Swift package provides a native client for iOS, macOS, tvOS, and watchOS. It is a full SignalR client built from scratch — no dependency on Microsoft's `signalr-client-swift`.

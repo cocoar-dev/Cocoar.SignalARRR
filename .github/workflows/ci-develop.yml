@@ -53,6 +53,11 @@ jobs:
         working-directory: src/Cocoar.SignalARRR.Typescript
         run: npm install && npm run build
 
+      # The skill in the Server package is generated from the docs; a docs change without the
+      # regenerated skill would ship a package that contradicts the site.
+      - name: Verify the agent skill matches the docs
+        run: node website/scripts/sync-skill.mjs --check
+
       - name: Build and test
         working-directory: src
         env:

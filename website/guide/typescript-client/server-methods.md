@@ -1,3 +1,7 @@
+---
+description: "Handle server-to-client calls in TypeScript with onServerMethod(): wire names, return values, throwing and async handlers, chaining, and cancellation via AbortSignal"
+---
+
 # Server Method Handlers
 
 The server can call methods on the TypeScript client. Use `onServerMethod()` to register handlers that respond to these calls.

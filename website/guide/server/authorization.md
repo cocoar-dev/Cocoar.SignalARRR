@@ -1,3 +1,7 @@
+---
+description: "[Authorize] at method, class and hub level; message-level token authentication with ChallengeAuthentication and the auth cache; transport-level authentication with client certificates, Negotiate and cookies; re-validation and mixed mode"
+---
+
 # Authorization
 
 SignalARRR integrates with ASP.NET Core's authorization system. Apply `[Authorize]` at the method, class, or hub level.

@@ -1,3 +1,7 @@
+---
+description: "Handle server-to-client calls on the .NET client: define the contract, implement it, RegisterInterface before connecting, return values, why On() is for raw SignalR only, what happens when a handler throws"
+---
+
 # Server-to-Client Handlers
 
 The server can call methods on the client and optionally await a response. Register handlers on the client to respond to these calls.

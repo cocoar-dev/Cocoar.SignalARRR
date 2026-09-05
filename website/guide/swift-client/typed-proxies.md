@@ -1,3 +1,7 @@
+---
+description: "Swift typed proxies with the @HubProxy macro, server-to-client and streaming handlers, interface registration, cancellation support, and HTTP stream references"
+---
+
 # Typed Proxies & Server Methods
 
 The Swift client supports compile-time proxy generation via the `@HubProxy` macro and server-to-client method handling.

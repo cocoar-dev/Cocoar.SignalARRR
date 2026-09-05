@@ -1,3 +1,7 @@
+---
+description: "Upgrade from 4.x to 5.0: WithHub<T>() returns IClientQuery, the message credential for token clients, the moved namespaces, the separate Redis backplane package, removed APIs, and exception detail that no longer reaches the caller"
+---
+
 # Migration from v4.x
 
 v5 is the result of a full code review of the server and the .NET client. Most of it is fixes you

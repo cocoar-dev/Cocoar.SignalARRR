@@ -1,3 +1,7 @@
+---
+description: "The @cocoar/signalarrr npm client: install, create a connection, invoke / send / stream, error handling, MessagePack, accessTokenFactory authentication, connection events and properties, method naming"
+---
+
 # TypeScript Client Setup
 
 The `@cocoar/signalarrr` npm package provides a TypeScript/JavaScript client for SignalARRR with support for `invoke`, `send`, `stream`, bidirectional streaming, and server-to-client method handling.

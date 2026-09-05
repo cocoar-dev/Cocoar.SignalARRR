@@ -1,3 +1,7 @@
+---
+description: "Feature matrix of the four clients — .NET, .NET Framework, TypeScript, Swift: platforms, RPC, item streaming, server-to-client RPC, file transfer, authorization, proxies, transports, side-by-side API samples"
+---
+
 # Client Comparison
 
 SignalARRR has four client implementations. This page shows what each client supports.

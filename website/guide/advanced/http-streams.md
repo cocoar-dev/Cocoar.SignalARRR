@@ -1,3 +1,7 @@
+---
+description: "HTTP stream references: a System.IO.Stream parameter in a server-to-client or client-to-server call travels over HTTP instead of the WebSocket — how it works, the endpoints, upload slots, limitations"
+---
+
 # HTTP Stream References
 
 SignalARRR can transparently transfer large files through what looks like a normal RPC call. When a server-to-client method has a `Stream` parameter, SignalARRR automatically routes the data through HTTP instead of the WebSocket — no code changes needed.

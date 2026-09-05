@@ -54,10 +54,19 @@
     <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
-  <!-- Pack .targets + skills + docs into buildTransitive so consuming projects get them -->
+  <!-- The Agent Skill (skills/signalarrr, generated from the docs by website/scripts/sync-skill.mjs)
+       ships in a skills/ folder at the package root. Not under contentFiles on purpose: NuGet
+       turns contentFiles into project items of every consumer, and 26 linked markdown files in
+       each server project's Solution Explorer is noise nobody asked for. A root folder is
+       invisible to consumers' builds and IDEs, and skill tooling finds it anyway
+       (agentskills-cli add Cocoar.SignalARRR.Server, verified). Until 5.1 a .targets file copied
+       the skill into every consumer's .claude/skills and .github/skills on each build — a silent
+       write into their source tree, frozen at whatever the package had. -->
   <ItemGroup>
-    <None Include="build/Cocoar.SignalARRR.Server.targets" Pack="true" PackagePath="buildTransitive/Cocoar.SignalARRR.Server.targets" />
-    <None Include="../../skills/signalarrr/**/*" Pack="true" PackagePath="buildTransitive/skills/signalarrr/" />
+    <None Include="../../skills/signalarrr/**/*"
+          Pack="true"
+          PackagePath="skills/signalarrr/"
+          Visible="false" />
   </ItemGroup>
 
   <!-- Bundle the SourceGenerator so consuming projects get proxy generation automatically -->

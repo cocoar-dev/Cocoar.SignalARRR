@@ -1,3 +1,7 @@
+---
+description: "ClientManager: query clients with IClientQuery, single-client calls, SendAsync / InvokeAllAsync / InvokeOneAsync, presence snapshots, groups, use from controllers and background services, ClientContext properties and custom attributes"
+---
+
 # Client Manager
 
 `ClientManager` tracks all connected clients and enables server-to-client RPC from anywhere — controllers, background services, or other hubs. Inject it from DI as a singleton.

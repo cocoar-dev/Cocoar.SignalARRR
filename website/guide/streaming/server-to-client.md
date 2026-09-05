@@ -1,3 +1,7 @@
+---
+description: "Stream results from server methods with IAsyncEnumerable<T> (recommended), IObservable<T> or ChannelReader<T>, consume them on the .NET and TypeScript clients, and cancel a stream"
+---
+
 # Server-to-Client Streaming
 
 SignalARRR supports streaming results from server methods to clients using `IAsyncEnumerable<T>`, `IObservable<T>`, or `ChannelReader<T>`.

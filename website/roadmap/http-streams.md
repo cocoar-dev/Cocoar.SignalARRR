@@ -1,3 +1,7 @@
+---
+description: "Status of HTTP stream references per client: buffered and streaming downloads, uploads, and the open items"
+---
+
 # HTTP Stream References
 
 File transfer via `Stream` parameters works in both directions for all three clients, with both buffered and streaming download options.

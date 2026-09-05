@@ -1,3 +1,7 @@
+---
+description: "Call server methods through GetTypedMethods<T>() proxies: return type mapping to invoke, send and stream, generic methods, proxy caching, and what the source generator needs"
+---
+
 # Typed Methods
 
 Call server methods through shared interfaces with full compile-time safety. The source generator produces proxy classes that handle serialization and method dispatch.
