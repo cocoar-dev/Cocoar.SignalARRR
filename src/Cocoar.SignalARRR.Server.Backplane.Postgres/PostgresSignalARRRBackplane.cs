@@ -316,11 +316,10 @@ namespace Cocoar.SignalARRR.Server {
         /// notification for one of them is dropped, and a second replay of one is too.
         /// <para>
         /// The query uses a pooled connection, not the listener: a command on the listener would
-        /// also drain the notifications queued there. The cursor is an id, and identity values are
-        /// not assigned in commit order, so a publish that was mid-transaction at the exact moment
-        /// the subscription dropped and committed after the reconnect could carry an id below the
-        /// cursor. Its live notification still arrives, because the subscription is back by the
-        /// time it commits — and its id is not in the replayed set, so it is handed on normally.
+        /// also drain the notifications queued there. The cursor is exact because publishes are
+        /// serialized by the <c>publish</c> function's advisory lock: ids are assigned in commit
+        /// order, so no row with an id below the cursor can become visible after the cursor
+        /// passed it, and "everything past the cursor" is everything this node has not seen.
         /// </para>
         /// </remarks>
         private async Task CatchUpAsync(DateTime? lostAtUtc, CancellationToken cancellationToken) {
@@ -499,13 +498,16 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private async Task EnsureSchemaExistsAsync(CancellationToken cancellationToken) {
-            await using var command = _dataSource!.CreateCommand("SELECT to_regclass($1)");
-            command.Parameters.Add(Text($"{SignalARRRPostgresBackplaneSchema.QuoteIdentifier(_options.Schema)}.connections"));
+            var schema = SignalARRRPostgresBackplaneSchema.QuoteIdentifier(_options.Schema);
+
+            await using var command = _dataSource!.CreateCommand("SELECT to_regclass($1) IS NOT NULL AND to_regprocedure($2) IS NOT NULL");
+            command.Parameters.Add(Text($"{schema}.connections"));
+            command.Parameters.Add(Text($"{schema}.publish(text, text, text, text)"));
             var found = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            if (found == null || found is DBNull) {
+            if (found is not true) {
                 throw new InvalidOperationException(
-                    $"SignalARRR Postgres backplane tables are missing in schema '{_options.Schema}' and AutoCreateSchema is off. " +
-                    "Apply SignalARRRPostgresBackplaneSchema.GetCreateScript() through your migrations first.");
+                    $"SignalARRR Postgres backplane objects are missing or outdated in schema '{_options.Schema}' and AutoCreateSchema is off. " +
+                    "Apply the current SignalARRRPostgresBackplaneSchema.GetCreateScript() through your migrations first; it is idempotent.");
             }
         }
 
@@ -761,11 +763,11 @@ namespace Cocoar.SignalARRR.Server {
 
                 NotifyInline = "SELECT pg_notify($1, $2)";
 
-                // INSERT and NOTIFY in one statement, hence one transaction: the notification is
-                // delivered after commit, when the row is guaranteed visible to the fetch.
-                NotifyReference =
-                    $"WITH m AS (INSERT INTO {s}.messages (payload, origin_node_id, target_node_id) VALUES ($2, $3, $4) RETURNING id) " +
-                    "SELECT pg_notify($1, json_build_array(m.id, $3::text, $4::text)::text) FROM m";
+                // Lock, INSERT and NOTIFY inside one function call, hence one transaction and one
+                // round trip: the notification is delivered after commit, when the row is
+                // guaranteed visible to the fetch, and the lock makes ids commit in order (see the
+                // schema script).
+                NotifyReference = $"SELECT {s}.publish($1, $2, $3, $4)";
 
                 LoadMessage = $"SELECT payload FROM {s}.messages WHERE id = $1";
                 LatestMessageId = $"SELECT COALESCE(max(id), 0) FROM {s}.messages";

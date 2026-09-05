@@ -9,8 +9,8 @@ namespace Cocoar.SignalARRR.Server {
     public static class SignalARRRPostgresBackplaneSchema {
         /// <summary>
         /// The idempotent DDL for <paramref name="schema"/>: the schema itself, the <c>nodes</c>
-        /// and <c>connections</c> tables with their indexes, and the unlogged <c>messages</c>
-        /// table that carries envelopes too large for a notification payload.
+        /// and <c>connections</c> tables with their indexes, the unlogged <c>messages</c> table
+        /// that carries the envelopes, and the <c>publish</c> function every node calls to send one.
         /// </summary>
         /// <remarks>
         /// <c>messages</c> is unlogged on purpose: it holds live traffic for minutes, not history,
@@ -26,6 +26,7 @@ namespace Cocoar.SignalARRR.Server {
             }
 
             var s = QuoteIdentifier(schema);
+            var lockKey = QuoteLiteral($"signalarrr-backplane:{schema}:publish");
             return $@"
 CREATE SCHEMA IF NOT EXISTS {s};
 
@@ -60,11 +61,35 @@ CREATE UNLOGGED TABLE IF NOT EXISTS {s}.messages (
 
 ALTER TABLE {s}.messages ADD COLUMN IF NOT EXISTS origin_node_id text NOT NULL DEFAULT '';
 ALTER TABLE {s}.messages ADD COLUMN IF NOT EXISTS target_node_id text NULL;
+
+-- One publish: lock, insert, notify, in one transaction. The advisory lock serializes publishes
+-- so that message ids are assigned in commit order — without it, a row inserted first can
+-- commit last, and a node whose cursor had already passed its id would never replay it.
+-- NOTIFY serializes committing transactions anyway, so the lock costs no throughput.
+CREATE OR REPLACE FUNCTION {s}.publish(p_channel text, p_payload text, p_origin_node_id text, p_target_node_id text)
+RETURNS bigint
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_id bigint;
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtext({lockKey}));
+    INSERT INTO {s}.messages (payload, origin_node_id, target_node_id)
+    VALUES (p_payload, p_origin_node_id, p_target_node_id)
+    RETURNING id INTO v_id;
+    PERFORM pg_notify(p_channel, json_build_array(v_id, p_origin_node_id, p_target_node_id)::text);
+    RETURN v_id;
+END
+$$;
 ";
         }
 
         internal static string QuoteIdentifier(string identifier) {
             return "\"" + identifier.Replace("\"", "\"\"") + "\"";
+        }
+
+        internal static string QuoteLiteral(string literal) {
+            return "'" + literal.Replace("'", "''") + "'";
         }
     }
 }
