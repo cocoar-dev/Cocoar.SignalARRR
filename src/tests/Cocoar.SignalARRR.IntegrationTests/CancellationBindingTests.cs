@@ -60,10 +60,15 @@ namespace Cocoar.SignalARRR.IntegrationTests {
                 await connection.DisposeAsync();
             }
 
-            // Closing the connection is the only cancellation signal left — it must arrive.
+            // Closing the connection is the only cancellation signal left — it must arrive. Fifteen
+            // seconds, not five: on the develop runner this test shares the machine with the
+            // Docker-backed backplane tests of two other target frameworks, and it timed out there
+            // once while passing in the same job for the other frameworks. A slow arrival is still
+            // an arrival; a missing one is what this test is about.
             await TestHelper.WaitFor(
                 () => clientMethods.WaitObservedCancellation,
-                "the handler's token to fire on connection close");
+                "the handler's token to fire on connection close",
+                attempts: 300);
         }
 
         /// <summary>

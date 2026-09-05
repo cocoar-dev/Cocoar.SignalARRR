@@ -41,7 +41,8 @@ namespace Cocoar.SignalARRR.Server {
     /// outage longer than the retention is reported as a gap rather than passed over silently.
     /// Notifications are consumed in arrival order by a single reader, which resolves
     /// table-backed payloads before handing each envelope on, so ordering matches the Redis
-    /// backplane, and replayed rows are handed on in id order ahead of what arrived live.
+    /// backplane; a reconnect leaves a marker in that queue, and the catch-up runs when the
+    /// reader reaches it, so replayed rows go out in id order ahead of what arrived live.
     /// </para>
     /// <para>
     /// Liveness is judged on the database clock only (<c>now()</c> on write and on compare), so
@@ -255,11 +256,14 @@ namespace Cocoar.SignalARRR.Server {
                         if (subscribedBefore) {
                             SignalARRRServerTelemetry.BackplaneListenerReconnects.Add(1);
 
-                            // Subscribed first, then read the backlog: whatever commits from here on
-                            // arrives as a live notification, so nothing falls between the two. Rows
-                            // that show up in both are recognized by id and handed on once.
+                            // Subscribed first, then the backlog: whatever commits from here on
+                            // arrives as a live notification, so nothing falls between the two. The
+                            // catch-up itself is queued for the consumer rather than run here — it
+                            // has to see the cursor as it stands after everything queued before it
+                            // has been handed on, and replayed rows have to precede the live
+                            // notifications queued after it. Both are positions in one queue.
                             if (_options.CatchUp) {
-                                await CatchUpAsync(incoming, cancellationToken).ConfigureAwait(false);
+                                incoming.TryWrite(IncomingMessage.CatchUp(_listenerLostAtUtc));
                             }
                         }
 
@@ -299,25 +303,33 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         /// <summary>
-        /// Reads every message past this node's cursor that is addressed to it and queues the rows
-        /// ahead of the live notifications, in id order.
+        /// Reads every message past this node's cursor that is addressed to it and hands the rows
+        /// on in id order. Runs on the consumer, at the queue position the reconnect gave it.
         /// </summary>
         /// <remarks>
-        /// Runs on a pooled connection, not the listener: a command on the listener connection
-        /// would also drain the notifications already queued there, interleaving live messages
-        /// with the backlog. The cursor is an id, and identity values are not assigned in commit
-        /// order, so a publish that was mid-transaction at the exact moment the subscription
-        /// dropped and committed after the reconnect could carry an id below the cursor. Its live
-        /// notification then still arrives, because the subscription is back by the time it
-        /// commits — and its id is not in the replayed set, so it is handed on normally.
+        /// On the consumer for two reasons. The cursor is advanced by the consumer as it hands
+        /// messages on, so a catch-up started from the listener loop could read it before the
+        /// consumer had caught up with what was already queued and replay those rows a second
+        /// time — that is exactly what happened when a subscription dropped twice in quick
+        /// succession. And rows replayed here precede the live notifications queued after the
+        /// marker without any further coordination. Replayed ids are remembered, so a live
+        /// notification for one of them is dropped, and a second replay of one is too.
+        /// <para>
+        /// The query uses a pooled connection, not the listener: a command on the listener would
+        /// also drain the notifications queued there. The cursor is an id, and identity values are
+        /// not assigned in commit order, so a publish that was mid-transaction at the exact moment
+        /// the subscription dropped and committed after the reconnect could carry an id below the
+        /// cursor. Its live notification still arrives, because the subscription is back by the
+        /// time it commits — and its id is not in the replayed set, so it is handed on normally.
+        /// </para>
         /// </remarks>
-        private async Task CatchUpAsync(ChannelWriter<IncomingMessage> incoming, CancellationToken cancellationToken) {
+        private async Task CatchUpAsync(DateTime? lostAtUtc, CancellationToken cancellationToken) {
             var dataSource = _dataSource;
             if (dataSource == null) {
                 return;
             }
 
-            var outage = _listenerLostAtUtc.HasValue ? DateTime.UtcNow - _listenerLostAtUtc.Value : TimeSpan.Zero;
+            var outage = lostAtUtc.HasValue ? DateTime.UtcNow - lostAtUtc.Value : TimeSpan.Zero;
             var replayed = 0;
 
             await using (var command = dataSource.CreateCommand(_sql.CatchUp)) {
@@ -326,8 +338,16 @@ namespace Cocoar.SignalARRR.Server {
 
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) {
-                    incoming.TryWrite(IncomingMessage.Replayed(reader.GetInt64(0), reader.GetString(1)));
+                    var id = reader.GetInt64(0);
+                    var payload = reader.GetString(1);
+
+                    AdvanceCursor(id);
+                    if (!RememberReplayed(id)) {
+                        continue;
+                    }
+
                     replayed++;
+                    _ = HandleIncomingPayloadAsync(payload);
                 }
             }
 
@@ -360,13 +380,18 @@ namespace Cocoar.SignalARRR.Server {
                 await foreach (var message in incoming.ReadAllAsync(cancellationToken).ConfigureAwait(false)) {
                     string? envelopeJson;
                     try {
-                        envelopeJson = message.ReplayedJson != null
-                            ? AcceptReplayed(message)
-                            : await ResolveLiveAsync(message.NotificationPayload!, cancellationToken).ConfigureAwait(false);
+                        if (message.IsCatchUp) {
+                            await CatchUpAsync(message.LostAtUtc, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+
+                        envelopeJson = await ResolveLiveAsync(message.NotificationPayload!, cancellationToken).ConfigureAwait(false);
                     } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
                         return;
                     } catch (Exception ex) {
-                        Logger.LogError(ex, "SignalARRR Postgres backplane could not load a table-backed message; it is dropped.");
+                        Logger.LogError(ex, message.IsCatchUp
+                            ? "SignalARRR Postgres backplane could not replay the messages missed while unsubscribed; they are lost."
+                            : "SignalARRR Postgres backplane could not load a table-backed message; it is dropped.");
                         continue;
                     }
 
@@ -379,17 +404,15 @@ namespace Cocoar.SignalARRR.Server {
             }
         }
 
-        private string AcceptReplayed(IncomingMessage message) {
+        /// <summary>Records a replayed id; false if it had been replayed already.</summary>
+        private bool RememberReplayed(long id) {
             lock (_replayedIdsLock) {
                 if (_replayedIds.Count >= MaxRememberedReplayedIds) {
                     _replayedIds.Clear();
                 }
 
-                _replayedIds.Add(message.Id);
+                return _replayedIds.Add(id);
             }
-
-            AdvanceCursor(message.Id);
-            return message.ReplayedJson!;
         }
 
         private async Task<string?> ResolveLiveAsync(string payload, CancellationToken cancellationToken) {
@@ -692,21 +715,21 @@ namespace Cocoar.SignalARRR.Server {
             return new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Interval, Value = value };
         }
 
-        /// <summary>What the consumer takes off the queue: a live notification payload, or a row replayed by catch-up.</summary>
+        /// <summary>What the consumer takes off the queue: a live notification payload, or the marker a reconnect leaves to run a catch-up at that position.</summary>
         private readonly struct IncomingMessage {
             public string? NotificationPayload { get; }
-            public long Id { get; }
-            public string? ReplayedJson { get; }
+            public bool IsCatchUp { get; }
+            public DateTime? LostAtUtc { get; }
 
-            private IncomingMessage(string? notificationPayload, long id, string? replayedJson) {
+            private IncomingMessage(string? notificationPayload, bool isCatchUp, DateTime? lostAtUtc) {
                 NotificationPayload = notificationPayload;
-                Id = id;
-                ReplayedJson = replayedJson;
+                IsCatchUp = isCatchUp;
+                LostAtUtc = lostAtUtc;
             }
 
-            public static IncomingMessage Live(string payload) => new IncomingMessage(payload, 0, null);
+            public static IncomingMessage Live(string payload) => new IncomingMessage(payload, false, null);
 
-            public static IncomingMessage Replayed(long id, string json) => new IncomingMessage(null, id, json);
+            public static IncomingMessage CatchUp(DateTime? lostAtUtc) => new IncomingMessage(null, true, lostAtUtc);
         }
 
         /// <summary>Every statement, with the schema baked in once.</summary>
