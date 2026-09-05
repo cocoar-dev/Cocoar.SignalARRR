@@ -90,7 +90,9 @@ namespace Cocoar.SignalARRR.Tests {
             Assert.Contains("CREATE TABLE IF NOT EXISTS \"my_app\".nodes", script);
             Assert.Contains("CREATE TABLE IF NOT EXISTS \"my_app\".connections", script);
             Assert.Contains("CREATE UNLOGGED TABLE IF NOT EXISTS \"my_app\".messages", script);
-            Assert.DoesNotContain("signalarrr", script);
+            Assert.Contains("CREATE OR REPLACE FUNCTION \"my_app\".publish(", script);
+            Assert.Contains("pg_advisory_xact_lock(hashtext('signalarrr-backplane:my_app:publish'))", script);
+            Assert.DoesNotContain("\"signalarrr\"", script);
         }
 
         [Fact]

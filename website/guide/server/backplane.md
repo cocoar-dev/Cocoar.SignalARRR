@@ -97,6 +97,13 @@ by default. Postgres delivers notifications after commit, so a row is always vis
 is read. That write and read per message is why the throughput ceiling above is lower than Redis's,
 and it is what makes catch-up possible.
 
+A publish is one call to the `publish` function the schema script creates: it takes a
+transaction-scoped advisory lock, inserts the row and notifies. The lock serializes publishes so
+that message ids are assigned in commit order. Without it, a row inserted first could commit last,
+and a node whose cursor had already moved past its id would never replay it. Postgres serializes
+committing `NOTIFY` transactions anyway, so the lock costs no throughput — and it makes the
+cross-node order of messages match the id order exactly.
+
 With catch-up off, envelopes under 8 kB — the notification payload limit — travel inline and only
 larger ones take the table; a subscription drop then loses what was published in between, exactly
 as with Redis.
@@ -107,8 +114,9 @@ Each node remembers the id of the last message it saw. When its listener connect
 failover, a proxy idle-timeout, a network blip — the node reconnects with backoff, resubscribes
 first, and then reads every row past its cursor that is addressed to it, in id order, before it
 resumes live delivery. Rows that show up both in that backlog and as a live notification are
-recognized by id and handed on once. Nothing is delivered twice, and the order a client sees is
-the order the messages were published in.
+recognized by id and handed on once. Because ids are assigned in commit order, "every row past the
+cursor" is exactly what the node has not seen. Nothing is delivered twice, and the order a client
+sees is the order the messages were published in.
 
 This holds for every kind of traffic the backplane carries: a push that fell into the gap arrives
 late rather than never, a group command is applied, a cluster query is answered if the asking node
