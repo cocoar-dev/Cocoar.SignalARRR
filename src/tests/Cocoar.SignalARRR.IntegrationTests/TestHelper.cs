@@ -14,8 +14,15 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         /// Anything that crosses the connection completes on its own schedule. Checking once, right
         /// after the call that set it in motion, is the fixed-moment race that costs a red CI run on
         /// a loaded machine and passes on a fast one.
+        /// <para>
+        /// Fifteen seconds by default, not five. The develop and release runners execute this suite
+        /// for three target frameworks in one job, alongside the Docker-backed backplane tests, and
+        /// the cancellation-timing tests timed out there twice within a day while passing for the
+        /// other frameworks in the same job. A slow arrival is still an arrival; the timeout exists
+        /// for the case where it never comes, and that one costs the same red run either way.
+        /// </para>
         /// </remarks>
-        public static async Task WaitFor(Func<bool> condition, string description, int attempts = 100) {
+        public static async Task WaitFor(Func<bool> condition, string description, int attempts = 300) {
             for (var i = 0; i < attempts; i++) {
                 if (condition()) {
                     return;
