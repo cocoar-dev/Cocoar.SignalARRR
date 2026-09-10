@@ -80,6 +80,13 @@ export const baseConfig = defineConfig({
           ],
         },
         {
+          text: 'Kotlin Client',
+          items: [
+            { text: 'Setup & Usage', link: '/guide/kotlin-client/setup' },
+            { text: 'Typed Proxies & Server Methods', link: '/guide/kotlin-client/typed-proxies' },
+          ],
+        },
+        {
           text: 'Item Streaming',
           items: [
             { text: 'Server-to-Client', link: '/guide/streaming/server-to-client' },

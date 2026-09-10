@@ -2,7 +2,7 @@
 
 # Packages
 
-SignalARRR is distributed as multiple NuGet packages and one npm package. Choose the packages that match your project's role.
+SignalARRR is distributed as multiple NuGet packages, one npm package, one Swift package and two Kotlin (Maven) packages. Choose the packages that match your project's role.
 
 ## .NET Packages
 
@@ -70,6 +70,35 @@ targets: [
 ```
 
 **Platforms:** iOS 14+, macOS 11+, tvOS 14+, watchOS 7+
+
+## Kotlin Packages
+
+| Package | Purpose |
+|---------|---------|
+| `dev.cocoar:signalarrr` | Kotlin client for Android and the JVM: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod`, stream references, plus the plain `SignalRClient` underneath |
+| `dev.cocoar:signalarrr-ksp` | KSP processor generating typed proxies from `@HubProxy` interfaces |
+
+### Dependencies
+
+- `kotlinx-coroutines-core` and `kotlinx-serialization-json` (exposed as API)
+- OkHttp 5 — WebSocket, SSE and long-polling transports, file transfer
+- `msgpack-core` — the MessagePack hub protocol, built in
+
+### Gradle
+
+```kotlin
+plugins {
+    kotlin("plugin.serialization") version "2.4.20"
+    id("com.google.devtools.ksp") version "2.3.12"
+}
+
+dependencies {
+    implementation("dev.cocoar:signalarrr:5.2.0")
+    ksp("dev.cocoar:signalarrr-ksp:5.2.0")
+}
+```
+
+**Platforms:** Android 5+ (API 21), JVM 8+. The library is a plain Kotlin/JVM artifact with no Android SDK dependency.
 
 ## Typical project setup
 

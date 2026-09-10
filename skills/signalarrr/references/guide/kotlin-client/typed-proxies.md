@@ -1,0 +1,182 @@
+<!-- Generated from website/guide/kotlin-client/typed-proxies.md by website/scripts/sync-skill.mjs. Do not edit; edit the docs page. -->
+
+# Typed Proxies & Server Methods
+
+The Kotlin client generates typed proxies at build time with KSP, and answers server-to-client calls with handlers that run as ordinary coroutines.
+
+## @HubProxy
+
+Mark an interface with `@HubProxy` and the `dev.cocoar:signalarrr-ksp` processor generates a `<Name>Proxy` class at build time:
+
+```kotlin
+import dev.cocoar.signalarrr.HubProxy
+import kotlinx.coroutines.flow.Flow
+
+@HubProxy(name = "MyApp.Contracts.IChatHub")
+interface IChatHub {
+    suspend fun sendMessage(user: String, message: String)
+    suspend fun getHistory(): List<String>
+    fun streamMessages(): Flow<String>
+}
+```
+
+The generated `IChatHubProxy` routes each member to the connection:
+
+| Member | Generated call | Protocol |
+|--------|----------------|----------|
+| `suspend fun` without result | `connection.send("MyApp.Contracts.IChatHub\|SendMessage", ...)` | `SendMessage` |
+| `suspend fun ...: T` | `connection.invoke<T>("MyApp.Contracts.IChatHub\|GetHistory", ...)` | `InvokeMessageResult` |
+| `fun ...: Flow<T>` | `connection.stream<T>("MyApp.Contracts.IChatHub\|StreamMessages", ...)` | `StreamMessage` |
+
+### Wire names
+
+A contract call travels as `Interface|Method` (see [Contract Wire Names](../server/contracts-wire-names)). The server matches both halves exactly, and it is case-sensitive:
+
+- **Interface half** — the `name` argument. Use the .NET full name of the contract (`MyApp.Contracts.IChatHub`), or the `[MessageName]` it declares. Without `name`, the simple Kotlin interface name is used, which only matches a contract in the global namespace.
+- **Method half** — the Kotlin function name with its first letter upper-cased, because .NET members are PascalCase: `getHistory` → `GetHistory`. Set `pascalCase = false` to send the name verbatim, or override one member with `@HubMethod("received")` where the contract declares `[MessageName("received")]`.
+
+### Hub methods and ServerMethods classes
+
+Methods declared on the hub class or on a `ServerMethods<THub>` class are not addressed through an interface. `kind` selects the naming scheme:
+
+```kotlin
+// ServerMethods<AppHub> class "ChatMethods" → "ChatMethods.SendMessage"
+@HubProxy(name = "ChatMethods", kind = ProxyKind.SERVER_METHODS)
+interface ChatMethods {
+    suspend fun sendMessage(user: String, message: String)
+}
+
+// Methods on the hub class itself → bare "Echo"
+@HubProxy(kind = ProxyKind.HUB)
+interface AppHubMethods {
+    suspend fun echo(text: String): String
+}
+```
+
+### Generic methods
+
+A contract member with a type parameter needs the .NET type names of its type arguments on the wire. Declare them with `@GenericArguments`:
+
+```kotlin
+@HubProxy(name = "MyApp.Contracts.IQueryHub")
+interface IQueryHub {
+    @GenericArguments("MyApp.Models.Order")
+    suspend fun load(id: String): Order
+}
+```
+
+## Use typed proxies
+
+```kotlin
+val chat = connection.getTypedMethods(IChatHubProxy)
+
+chat.sendMessage("Alice", "Hello!")
+val history = chat.getHistory()
+
+chat.streamMessages().collect { msg -> println(msg) }
+```
+
+`IChatHubProxy` is also a plain class — `IChatHubProxy(connection)` works — and its companion object is the `HubProxyFactory` that `getTypedMethods` takes.
+
+## Server-to-client handlers
+
+Register handlers for methods the server calls on the client. The name is the contract's **wire name** — `Interface|Method` — and it is matched exactly; a call with no matching handler is not an error, it is logged and dropped.
+
+```kotlin
+connection.onServerMethod("MyApp.Contracts.IChatClient|ReceiveMessage") { args ->
+    val user = args.value<String>(0)
+    val message = args.value<String>(1)
+    println("$user: $message")
+}
+
+connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") {
+    Build.MODEL
+}
+```
+
+The handler receives a `ServerMethodArgs` — the arguments in contract order — and returns the result: `Unit` for void methods, any encodable value otherwise (primitives, collections, `@Serializable` classes). `args.value<T>(index)` decodes an argument; `args.element(index)` gives the raw `JsonElement`.
+
+If the contract declares its own names with `[MessageName]`, use those instead — for `[MessageName("chat.client")]` on the interface and `[MessageName("received")]` on the member, the name is `"chat.client|received"`.
+
+> **Warning: A throwing handler may go unnoticed**
+>
+> If the server awaited a result, the error travels back to it. If the server sent fire-and-forget, the error is written to the client's logger as `Failed to handle server message '<name>'` and goes no further — the server's send completed long before the handler ran. See [what happens when a handler throws](../dotnet-client/server-to-client#what-happens-when-a-handler-throws).
+
+## Cancellation
+
+When the contract declares a `CancellationToken`, the handler's coroutine is cancelled when the server cancels — nothing to wire up. `delay`, `withContext`, a `Flow`, an OkHttp call through `await()`: anything that cooperates with coroutine cancellation stops, and the handler sees a `ServerCancelledException`.
+
+```kotlin
+// Contract: Task<string> Wait(int seconds, CancellationToken ct)
+connection.onServerMethod("TestShared.ITestClientMethods|Wait") { args ->
+    delay(args.value<Int>(0) * 1000L)   // throws ServerCancelledException when the server cancels
+    "done"
+}
+```
+
+The token's slot in the arguments holds a `ServerCancellationToken` (`args.cancellationToken(1)`), so argument positions stay aligned with the contract; use it to poll `isCancelled` or `awaitCancellation()` from non-suspending code. Handlers are also cancelled when the connection drops — their caller is gone.
+
+## Streaming handlers
+
+For a contract member returning `IAsyncEnumerable<T>`, register a `Flow`:
+
+```kotlin
+connection.onServerStreamMethod("MyApp.Contracts.IChatClient|StreamData") { args ->
+    val count = args.value<Int>(0)
+    flow {
+        repeat(count) { emit(it) }
+    }
+}
+```
+
+Each item is sent to the server as it is emitted; completing the flow — or failing it — completes the server-side enumeration.
+
+## Interface registration
+
+For structured registration under a prefix:
+
+```kotlin
+connection.registerHandlers("MyApp.Contracts.IChatClient", mapOf(
+    "ReceiveMessage" to { args -> showMessage(args.value<String>(0), args.value<String>(1)) },
+    "GetClientName" to { Build.MODEL },
+))
+```
+
+Or implement `ServerInterfaceHandler`:
+
+```kotlin
+class ChatClient : ServerInterfaceHandler {
+    override val interfaceName = "MyApp.Contracts.IChatClient"
+
+    override fun handlers(): Map<String, ServerMethodHandler> = mapOf(
+        "ReceiveMessage" to { args -> showMessage(args.value<String>(0), args.value<String>(1)) },
+        "GetClientName" to { Build.MODEL },
+    )
+}
+
+connection.registerInterface(ChatClient())
+```
+
+## HTTP stream references
+
+A `Stream` parameter on a server-to-client call arrives as its bytes: the client recognises the stream reference and downloads it before the handler runs, so `args.bytes(index)` is the content. A handler that returns a `ByteArray`, `File` or `InputStream` uploads it and hands the server a stream reference:
+
+```kotlin
+// Contract: long FileLength(string id, Stream file)
+connection.onServerMethod("MyApp.Contracts.IFileClient|FileLength") { args ->
+    args.bytes(1)!!.size.toLong()
+}
+
+// Contract: Stream GetFileStream(string name)
+connection.onServerMethod("MyApp.Contracts.IFileClient|GetFileStream") { args ->
+    File(cacheDir, args.value<String>(0))
+}
+```
+
+The same applies to client-to-server calls: a `ByteArray`, `File`, `InputStream` or `UploadStream` argument to `invoke`/`send` is uploaded through `RequestUploadSlot` and `POST {hub}/upload/{id}`, and the server method receives a `Stream`. See [HTTP Stream References](../advanced/http-streams).
+
+## Next steps
+
+- [Setup & Usage](./setup) — connection basics
+- [Cancellation Propagation](../advanced/cancellation) — how cancellation works across clients
+- [HTTP Stream References](../advanced/http-streams) — large file transfer

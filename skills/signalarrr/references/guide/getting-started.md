@@ -32,6 +32,11 @@ npm install @cocoar/signalarrr
 // Products: CocoarSignalARRR, CocoarSignalARRRMacros
 ```
 
+```kotlin [Kotlin (build.gradle.kts)]
+implementation("dev.cocoar:signalarrr:5.2.0")
+ksp("dev.cocoar:signalarrr-ksp:5.2.0")   // typed proxies via @HubProxy
+```
+
 
 ## 1. Define shared interfaces
 
@@ -186,6 +191,35 @@ await connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { _
 }
 ```
 
+## 6. Kotlin client (Android / JVM)
+
+```kotlin
+import dev.cocoar.signalarrr.HARRRConnection
+import dev.cocoar.signalarrr.HubProxy
+import kotlinx.coroutines.flow.Flow
+
+@HubProxy(name = "MyApp.Contracts.IChatHub")
+interface IChatHub {
+    suspend fun sendMessage(user: String, message: String)
+    suspend fun getHistory(): List<String>
+    fun streamMessages(): Flow<String>
+}
+
+val connection = HARRRConnection.create("https://localhost:5001/chathub")
+connection.start()
+
+// Typed calls through the KSP-generated proxy
+val chat = connection.getTypedMethods(IChatHubProxy)
+chat.sendMessage("Alice", "Hello!")
+val history = chat.getHistory()
+
+// Streaming
+chat.streamMessages().collect { msg -> println(msg) }
+
+// Handle server-to-client calls. The name is the contract's wire name, "interface|method".
+connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { Build.MODEL }
+```
+
 ## Next steps
 
 - [Why SignalARRR?](https://docs.cocoar.dev/signalarrr/guide/why-signalarrr.html) — what problems SignalARRR solves compared to raw SignalR
@@ -193,3 +227,4 @@ await connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { _
 - [Server Methods](./server/server-methods.md) — organizing hub logic across classes
 - [TypeScript Client](./typescript-client/setup.md) — complete TypeScript/JavaScript guide
 - [Swift Client](./swift-client/setup.md) — complete Swift/iOS/macOS guide
+- [Kotlin Client](./kotlin-client/setup.md) — complete Kotlin/Android guide

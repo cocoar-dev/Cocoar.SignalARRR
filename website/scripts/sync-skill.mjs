@@ -46,6 +46,7 @@ const SECTIONS = [
   },
   { title: 'TypeScript client', pages: ['guide/typescript-client/setup.md', 'guide/typescript-client/server-methods.md'] },
   { title: 'Swift client', pages: ['guide/swift-client/setup.md', 'guide/swift-client/typed-proxies.md'] },
+  { title: 'Kotlin client', pages: ['guide/kotlin-client/setup.md', 'guide/kotlin-client/typed-proxies.md'] },
   { title: 'Item streaming', pages: ['guide/streaming/server-to-client.md', 'guide/streaming/client-to-server.md'] },
   { title: 'Advanced', pages: ['guide/advanced/http-streams.md', 'guide/advanced/proxy-generation.md', 'guide/advanced/cancellation.md'] },
   { title: 'Migration', pages: ['guide/migration/from-v4.md', 'guide/migration/from-v2.md'] },

@@ -8,6 +8,7 @@ on:
       - 'scripts/**'
       - '.github/workflows/**'
       - 'Package.swift'
+      - 'src/Cocoar.SignalARRR.Kotlin/**'
 
 jobs:
   test-multiplatform:
@@ -117,6 +118,34 @@ jobs:
       - name: Run Swift tests
         run: swift test
 
+  test-kotlin:
+    name: Test Kotlin client
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Unit tests and the KSP processor; the integration tests run in the integration job below,
+      # against the same server as the other clients.
+      - name: Build and test Kotlin client
+        working-directory: src/Cocoar.SignalARRR.Kotlin
+        run: ./gradlew build --console=plain
+
   integration-test:
     name: Integration tests (all frameworks)
     runs-on: macos-latest
@@ -142,6 +171,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build TypeScript client
         working-directory: src/Cocoar.SignalARRR.Typescript
