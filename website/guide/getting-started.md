@@ -1,5 +1,5 @@
 ---
-description: "Install the packages, define a [SignalARRRContract] interface, implement it in a ServerMethods<T> class on a HARRR hub, and call it from the .NET, TypeScript and Swift clients"
+description: "Install the packages, define a [SignalARRRContract] interface, implement it in a ServerMethods<T> class on a HARRR hub, and call it from the .NET, TypeScript, Swift and Kotlin clients"
 ---
 
 # Getting Started
@@ -33,6 +33,11 @@ npm install @cocoar/signalarrr
 ```swift [Swift (Package.swift)]
 .package(url: "https://github.com/cocoar-dev/Cocoar.SignalARRR.git", from: "5.0.0")
 // Products: CocoarSignalARRR, CocoarSignalARRRMacros
+```
+
+```kotlin [Kotlin (build.gradle.kts)]
+implementation("dev.cocoar:signalarrr:5.2.0")
+ksp("dev.cocoar:signalarrr-ksp:5.2.0")   // typed proxies via @HubProxy
 ```
 
 :::
@@ -190,6 +195,35 @@ await connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { _
 }
 ```
 
+## 6. Kotlin client (Android / JVM)
+
+```kotlin
+import dev.cocoar.signalarrr.HARRRConnection
+import dev.cocoar.signalarrr.HubProxy
+import kotlinx.coroutines.flow.Flow
+
+@HubProxy(name = "MyApp.Contracts.IChatHub")
+interface IChatHub {
+    suspend fun sendMessage(user: String, message: String)
+    suspend fun getHistory(): List<String>
+    fun streamMessages(): Flow<String>
+}
+
+val connection = HARRRConnection.create("https://localhost:5001/chathub")
+connection.start()
+
+// Typed calls through the KSP-generated proxy
+val chat = connection.getTypedMethods(IChatHubProxy)
+chat.sendMessage("Alice", "Hello!")
+val history = chat.getHistory()
+
+// Streaming
+chat.streamMessages().collect { msg -> println(msg) }
+
+// Handle server-to-client calls. The name is the contract's wire name, "interface|method".
+connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { Build.MODEL }
+```
+
 ## Next steps
 
 - [Why SignalARRR?](/guide/why-signalarrr) — what problems SignalARRR solves compared to raw SignalR
@@ -197,3 +231,4 @@ await connection.onServerMethod("MyApp.Contracts.IChatClient|GetClientName") { _
 - [Server Methods](/guide/server/server-methods) — organizing hub logic across classes
 - [TypeScript Client](/guide/typescript-client/setup) — complete TypeScript/JavaScript guide
 - [Swift Client](/guide/swift-client/setup) — complete Swift/iOS/macOS guide
+- [Kotlin Client](/guide/kotlin-client/setup) — complete Kotlin/Android guide

@@ -7,7 +7,7 @@
 
 Typed bidirectional RPC over ASP.NET Core SignalR.
 
-Server and client call each other's methods through shared interfaces — with compile-time proxy generation, streaming, cancellation propagation, and ASP.NET Core authorization. Clients available for **.NET**, **TypeScript/JavaScript**, and **Swift**.
+Server and client call each other's methods through shared interfaces — with compile-time proxy generation, streaming, cancellation propagation, and ASP.NET Core authorization. Clients available for **.NET**, **TypeScript/JavaScript**, **Swift**, and **Kotlin/Android**.
 
 > **[Read the full documentation](https://docs.cocoar.dev/signalarrr/)**
 
@@ -39,6 +39,13 @@ npm install @cocoar/signalarrr
 .package(url: "https://github.com/cocoar-dev/Cocoar.SignalARRR.git", from: "5.0.0")
 ```
 
+### Kotlin (Android / JVM)
+
+```kotlin
+implementation("dev.cocoar:signalarrr:5.2.0")
+ksp("dev.cocoar:signalarrr-ksp:5.2.0")   // typed proxies via @HubProxy
+```
+
 ## Quick Start
 
 Define shared interfaces, set up the server, and call methods with full type safety:
@@ -67,6 +74,13 @@ const history = await connection.invoke<string[]>('ChatMethods.GetHistory');
 let chat = connection.getTypedMethods(IChatHubProxy.self)
 ```
 
+```kotlin
+// Kotlin client — KSP generates the proxy from a @HubProxy interface
+@HubProxy(name = "MyApp.Contracts.IChatHub") interface IChatHub { ... }
+val chat = connection.getTypedMethods(IChatHubProxy)
+chat.sendMessage("Alice", "Hello!")
+```
+
 For full setup guides, streaming, authorization, and server-to-client calls, see the **[documentation](https://docs.cocoar.dev/signalarrr/)**.
 
 ## Features
@@ -79,7 +93,7 @@ For full setup guides, streaming, authorization, and server-to-client calls, see
 - **CancellationToken propagation** — server can cancel client operations remotely
 - **Authorization** — method-level, class-level, and hub-level `[Authorize]`
 - **Server-to-client calls from anywhere** — inject `ClientManager` in controllers, background services, etc.
-- **Four clients** — .NET, .NET Framework, TypeScript/JavaScript, Swift
+- **Five clients** — .NET, .NET Framework, TypeScript/JavaScript, Swift, Kotlin/Android
 - **Typed broadcasts** — `WithHub<T>().WithGroup().SendAsync<T>()` for groups and filtered clients
 - **Multi-node backplane** — opt-in scale-out over Redis/Valkey/Garnet, or over the PostgreSQL you already run; with cluster subjects, server streams fed by an in-process observable become cluster-wide too
 
@@ -173,6 +187,7 @@ What happens to in-flight work when a connection drops — worth knowing before 
 | .NET Framework (client) | 4.6.2+ (via `Cocoar.SignalARRR.Client.FullFramework`) |
 | TypeScript / JavaScript | Node.js 22 / modern browsers |
 | Swift (iOS / macOS) | Swift 5.10+, iOS 14+ / macOS 11+ |
+| Kotlin (Android / JVM) | Kotlin 2.0+, Android 5+ (API 21) / JVM 8+ |
 
 ## Building from Source
 
@@ -186,6 +201,9 @@ cd src/Cocoar.SignalARRR.Typescript && npm install && npm run build
 
 # Swift
 swift build && swift test
+
+# Kotlin (needs a JDK 21 on JAVA_HOME)
+cd src/Cocoar.SignalARRR.Kotlin && ./gradlew build
 ```
 
 ## License

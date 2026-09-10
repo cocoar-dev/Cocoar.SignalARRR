@@ -5,6 +5,7 @@
 #   ./scripts/run-integration-tests.sh dotnet        # .NET only
 #   ./scripts/run-integration-tests.sh swift         # Swift only
 #   ./scripts/run-integration-tests.sh typescript    # TypeScript only
+#   ./scripts/run-integration-tests.sh kotlin        # Kotlin only
 
 set -euo pipefail
 
@@ -84,6 +85,25 @@ if [ "$FILTER" = "all" ] || [ "$FILTER" = "typescript" ]; then
     else
         echo ""
         echo "=== Skipping TypeScript Tests (no test directory) ==="
+    fi
+fi
+
+# --- Kotlin Tests ---
+
+if [ "$FILTER" = "all" ] || [ "$FILTER" = "kotlin" ]; then
+    KOTLIN_DIR="$REPO_ROOT/src/Cocoar.SignalARRR.Kotlin"
+    if [ -f "$KOTLIN_DIR/gradlew" ] && { command -v java &>/dev/null || [ -n "${JAVA_HOME:-}" ]; }; then
+        echo ""
+        echo "=== Running Kotlin Integration Tests ==="
+        if (cd "$KOTLIN_DIR" && ./gradlew :signalarrr-integration-tests:test --console=plain -q); then
+            echo "Kotlin tests: PASSED"
+        else
+            echo "Kotlin tests: FAILED"
+            FAILED=1
+        fi
+    else
+        echo ""
+        echo "=== Skipping Kotlin Tests (no JDK available) ==="
     fi
 fi
 

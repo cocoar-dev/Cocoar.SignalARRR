@@ -1,33 +1,33 @@
 ---
-description: "Feature matrix of the four clients — .NET, .NET Framework, TypeScript, Swift: platforms, RPC, item streaming, server-to-client RPC, file transfer, authorization, proxies, transports, side-by-side API samples"
+description: "Feature matrix of the five clients — .NET, .NET Framework, TypeScript, Swift, Kotlin: platforms, RPC, item streaming, server-to-client RPC, file transfer, authorization, proxies, transports, side-by-side API samples"
 ---
 
 # Client Comparison
 
-SignalARRR has four client implementations. This page shows what each client supports.
+SignalARRR has five client implementations. This page shows what each client supports.
 
 ## Platform Support
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Target | net8.0 / net9.0 / net10.0 | net462+ (netstandard2.0) | Node 22 / browsers | iOS 14+ / macOS 11+ |
-| Package | `Cocoar.SignalARRR.Client` | `Cocoar.SignalARRR.Client.FullFramework` | `@cocoar/signalarrr` | `CocoarSignalARRR` |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Target | net8.0 / net9.0 / net10.0 | net462+ (netstandard2.0) | Node 22 / browsers | iOS 14+ / macOS 11+ | Android 5+ (API 21) / JVM 8+ |
+| Package | `Cocoar.SignalARRR.Client` | `Cocoar.SignalARRR.Client.FullFramework` | `@cocoar/signalarrr` | `CocoarSignalARRR` | `dev.cocoar:signalarrr` |
 
 ## RPC
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Invoke (await result) | ✓ | ✓ | ✓ | ✓ |
-| Send (fire & forget) | ✓ | ✓ | ✓ | ✓ |
-| Generic arguments | ✓ | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Invoke (await result) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Send (fire & forget) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Generic arguments | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Item Streaming
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Server→Client | ✓ | ✓ | ✓ | ✓ |
-| Client→Server | ✓ | ✓ | ✓ | ✓ |
-| Stream method handlers | ✓ | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Server→Client | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Client→Server | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Stream method handlers | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ::: info .NET Framework streaming
 The FullFramework client supports streaming via polyfill packages (`Microsoft.Bcl.AsyncInterfaces` and `System.Threading.Channels`). `IAsyncEnumerable<T>`, `ChannelReader<T>`, and `await foreach` all work on .NET Framework 4.6.2+.
@@ -35,32 +35,32 @@ The FullFramework client supports streaming via polyfill packages (`Microsoft.Bc
 
 ## Server-to-Client RPC
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Method handlers | ✓ | ✓ | ✓ | ✓ |
-| Interface registration | ✓ | ✓ | — | ✓ |
-| CancellationToken | ✓ | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Method handlers | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Interface registration | ✓ | ✓ | — | ✓ | ✓ |
+| CancellationToken | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## File Transfer (HTTP Stream References)
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Download (`Stream` return) | ✓ | ✓ | ✓ | ✓ |
-| Upload (`Stream` parameter) | ✓ | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Download (`Stream` return) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Upload (`Stream` parameter) | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Authorization
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Token provider | ✓ | ✓ | ✓ | ✓ |
-| Auto challenge/refresh | ✓ | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Token provider | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Auto challenge/refresh | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Proxy Generation
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Compile-time proxies | Source Generator | — | — | `@HubProxy` Macro |
-| Runtime proxies | DispatchProxy | DispatchProxy | — | — |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Compile-time proxies | Source Generator | — | — | `@HubProxy` Macro | `@HubProxy` + KSP |
+| Runtime proxies | DispatchProxy | DispatchProxy | — | — | — |
 
 ::: info .NET Framework uses DispatchProxy only
 The Roslyn source generator requires projects to reference `Cocoar.SignalARRR.Contracts` which targets net8.0+. On .NET Framework, typed proxies are created at runtime via `DispatchProxy`. The interfaces don't need `[SignalARRRContract]` — any C# interface works.
@@ -68,21 +68,21 @@ The Roslyn source generator requires projects to reference `Cocoar.SignalARRR.Co
 
 ## Connection
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Auto-reconnect | ✓ | ✓ | ✓ | ✓ |
-| Connection events | ✓ | ✓ | ✓ | ✓ |
-| Raw SignalR access | ✓ | ✓ | ✓ | ✓ |
-| Raw `on/off` overloads | 16 | — | — | 8 |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Auto-reconnect | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Connection events | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Raw SignalR access | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Raw `on/off` overloads | 16 | — | — | 8 | 1 (typed accessors) |
 
 ## Concurrency Model
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| Async pattern | async/await | async/await | Promise | async/await |
-| Cancellation | CancellationToken | CancellationToken | AbortSignal | Actor |
-| Serialization | System.Text.Json | System.Text.Json | JSON | Codable |
-| MessagePack | ✓ (optional) | ✓ (optional) | ✓ (optional) | ✓ (built-in) |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| Async pattern | async/await | async/await | Promise | async/await | coroutines / Flow |
+| Cancellation | CancellationToken | CancellationToken | AbortSignal | Actor | Coroutine `Job` |
+| Serialization | System.Text.Json | System.Text.Json | JSON | Codable | kotlinx.serialization |
+| MessagePack | ✓ (optional) | ✓ (optional) | ✓ (optional) | ✓ (built-in) | ✓ (built-in) |
 
 ::: info MessagePack is optional
 MessagePack support is **not** included by default. Install the protocol package separately and register it on the connection builder:
@@ -110,17 +110,19 @@ builder.Services.AddSignalR().AddMessagePackProtocol();
 
 **Swift** has MessagePack built-in — use `hubProtocol: .messagepack` when creating the connection.
 
+**Kotlin** has MessagePack built-in — set `hubProtocol = HubProtocolKind.MESSAGE_PACK` in the options.
+
 SignalARRR auto-detects the active protocol and uses the correct serializer. No additional configuration needed.
 :::
 
 ## Transport
 
-| | .NET | .NET Framework | TS | Swift |
-|-|:----:|:--------------:|:--:|:-----:|
-| WebSockets | ✓ | ✓ | ✓ | ✓ |
-| Server-Sent Events | ✓ | ✓ | ✓ | ✓ |
-| Long Polling | ✓ | ✓ | ✓ | ✓ |
-| Transport fallback | ✓ | ✓ | ✓ | ✓ |
+| | .NET | .NET Framework | TS | Swift | Kotlin |
+|-|:----:|:--------------:|:--:|:-----:|:------:|
+| WebSockets | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Server-Sent Events | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Long Polling | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Transport fallback | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## API Comparison
 
@@ -156,6 +158,11 @@ let connection = await HARRRConnection.create(
     url: "https://server/hub"
 )
 try await connection.start()
+```
+
+```kotlin [Kotlin]
+val connection = HARRRConnection.create("https://server/hub")
+connection.start()
 ```
 
 :::
@@ -200,6 +207,19 @@ protocol IChatHub {
 // Client: get typed proxy
 let chat = connection.getTypedMethods(IChatHubProxy.self)
 try await chat.sendMessage(user: "Alice", message: "Hello!")
+```
+
+```kotlin [Kotlin — @HubProxy + KSP]
+// Client: mark with @HubProxy, the KSP processor generates IChatHubProxy
+@HubProxy(name = "MyApp.Contracts.IChatHub")
+interface IChatHub {
+    suspend fun sendMessage(user: String, message: String)
+    suspend fun getHistory(): List<String>
+}
+
+// Client: get typed proxy
+val chat = connection.getTypedMethods(IChatHubProxy)
+chat.sendMessage("Alice", "Hello!")
 ```
 
 :::
@@ -260,6 +280,17 @@ for try await item in try await connection.stream("Method.Name") as AsyncThrowin
 }
 ```
 
+```kotlin [Kotlin]
+// Invoke
+val result: String = connection.invoke("Method.Name")
+
+// Send
+connection.send("Method.Name", arg1, arg2)
+
+// Stream
+connection.stream<Int>("Method.Name").collect { item -> println(item) }
+```
+
 :::
 
 ### Server-to-client handlers
@@ -289,6 +320,12 @@ await connection.onServerMethod("MyApp.Contracts.IChatClient|ReceiveMessage") { 
 }
 ```
 
+```kotlin [Kotlin]
+connection.onServerMethod("MyApp.Contracts.IChatClient|ReceiveMessage") { args ->
+    println("${args.value<String>(0)}: ${args.value<String>(1)}")
+}
+```
+
 :::
 
 ### CancellationToken handling
@@ -299,6 +336,7 @@ await connection.onServerMethod("MyApp.Contracts.IChatClient|ReceiveMessage") { 
 | .NET Framework | Standard `CancellationToken` | Native |
 | TypeScript | `AbortSignal` via `CancellationManager` (Map-based) | Web API |
 | Swift | Actor-based `CancellationManager` with continuations | Swift Concurrency |
+| Kotlin | The handler's coroutine `Job` is cancelled via `CancellationManager` | Structured concurrency |
 
 ### Packages
 
@@ -308,3 +346,4 @@ await connection.onServerMethod("MyApp.Contracts.IChatClient|ReceiveMessage") { 
 | .NET Framework | `Cocoar.SignalARRR.Client.FullFramework` | `dotnet add package` |
 | TypeScript | `@cocoar/signalarrr` | `npm install` |
 | Swift | `CocoarSignalARRR` + `CocoarSignalARRRMacros` | Swift Package Manager |
+| Kotlin | `dev.cocoar:signalarrr` + `dev.cocoar:signalarrr-ksp` | Gradle (Maven Central) |

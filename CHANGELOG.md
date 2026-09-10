@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Kotlin client** (`dev.cocoar:signalarrr`, `dev.cocoar:signalarrr-ksp`) for Android and the JVM — the fifth client, built the way the Swift one is: a full SignalR client of its own (negotiate, WebSockets, Server-Sent Events and Long Polling with fallback, JSON and MessagePack, keep-alive, server timeout, automatic reconnection) rather than a wrapper around Microsoft's Java client, which has no reconnect, no SSE and leaks RxJava into the API. Coroutines and `Flow` are the async model: `invoke` and `send` suspend, `stream` returns a cold `Flow` whose cancellation cancels the server-side stream. The full SignalARRR surface is there — token challenges, structured errors with codes (`HARRRException.code`), server-to-client handlers with `onServerMethod`, `registerInterface` and stream handlers, HTTP stream references in both directions (`ByteArray`, `File`, `InputStream` arguments are uploaded, `Stream` parameters arrive as bytes), and cancellation propagation in the idiomatic form: the handler's coroutine is cancelled when the server cancels, so `delay` and every other suspending call just stops. `@HubProxy` interfaces get a typed proxy generated at build time by a KSP processor; `ProxyKind` addresses contract interfaces, `ServerMethods` classes and hub methods alike, and Kotlin's camelCase members map to .NET's PascalCase by default. The plain `SignalRClient` underneath talks to any SignalR hub. Verified by 66 integration tests against the shared test server over all three transports, and by the unit suite. Documented under the new *Kotlin Client* section.
+
 ---
 
 ## [5.1.0] - 2026-09-05
