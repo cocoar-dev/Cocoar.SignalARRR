@@ -46,6 +46,13 @@ A prerelease therefore publishes its documentation without overwriting the stabl
 keeps "latest" on the highest stable version, so the preview shows up in the version list without
 becoming the default.
 
+The Kotlin packages (`dev.cocoar:signalarrr`, `dev.cocoar:signalarrr-ksp`) go to Maven Central
+through the Sonatype Central Portal, signed, with the repository secrets `MAVEN_CENTRAL_USERNAME`
+and `MAVEN_CENTRAL_PASSWORD` (a user token from the portal, not the login) and
+`MAVEN_SIGNING_KEY` and `MAVEN_SIGNING_KEY_PASSWORD` (the ASCII-armored private key and its
+passphrase; the public key must be on a keyserver). Maven Central cannot delete or overwrite a
+version, a prerelease included.
+
 Pushes to `develop` publish nothing. CI packs every green build with a GitVersion-derived number and
 uploads it as a workflow artifact (7 days), which is the way to try an unreleased state without
 putting anything on a public feed.

@@ -1,10 +1,12 @@
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.KotlinJvm
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
     `java-library`
-    `maven-publish`
+    alias(libs.plugins.maven.publish)
 }
 
 description = "SignalARRR client for Kotlin/JVM and Android — type-safe RPC over SignalR"
@@ -22,7 +24,6 @@ kotlin {
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
-    withSourcesJar()
 }
 
 dependencies {
@@ -57,25 +58,10 @@ tasks.test {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-            artifactId = "signalarrr"
-            pom {
-                name.set("Cocoar.SignalARRR Kotlin client")
-                description.set(project.description)
-                url.set("https://docs.cocoar.dev/signalarrr/")
-                licenses {
-                    license {
-                        name.set("Apache-2.0")
-                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
-                    }
-                }
-                scm {
-                    url.set("https://github.com/cocoar-dev/Cocoar.SignalARRR")
-                }
-            }
-        }
+mavenPublishing {
+    coordinates(artifactId = "signalarrr")
+    configure(KotlinJvm(javadocJar = JavadocJar.Empty(), sourcesJar = true))
+    pom {
+        name.set("Cocoar.SignalARRR Kotlin client")
     }
 }

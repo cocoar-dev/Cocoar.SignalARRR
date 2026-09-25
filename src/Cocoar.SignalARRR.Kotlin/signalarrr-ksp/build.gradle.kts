@@ -1,9 +1,11 @@
+import com.vanniktech.maven.publish.JavadocJar
+import com.vanniktech.maven.publish.KotlinJvm
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
     `java-library`
-    `maven-publish`
+    alias(libs.plugins.maven.publish)
 }
 
 description = "KSP processor generating typed hub proxies for @HubProxy interfaces"
@@ -19,7 +21,6 @@ kotlin {
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
-    withSourcesJar()
 }
 
 dependencies {
@@ -36,25 +37,10 @@ tasks.test {
     useJUnitPlatform()
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-            artifactId = "signalarrr-ksp"
-            pom {
-                name.set("Cocoar.SignalARRR KSP processor")
-                description.set(project.description)
-                url.set("https://docs.cocoar.dev/signalarrr/")
-                licenses {
-                    license {
-                        name.set("Apache-2.0")
-                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
-                    }
-                }
-                scm {
-                    url.set("https://github.com/cocoar-dev/Cocoar.SignalARRR")
-                }
-            }
-        }
+mavenPublishing {
+    coordinates(artifactId = "signalarrr-ksp")
+    configure(KotlinJvm(javadocJar = JavadocJar.Empty(), sourcesJar = true))
+    pom {
+        name.set("Cocoar.SignalARRR KSP processor")
     }
 }
