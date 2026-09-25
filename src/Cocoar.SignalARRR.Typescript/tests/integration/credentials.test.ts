@@ -32,6 +32,17 @@ describe('Connection credential', () => {
     expect(await transportCredential(signalR.HttpTransportType.LongPolling)).toBe('header=Bearer probe-token;query=-');
   });
 
+  test('a rejected negotiate reports its HTTP status', async () => {
+    const connection = HARRRConnection.create(`${SERVER_URL}/signalr/no-such-hub`, {}, (builder) =>
+      builder.configureLogging(signalR.LogLevel.None),
+    );
+    const error = await connection.start().then(
+      () => undefined,
+      (e: unknown) => e as { statusCode?: number },
+    );
+    expect(error?.statusCode).toBe(404);
+  });
+
   test('reaches the SSE transport in the URL, as SignalR sends it under Node', async () => {
     expect(await transportCredential(signalR.HttpTransportType.ServerSentEvents)).toBe('header=-;query=probe-token');
   });

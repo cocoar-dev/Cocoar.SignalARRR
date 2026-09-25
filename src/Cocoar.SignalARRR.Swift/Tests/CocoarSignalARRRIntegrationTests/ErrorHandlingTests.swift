@@ -48,4 +48,36 @@ final class ErrorHandlingTests: IntegrationTestBase {
             XCTAssertFalse("\(error)".isEmpty)
         }
     }
+
+    // MARK: - Error codes
+
+    func testApplicationCodeTravelsVerbatim() async throws {
+        do {
+            let _: String = try await connection.invoke("ExtraMethods.ThrowRoomFull")
+            XCTFail("Expected an error to be thrown")
+        } catch {
+            let harrrError = parseHARRRError(fromMessage: "\(error)")
+            XCTAssertEqual(harrrError.code, "room_full")
+            XCTAssertEqual(harrrError.normalizedCode, HARRRErrorCodes.internal, "an unknown code folds to internal")
+            XCTAssertEqual(harrrError.message, "The room is full.")
+        }
+    }
+
+    func testUnknownMethodIsMethodNotFound() async throws {
+        do {
+            let _: String = try await connection.invoke("NonExistentMethod")
+            XCTFail("Expected an error to be thrown")
+        } catch {
+            XCTAssertEqual(parseHARRRError(fromMessage: "\(error)").normalizedCode, HARRRErrorCodes.methodNotFound)
+        }
+    }
+
+    func testWrongArgumentCountIsInvalidArgumentCount() async throws {
+        do {
+            let _: String = try await connection.invoke("Echo", arguments: "one", "two")
+            XCTFail("Expected an error to be thrown")
+        } catch {
+            XCTAssertEqual(parseHARRRError(fromMessage: "\(error)").normalizedCode, HARRRErrorCodes.invalidArgumentCount)
+        }
+    }
 }

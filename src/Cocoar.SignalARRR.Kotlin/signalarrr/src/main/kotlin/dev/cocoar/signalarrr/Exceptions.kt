@@ -6,7 +6,12 @@ public open class SignalRException(message: String, cause: Throwable? = null) : 
 public class ConnectionFailedException(message: String, cause: Throwable? = null) :
     SignalRException("Connection failed: $message", cause)
 
-public class NegotiationFailedException(message: String, cause: Throwable? = null) :
+/**
+ * Negotiate failed. [statusCode] is the HTTP status when the server answered with one — 401 or 403
+ * when it rejected the connection credential — and `null` when it could not be reached or answered
+ * with something unusable.
+ */
+public class NegotiationFailedException(message: String, cause: Throwable? = null, public val statusCode: Int? = null) :
     SignalRException("Negotiation failed: $message", cause)
 
 public class HandshakeFailedException(message: String, cause: Throwable? = null) :

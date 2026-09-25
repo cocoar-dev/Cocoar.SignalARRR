@@ -23,9 +23,9 @@ public enum TransportCredential: Sendable {
 /// Abstraction over the wire transport (WebSocket, SSE, Long Polling).
 protocol SignalRTransport: AnyObject, Sendable {
     /// Open the transport connection.
-    /// - Parameter authorization: complete `Authorization` header value (e.g. `Bearer x`) that every
-    ///   request of this transport carries, or `nil` for none.
-    func connect(url: URL, authorization: String?) async throws
+    /// - Parameter headers: headers every request of this transport carries — the `Authorization`
+    ///   header for the connection token, and the caller's own.
+    func connect(url: URL, headers: [String: String]) async throws
     /// Send data to the server.
     func send(_ data: Data) async throws
     /// Block until the next chunk of data arrives from the server.
@@ -45,11 +45,11 @@ final class WebSocketTransport: SignalRTransport, @unchecked Sendable {
         self.useBinaryFrames = useBinaryFrames
     }
 
-    func connect(url: URL, authorization: String?) async throws {
+    func connect(url: URL, headers: [String: String]) async throws {
         let session = URLSession(configuration: .default)
         self.session = session
         var request = URLRequest(url: url)
-        request.setAuthorization(authorization)
+        request.setHeaders(headers)
         let task = session.webSocketTask(with: request)
         self.task = task
         task.resume()
@@ -89,19 +89,19 @@ final class WebSocketTransport: SignalRTransport, @unchecked Sendable {
 @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
 final class SSETransport: SignalRTransport, @unchecked Sendable {
     private var url: URL?
-    private var authorization: String?
+    private var headers: [String: String] = [:]
     private var session: URLSession?
     private var byteIterator: URLSession.AsyncBytes.AsyncIterator?
 
-    func connect(url: URL, authorization: String?) async throws {
+    func connect(url: URL, headers: [String: String]) async throws {
         self.url = url
-        self.authorization = authorization
+        self.headers = headers
         let session = URLSession(configuration: .default)
         self.session = session
 
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.setAuthorization(authorization)
+        request.setHeaders(headers)
 
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -116,7 +116,7 @@ final class SSETransport: SignalRTransport, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("text/plain;charset=UTF-8", forHTTPHeaderField: "Content-Type")
-        request.setAuthorization(authorization)
+        request.setHeaders(headers)
         request.httpBody = data
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -176,13 +176,13 @@ final class SSETransport: SignalRTransport, @unchecked Sendable {
 /// The server holds each GET until data is available or a timeout occurs.
 final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
     private var url: URL?
-    private var authorization: String?
+    private var headers: [String: String] = [:]
     private var active = true
     private var pollSession: URLSession?
 
-    func connect(url: URL, authorization: String?) async throws {
+    func connect(url: URL, headers: [String: String]) async throws {
         self.url = url
-        self.authorization = authorization
+        self.headers = headers
         self.active = true
         self.pollSession = URLSession(configuration: .default)
     }
@@ -192,7 +192,7 @@ final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("text/plain;charset=UTF-8", forHTTPHeaderField: "Content-Type")
-        request.setAuthorization(authorization)
+        request.setHeaders(headers)
         request.httpBody = data
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -204,7 +204,7 @@ final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
     func receive() async throws -> Data {
         guard let url, let session = pollSession, active else { throw SignalRError.disconnected }
         var request = URLRequest(url: url)
-        request.setAuthorization(authorization)
+        request.setHeaders(headers)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SignalRError.disconnected }
 
@@ -225,7 +225,7 @@ final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
         if let url {
             var request = URLRequest(url: url)
             request.httpMethod = "DELETE"
-            request.setAuthorization(authorization)
+            request.setHeaders(headers)
             _ = try? await URLSession.shared.data(for: request)
         }
         pollSession?.invalidateAndCancel()
@@ -285,8 +285,8 @@ enum TransportFactory {
 }
 
 extension URLRequest {
-    /// Sets the `Authorization` header when a value is given; leaves the request untouched for `nil`.
-    mutating func setAuthorization(_ value: String?) {
-        if let value { setValue(value, forHTTPHeaderField: "Authorization") }
+    /// Sets every header of `headers` on the request.
+    mutating func setHeaders(_ headers: [String: String]) {
+        for (name, value) in headers { setValue(value, forHTTPHeaderField: name) }
     }
 }

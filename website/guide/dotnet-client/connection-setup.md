@@ -129,6 +129,8 @@ try {
 }
 ```
 
+A connection the server rejects at negotiate — 401 or 403 for a missing or invalid connection credential — fails `StartAsync` with SignalR's `HttpRequestException`, whose `StatusCode` carries the HTTP status. The other clients expose the same as `statusCode`.
+
 `HARRRException` extends `HubException`, so the structured error always reaches the client — no `EnableDetailedErrors` configuration needed. **How much detail it carries depends on the code**, and the split is deliberate:
 
 | Code | What the client sees |

@@ -42,6 +42,13 @@ final class CredentialOptionsTests: XCTestCase {
         await assertConfigurationError(connection)
     }
 
+    func testStatusCodeIsReadFromARejectedNegotiate() {
+        XCTAssertEqual(SignalRError.negotiationFailed("HTTP 401").statusCode, 401)
+        XCTAssertNil(SignalRError.negotiationFailed("HTTP 0").statusCode)
+        XCTAssertNil(SignalRError.negotiationFailed("Missing connectionToken in response").statusCode)
+        XCTAssertNil(SignalRError.connectionFailed("HTTP 401").statusCode)
+    }
+
     private func assertConfigurationError(_ connection: HARRRConnection, file: StaticString = #filePath, line: UInt = #line) async {
         do {
             try await connection.start()

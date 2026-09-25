@@ -5,6 +5,7 @@ import dev.cocoar.signalarrr.HARRRConnection
 import dev.cocoar.signalarrr.HubConnectionState
 import dev.cocoar.signalarrr.HubProtocolKind
 import dev.cocoar.signalarrr.LogLevel
+import dev.cocoar.signalarrr.NegotiationFailedException
 import dev.cocoar.signalarrr.ReconnectPolicy
 import dev.cocoar.signalarrr.TransportCredential
 import dev.cocoar.signalarrr.TransportType
@@ -72,6 +73,19 @@ class TransportTests {
     fun `connection token travels as header by default`(transport: TransportType) = runBlocking {
         withTimeout(30_000) {
             assertEquals("header=Bearer probe-token;query=-", transportCredential(transport))
+        }
+    }
+
+    @Test
+    fun `a rejected negotiate reports its HTTP status`() = runBlocking {
+        withTimeout(30_000) {
+            val connection = HARRRConnection.create("${IntegrationTestBase.serverUrl}/signalr/no-such-hub") {
+                logger = ConsoleLogger(LogLevel.WARNING)
+                reconnectPolicy = ReconnectPolicy.Disabled
+            }
+            val e = runCatching { connection.start() }.exceptionOrNull()
+            assertTrue(e is NegotiationFailedException, "expected NegotiationFailedException, got $e")
+            assertEquals(404, (e as NegotiationFailedException).statusCode)
         }
     }
 

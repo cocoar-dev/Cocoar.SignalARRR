@@ -3,7 +3,7 @@ import { ClientRequestMessage } from './models/client-request-message.js';
 import { ServerRequestMessage } from './models/server-request-message.js';
 import { asCancellationTokenReference } from './models/cancellation-token-reference.js';
 import { isStreamReference, resolveStreamReference, transferAuthHeaders } from './models/stream-reference.js';
-import { parseHARRRError } from './models/harrr-error.js';
+import { parseHARRRError, normalizeErrorCode, type HARRRInvocationError } from './models/harrr-error.js';
 import {
   HARRRConnectionOptions,
   credentialFactory,
@@ -240,8 +240,21 @@ export class HARRRConnection {
     return result;
   }
 
+  /**
+   * Connects. A connection the server rejects at negotiate — 401 or 403 for a missing or invalid
+   * connection credential — rejects with SignalR's error, given a `statusCode` with the HTTP status:
+   * SignalR wraps the `HttpError` that had one into an error that only mentions it in the message.
+   */
   public start(): Promise<void> {
-    return this._hubConnection.start();
+    return this._hubConnection.start().catch((error: unknown) => {
+      if (error instanceof Error && !('statusCode' in error)) {
+        const status = /Status code '(\d+)'/.exec(error.message);
+        if (status) {
+          (error as Error & { statusCode?: number }).statusCode = Number(status[1]);
+        }
+      }
+      throw error;
+    });
   }
 
   public stop(): Promise<void> {
@@ -375,9 +388,14 @@ export class HARRRConnection {
     return new HARRRConnection(hubConnection, options);
   }
 
-  private _extractException(error: unknown): { type: string; message: string } {
+  private _extractException(error: unknown): HARRRInvocationError {
     const parsed = parseHARRRError(error);
-    return { type: parsed.Type, message: parsed.Message };
+    return {
+      type: parsed.Type,
+      message: parsed.Message,
+      code: parsed.Code,
+      normalizedCode: normalizeErrorCode(parsed.Code),
+    };
   }
 }
 

@@ -43,6 +43,46 @@ final class TransportCredentialTests: XCTestCase {
         }
     }
 
+    /// Headers prefixed with `#` become client attributes on the server, which reports them back.
+    func testCustomHeadersReachTheServer() async throws {
+        let connection = await HARRRConnection.create(
+            url: "\(serverURL!)/signalr/testhub",
+            headers: ["#ClientType": "Swift", "#AppVersion": "3.0.0"]
+        )
+        try await connection.start()
+        do {
+            let connectionId: String = try await connection.invoke("GetConnectionId")
+            try await Task.sleep(nanoseconds: 500_000_000)   // let the server register the client
+
+            var components = URLComponents(string: "\(serverURL!)/__test/get-client-attributes")!
+            components.queryItems = [URLQueryItem(name: "connectionId", value: connectionId)]
+            var request = URLRequest(url: components.url!)
+            request.httpMethod = "POST"
+            let (data, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            let attributes = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertEqual(attributes?["ClientType"] as? String, "Swift")
+            XCTAssertEqual(attributes?["AppVersion"] as? String, "3.0.0")
+            await connection.stop()
+        } catch {
+            await connection.stop()
+            throw error
+        }
+    }
+
+    func testRejectedNegotiateReportsItsHTTPStatus() async throws {
+        let connection = await HARRRConnection.create(
+            url: "\(serverURL!)/signalr/no-such-hub",
+            reconnectPolicy: .disabled
+        )
+        do {
+            try await connection.start()
+            XCTFail("start() should have failed")
+        } catch let error as SignalRError {
+            XCTAssertEqual(error.statusCode, 404)
+        }
+    }
+
     func testCredentialOptionAuthenticatesTheConnection() async throws {
         let connection = await HARRRConnection.create(
             url: "\(serverURL!)/signalr/testhub",

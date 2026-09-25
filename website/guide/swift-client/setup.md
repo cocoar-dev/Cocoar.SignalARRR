@@ -87,6 +87,7 @@ let connection = await HARRRConnection.create(
     url: "https://localhost:5001/apphub",
     hubProtocol: .json,                         // or .messagepack
     transportCredential: .header,               // or .query: connection token in the transport URL
+    headers: ["X-Api-Key": apiKey],             // extra headers on negotiate and transport requests
     options: HARRRConnectionOptions(credential: { await getAuthToken() }),
     serverTimeout: 30,
     keepAliveInterval: 15,
@@ -129,6 +130,37 @@ let stream: AsyncThrowingStream<String, Error> = try await connection.stream(
 
 for try await msg in stream {
     print(msg)
+}
+```
+
+## Errors
+
+A failed call throws; `parseHARRRError` turns the error into the server's structured error. Branch on `normalizedCode`, never on the message:
+
+```swift
+do {
+    let _: Bool = try await connection.invoke("RoomMethods.Join", arguments: roomId)
+} catch {
+    let error = parseHARRRError(error)
+    switch error.normalizedCode {
+    case HARRRErrorCodes.unauthorized: promptLogin()
+    case HARRRErrorCodes.methodNotFound: reportContractMismatch(error)
+    default:
+        if error.code == "room_full" { showRoomFull() }   // application codes travel verbatim
+        else { showGeneric(error.message) }
+    }
+}
+```
+
+`normalizedCode` is the code folded to the set this client knows (unknown codes become `internal`); `code` is the raw wire value, which is where an application's own `HARRRException("room_full", ...)` codes appear. The codes are the same in every SignalARRR client.
+
+A connection the server rejects at negotiate — 401 or 403 for a missing or invalid connection credential — fails `start()` with `SignalRError.negotiationFailed`, whose `statusCode` carries the HTTP status:
+
+```swift
+do {
+    try await connection.start()
+} catch let error as SignalRError where error.statusCode == 401 {
+    promptLogin()
 }
 ```
 

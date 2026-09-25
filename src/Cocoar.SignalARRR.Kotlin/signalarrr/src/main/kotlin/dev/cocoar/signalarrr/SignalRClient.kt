@@ -261,7 +261,7 @@ public class SignalRClient(
             val body = withContext(Dispatchers.IO) {
                 try {
                     negotiateClient.newCall(request).execute().use { response ->
-                        if (response.code != 200) throw NegotiationFailedException("HTTP ${response.code}")
+                        if (response.code != 200) throw NegotiationFailedException("HTTP ${response.code}", statusCode = response.code)
                         response.body.string()
                     }
                 } catch (e: java.io.IOException) {

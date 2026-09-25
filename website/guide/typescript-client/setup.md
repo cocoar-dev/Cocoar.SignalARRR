@@ -83,27 +83,44 @@ connection.stream<string>('ChatMethods.StreamMessages').subscribe({
 
 ## Error handling
 
-When a server method throws an exception, `invoke()` rejects with a structured error containing the exception type and message:
+When a server call fails, `invoke()` rejects with a `HARRRInvocationError`: the machine-readable code, the message, and the .NET exception type. Branch on `normalizedCode`, never on the message:
 
 ```ts
+import { HARRRErrorCodes, type HARRRInvocationError } from '@cocoar/signalarrr';
+
 try {
-    await connection.invoke('SomeMethod');
-} catch (err: any) {
-    console.log(err.type);    // "System.ArgumentException"
-    console.log(err.message); // "Invalid value provided"
+    await connection.invoke('RoomMethods.Join', roomId);
+} catch (err) {
+    const error = err as HARRRInvocationError;
+    switch (error.normalizedCode) {
+        case HARRRErrorCodes.Unauthorized: promptLogin(); break;
+        case HARRRErrorCodes.MethodNotFound: reportContractMismatch(error); break;
+        default:
+            if (error.code === 'room_full') showRoomFull();   // application codes travel verbatim
+            else showGeneric(error.message);
+    }
 }
 ```
 
-For more control, use `parseHARRRError()` from the package:
+`normalizedCode` is the code folded to the set this client knows (unknown codes become `internal`); `code` is the raw wire value, which is where an application's own `HARRRException("room_full", ...)` codes appear. The codes are the same in every SignalARRR client.
+
+For an error that did not come through `invoke()` — a stream's error callback, say — `parseHARRRError()` reads the same envelope, and `normalizeErrorCode()` folds its `Code`:
 
 ```ts
-import { parseHARRRError } from '@cocoar/signalarrr';
+import { normalizeErrorCode, parseHARRRError } from '@cocoar/signalarrr';
 
+const error = parseHARRRError(err);
+console.log(normalizeErrorCode(error.Code), error.Message);
+```
+
+A connection the server rejects at negotiate — 401 or 403 for a missing or invalid connection credential — makes `start()` reject with SignalR's error, which SignalARRR gives a `statusCode` with the HTTP status (SignalR itself mentions it only in the message):
+
+```ts
 try {
-    await connection.invoke('SomeMethod');
+    await connection.start();
 } catch (err) {
-    const error = parseHARRRError(err);
-    console.log(error.Type, error.Message);
+    if ((err as { statusCode?: number }).statusCode === 401) promptLogin();
+    else throw err;
 }
 ```
 

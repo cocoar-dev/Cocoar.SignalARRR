@@ -147,7 +147,17 @@ try {
 }
 ```
 
-`e.code` is the code folded to the set this client knows (unknown codes become `internal`); `e.error.code` is the raw wire value, which is where an application's own `HARRRException("room_full", ...)` codes appear. `e.error.innerError` nests the cause chain.
+`e.code` is the code folded to the set this client knows (unknown codes become `internal`); `e.error.code` is the raw wire value, which is where an application's own `HARRRException("room_full", ...)` codes appear. `e.error.innerError` nests the cause chain. The codes are the same in every SignalARRR client.
+
+A connection the server rejects at negotiate — 401 or 403 for a missing or invalid connection credential — fails `start()` with `NegotiationFailedException`, whose `statusCode` carries the HTTP status:
+
+```kotlin
+try {
+    connection.start()
+} catch (e: NegotiationFailedException) {
+    if (e.statusCode == 401) promptLogin() else throw e
+}
+```
 
 ## Connection events
 
