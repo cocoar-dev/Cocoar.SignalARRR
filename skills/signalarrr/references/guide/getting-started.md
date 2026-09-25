@@ -40,7 +40,7 @@ ksp("dev.cocoar:signalarrr-ksp:5.2.0")   // typed proxies via @HubProxy
 
 ## 1. Define shared interfaces
 
-Create a shared project and reference `Cocoar.SignalARRR.Contracts`. Mark each interface with `[SignalARRRContract]` — the source generator will produce typed proxies at build time.
+Create a shared project and reference `Cocoar.SignalARRR.Contracts`. Mark each interface with `[SignalARRRContract]` — the source generator that comes with the Server and Client packages will produce typed proxies at build time.
 
 ```csharp
 using Cocoar.SignalARRR.Common.Attributes;

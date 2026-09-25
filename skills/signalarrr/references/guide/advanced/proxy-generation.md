@@ -20,10 +20,11 @@ Reference `Cocoar.SignalARRR.Contracts` in your shared interface project:
 <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="5.*" />
 ```
 
-This package bundles:
+This package brings:
 - The `[SignalARRRContract]` attribute
-- The Roslyn source generator (runs at build time)
 - The `ProxyCreator` and `ProxyCreatorHelper` base classes
+
+The Roslyn source generator is not part of it. It ships as `Cocoar.SignalARRR.SourceGenerator`, a dependency of `Cocoar.SignalARRR.Server` and `Cocoar.SignalARRR.Client`, so it runs in your server and client projects, where the proxies are used. The shared interface project contains only its interfaces. A project that references both Server and Client still runs the generator once, because NuGet resolves the shared package once.
 
 ## Mark interfaces
 
@@ -105,13 +106,14 @@ The generator classifies return types to determine the correct proxy method:
 
 ## Multi-assembly support
 
-Each assembly with `[SignalARRRContract]` interfaces generates its own module initializer. Proxies from all referenced assemblies are available through `ProxyCreator`:
+The generator covers `[SignalARRRContract]` interfaces declared in the project itself and in every assembly it references at compile time. A server or client project that references a shared contracts library generates the proxies for that library's interfaces and registers them in its own module initializer:
 
 ```
-SharedContracts.dll  →  registers IChatHub, IAdminHub
-PluginA.dll          →  registers IPluginAContract
-PluginB.dll          →  registers IPluginBContract
+SharedContracts.dll  →  IChatHub, IAdminHub          (interfaces only)
+MyServer.dll         →  ChatHubProxy, AdminHubProxy  (generated and registered here)
 ```
+
+Interfaces that are only known at runtime, for example from plugins loaded later, are not covered; for those, use the DynamicProxy fallback below.
 
 ## DynamicProxy fallback
 

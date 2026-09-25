@@ -6,6 +6,11 @@
     <RootNamespace>Cocoar.SignalARRR.Client</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- The netstandard2.0 source generator is referenced as an assembly (see the ProjectReference
+         below) and brings Roslyn's System.Collections.Immutable, which conflicts with net8.0's own.
+         The generator is never loaded at runtime, so the conflict is irrelevant. Consumers do not see
+         it: they receive the generator as an analyzer, which assembly resolution never touches. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -38,15 +43,18 @@
     <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Contracts\Cocoar.SignalARRR.Contracts.csproj" />
-    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-  </ItemGroup>
-
-  <!-- Bundle the SourceGenerator so consuming projects get proxy generation automatically -->
-  <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)..\Cocoar.SignalARRR.SourceGenerator\bin\$(Configuration)\netstandard2.0\Cocoar.SignalARRR.SourceGenerator.dll"
-          Pack="true"
-          PackagePath="analyzers/dotnet/cs"
-          Visible="false" />
+    <!-- The source generator reaches consumers as a dependency on the Cocoar.SignalARRR.SourceGenerator
+         package, not as a copy of its DLL inside this one. Cocoar.SignalARRR.Server depends on the
+         same package, so a project referencing both resolves it once and runs one generator; two
+         bundled copies generated every proxy twice.
+         NuGet leaves a ProjectReference with ReferenceOutputAssembly="false" out of the package's
+         dependencies, so the generator is referenced as an assembly. Private="false" keeps it out of
+         the build output and the package; nothing here uses its types, so the compiled DLL does not
+         reference it either. PrivateAssets="compile;runtime" lets the analyzer flow to consumers
+         while keeping the generator off their compile references, and off those of the projects in
+         this repository that reference this one. -->
+    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="true" Private="false" PrivateAssets="compile;runtime" />
   </ItemGroup>
 
 </Project>
