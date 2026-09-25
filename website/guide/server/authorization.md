@@ -93,12 +93,13 @@ The connection token — the one `[Authorize]` on the hub class checks — goes 
 | Client | negotiate | WebSocket | Server-Sent Events | Long Polling |
 |--------|-----------|-----------|--------------------|--------------|
 | .NET | header | header | header | header |
+| .NET Framework | header | header | header | header |
 | TypeScript in the browser | header | URL | URL | header |
 | TypeScript under Node | header | header | URL | header |
 | Swift | header | header | header | header |
 | Kotlin | header | header | header | header |
 
-The TypeScript rows are SignalR's own client (`@microsoft/signalr`); SignalARRR hands it the token unchanged. Swift and Kotlin can be told to use the URL instead (`transportCredential` `.query` / `QUERY`) for a server that reads the token only there.
+The .NET, .NET Framework and TypeScript rows are SignalR's own clients; SignalARRR hands them the token unchanged. Swift and Kotlin can be told to use the URL instead (`transportCredential` `.query` / `QUERY`) for a server that reads the token only there.
 
 Authentication handlers read the header, not the URL. To also accept a token from the URL, add the middleware before authentication:
 
@@ -114,7 +115,7 @@ On SignalR endpoints it copies `access_token` into the `Authorization` header �
 
 A client connection carries two credentials, checked by different things. Every SignalARRR client names them the same way and treats them the same way:
 
-| | .NET | TypeScript | Swift | Kotlin |
+| | .NET and .NET Framework | TypeScript | Swift | Kotlin |
 |---|---|---|---|---|
 | Connection credential | `WithConnectionCredential` | `connectionCredential` | `connectionCredential` | `connectionCredential` |
 | Message credential | `WithMessageCredential` | `messageCredential` | `messageCredential` | `messageCredential` |
@@ -141,7 +142,7 @@ const connection = HARRRConnection.create('https://localhost:5001/apphub', {
 });
 ```
 
-The client guides show the details for each: [.NET](/guide/dotnet-client/connection-setup#connection-with-authentication), [TypeScript](/guide/typescript-client/setup#authentication), [Swift](/guide/swift-client/setup#authentication), [Kotlin](/guide/kotlin-client/setup#authentication).
+The client guides show the details for each: [.NET](/guide/dotnet-client/connection-setup#connection-with-authentication), [TypeScript](/guide/typescript-client/setup#authentication), [Swift](/guide/swift-client/setup#authentication), [Kotlin](/guide/kotlin-client/setup#authentication). The .NET Framework client takes the same options as .NET: `HARRRConnection.Create(builder => builder.WithUrl(...), options => options.WithCredential(...))`.
 
 ### When the auth cache expires
 
