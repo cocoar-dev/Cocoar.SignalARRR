@@ -10,7 +10,7 @@ SignalARRR is distributed as multiple NuGet packages, one npm package, one Swift
 
 | Package | Target | Purpose |
 |---------|--------|---------|
-| `Cocoar.SignalARRR.Contracts` | net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute + Roslyn source generator. Reference from shared interface projects. |
+| `Cocoar.SignalARRR.Contracts` | net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute. Reference from shared interface projects. |
 | `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | net8.0 / net9.0 / net10.0 | Multi-node scale-out: `AddSignalARRRRedisBackplane`. Add only when running more than one node — this is where the `StackExchange.Redis` dependency lives. |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | net8.0 / net9.0 / net10.0 | Multi-node scale-out over PostgreSQL `LISTEN`/`NOTIFY`: `AddSignalARRRPostgresBackplane`. For deployments whose only stateful dependency is Postgres — this is where the `Npgsql` dependency lives. |
@@ -26,7 +26,7 @@ These packages are referenced transitively — you normally don't need to refere
 |---------|---------|
 | `Cocoar.SignalARRR.Common` | Shared types, wire protocol constants, message models |
 | `Cocoar.SignalARRR.ProxyGenerator` | Base classes for proxy creation (`ProxyCreator`, `ProxyCreatorHelper`) |
-| `Cocoar.SignalARRR.SourceGenerator` | Roslyn incremental source generator (bundled in Contracts) |
+| `Cocoar.SignalARRR.SourceGenerator` | Roslyn incremental source generator — a dependency of Server and Client, so it runs in the projects that use proxies |
 
 ## npm Package
 
@@ -229,14 +229,17 @@ graph TD
     signalr["@microsoft/signalr"]
 
     Contracts --> ProxyGen
-    Contracts --> SourceGen
     Server --> Common
     Client --> Common
     Client --> ProxyGen
     Server --> ProxyGen
+    Server --> SourceGen
+    Client --> SourceGen
     DynProxy --> ProxyGen
     npm --> signalr
 ```
+
+The source generator comes with `Server` and `Client` as a package dependency, so a project that references both (an ASP.NET integration test project, for example) still runs it once. A contract project that references only `Contracts` gets no generator.
 
 ## Next steps
 

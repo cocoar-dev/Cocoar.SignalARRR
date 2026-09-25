@@ -89,7 +89,7 @@ For proxy generation to work, the shared interface project must reference `Cocoa
 <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="5.*" />
 ```
 
-The `[SignalARRRContract]` attribute triggers the Roslyn source generator, which produces a proxy class at build time. See [Proxy Generation](../advanced/proxy-generation.md) for details on how this works.
+The `[SignalARRRContract]` attribute marks the interface for the Roslyn source generator, which comes with `Cocoar.SignalARRR.Client` and produces the proxy class at build time in your client project. See [Proxy Generation](../advanced/proxy-generation.md) for details on how this works.
 
 ## Next steps
 

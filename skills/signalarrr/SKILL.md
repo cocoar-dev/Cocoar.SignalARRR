@@ -31,7 +31,7 @@ bottom says which page answers what.
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | Multi-node scale-out over the PostgreSQL primary the app already has (`AddSignalARRRPostgresBackplane`), with catch-up after a subscription drop |
 | `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers |
 | `Cocoar.SignalARRR.Client.FullFramework` | .NET Framework 4.6.2+ client: typed proxies via `DispatchProxy`, no item streaming |
-| `Cocoar.SignalARRR.Contracts` | `[SignalARRRContract]` attribute plus the source generator; reference from shared interface projects |
+| `Cocoar.SignalARRR.Contracts` | `[SignalARRRContract]` attribute; reference from shared interface projects (the source generator comes with Server and Client) |
 | `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via `DispatchProxy`, for plugin scenarios |
 | `Cocoar.SignalARRR.Common`, `.ProxyGenerator`, `.SourceGenerator` | Referenced transitively; not added by hand |
 | `@cocoar/signalarrr` (npm) | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |

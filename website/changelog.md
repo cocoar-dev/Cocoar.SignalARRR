@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A project referencing both `Cocoar.SignalARRR.Client` and `Cocoar.SignalARRR.Server` did not compile**: each package carried its own copy of the source generator, so a project with both — typically an ASP.NET integration test project — ran the generator twice, got every proxy twice and failed with duplicate type errors (`CS0101`, `CS0111`). Client and Server no longer bundle the generator; both depend on the `Cocoar.SignalARRR.SourceGenerator` package instead, which NuGet resolves once however many packages ask for it. Nothing changes for projects that reference only one of the two, and contract projects that reference only `Cocoar.SignalARRR.Contracts` still get no generator and contain only their interfaces. Workarounds that removed one package's copy of the analyzer before compiling can be dropped.
 - **The docs described the wrong credential in two places**: file transfers are authenticated with the message credential, not the connection's `AccessTokenProvider`/`accessTokenFactory`, and a `ChallengeAuthentication` is answered with the message credential too.
 
 ---
