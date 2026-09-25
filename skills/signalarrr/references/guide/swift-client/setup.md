@@ -52,7 +52,7 @@ Token challenges are handled automatically — when the server detects an expire
 
 The factory authenticates two separate things, and this overload uses it for both:
 
-- **the connection** — sent as an `Authorization` header on the negotiate request and as the `access_token` query item on the transport URL, which is what SignalR itself does for WebSocket and SSE. This is what an `[Authorize]` attribute *on the hub class* checks, and without it such a hub rejects the connection at `/negotiate` with 401.
+- **the connection** — sent as an `Authorization` header on the negotiate request and on every request of the transport: the WebSocket upgrade, the SSE stream and its posts, every Long Polling request. The token never appears in a URL, where proxy logs and error reports would keep it. It is fetched again on every connect and reconnect, so a renewed token is picked up. This is what an `[Authorize]` attribute *on the hub class* checks, and without it such a hub rejects the connection at `/negotiate` with 401. For a server that reads the connection token only from the URL, set `transportCredential: .query`; see [where the connection token travels](../server/authorization.md#where-the-connection-token-travels).
 - **each message** — travels in `ClientRequestMessage.Authorization`. This is what `[Authorize]` on a method or a `ServerMethods` class checks, and it is what answers a token challenge.
 
 To give them different credentials, build the `SignalRWebSocketClient` yourself and pass its own factory:
@@ -75,6 +75,7 @@ let connection = await HARRRConnection.create(
     url: "https://localhost:5001/apphub",
     hubProtocol: .json,                         // or .messagepack
     accessTokenFactory: { await getAuthToken() },
+    transportCredential: .header,               // or .query: connection token in the transport URL
     serverTimeout: 30,
     keepAliveInterval: 15,
     handshakeTimeout: 15,

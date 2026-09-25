@@ -45,7 +45,7 @@ Token challenges are handled automatically — when the server detects an expire
 
 The provider authenticates two separate things, and by default it is used for both:
 
-- **the connection** — sent as an `Authorization` header on the negotiate request and as the `access_token` query item on the transport URL, which is what SignalR itself does for WebSocket and SSE. This is what an `[Authorize]` attribute *on the hub class* checks, and without it such a hub rejects the connection at `/negotiate` with 401.
+- **the connection** — sent as an `Authorization` header on the negotiate request and on every request of the transport: the WebSocket upgrade, the SSE stream and its posts, every Long Polling request. The token never appears in a URL, where proxy logs and error reports would keep it. It is fetched again on every connect and reconnect, so a renewed token is picked up. This is what an `[Authorize]` attribute *on the hub class* checks, and without it such a hub rejects the connection at `/negotiate` with 401. For a server that reads the connection token only from the URL, set `transportCredential = TransportCredential.QUERY`; see [where the connection token travels](../server/authorization.md#where-the-connection-token-travels).
 - **each message** — travels in `ClientRequestMessage.Authorization`. This is what `[Authorize]` on a method or a `ServerMethods` class checks, and it is what answers a token challenge.
 
 To give them different credentials, set both providers:
@@ -70,6 +70,7 @@ val connection = HARRRConnection.create("https://localhost:5001/apphub") {
     handshakeTimeout = 15.seconds
     reconnectPolicy = ReconnectPolicy.Default           // immediate, 2s, 10s, 30s — then give up
     allowedTransports = listOf(TransportType.WEB_SOCKETS, TransportType.SERVER_SENT_EVENTS, TransportType.LONG_POLLING)
+    transportCredential = TransportCredential.HEADER    // or QUERY: connection token in the transport URL
     headers = mapOf("X-Api-Key" to apiKey)              // extra headers on negotiate and transport requests
     httpClient = sharedOkHttpClient                     // reuse the app's OkHttp client
     json = Json { ignoreUnknownKeys = true }            // the kotlinx.serialization configuration

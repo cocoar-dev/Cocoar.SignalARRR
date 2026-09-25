@@ -6,6 +6,7 @@ import dev.cocoar.signalarrr.HubConnectionState
 import dev.cocoar.signalarrr.HubProtocolKind
 import dev.cocoar.signalarrr.LogLevel
 import dev.cocoar.signalarrr.ReconnectPolicy
+import dev.cocoar.signalarrr.TransportCredential
 import dev.cocoar.signalarrr.TransportType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.toList
@@ -48,6 +49,37 @@ class TransportTests {
             } finally {
                 connection.stop()
             }
+        }
+    }
+
+    private suspend fun transportCredential(transport: TransportType, credential: TransportCredential? = null): String {
+        val connection = HARRRConnection.create("${IntegrationTestBase.serverUrl}${IntegrationTestBase.HUB_PATH}") {
+            allowedTransports = listOf(transport)
+            logger = ConsoleLogger(LogLevel.WARNING)
+            accessTokenProvider = { "probe-token" }
+            if (credential != null) transportCredential = credential
+        }
+        try {
+            connection.start()
+            return connection.invoke("TransportCredential")
+        } finally {
+            connection.stop()
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(TransportType::class)
+    fun `connection token travels as header by default`(transport: TransportType) = runBlocking {
+        withTimeout(30_000) {
+            assertEquals("header=Bearer probe-token;query=-", transportCredential(transport))
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(TransportType::class)
+    fun `connection token travels in the url when asked to`(transport: TransportType) = runBlocking {
+        withTimeout(30_000) {
+            assertEquals("header=-;query=probe-token", transportCredential(transport, TransportCredential.QUERY))
         }
     }
 

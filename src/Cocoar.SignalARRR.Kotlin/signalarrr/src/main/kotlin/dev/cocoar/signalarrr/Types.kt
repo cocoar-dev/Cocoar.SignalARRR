@@ -18,6 +18,15 @@ public enum class TransportType(public val wireName: String) {
     LONG_POLLING("LongPolling"),
 }
 
+/** Where the transport carries the connection token (negotiate always sends it as a header). */
+public enum class TransportCredential {
+    /** `Authorization` header on the WebSocket upgrade and on every SSE and Long Polling request. */
+    HEADER,
+
+    /** `access_token` query parameter of the transport URL, for servers that read it only there. */
+    QUERY,
+}
+
 /** The hub protocol the connection speaks. */
 public enum class HubProtocolKind(public val wireName: String) {
     JSON("json"),

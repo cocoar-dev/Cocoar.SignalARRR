@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server;
 using Cocoar.SignalARRR.Tests.SharedModels;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace IntegrationTestServer {
@@ -57,6 +58,17 @@ namespace IntegrationTestServer {
 
         public string GetConnectionId() {
             return Context.ConnectionId;
+        }
+
+        /// <summary>
+        /// Where the transport request carried the connection token: <c>"header=&lt;value&gt;;query=&lt;value&gt;"</c>,
+        /// with <c>-</c> for absent. This server does not run the query-to-header middleware, so it
+        /// sees exactly what the client sent.
+        /// </summary>
+        public string TransportCredential() {
+            var request = Context.GetHttpContext()?.Request;
+            string Show(string? value) => string.IsNullOrEmpty(value) ? "-" : value;
+            return $"header={Show(request?.Headers.Authorization)};query={Show(request?.Query["access_token"])}";
         }
 
         public ChannelReader<int> Counter(int count, int delay, CancellationToken cancellationToken) {

@@ -49,12 +49,21 @@ public open class SignalRClientOptions {
     public var hubProtocol: HubProtocolKind = HubProtocolKind.JSON
 
     /**
-     * Authenticates the connection itself: sent as `Authorization` header on the negotiate request
-     * and as `access_token` query parameter on the transport URL. That is what `[Authorize]` on the
-     * hub class checks. A value without a space is sent as a bearer token; one with a space carries
-     * its own scheme.
+     * Authenticates the connection itself: the negotiate request and every request of the transport.
+     * That is what `[Authorize]` on the hub class checks. Called on every connect and reconnect, so
+     * a renewed token is picked up. A value without a space is sent as a bearer token; one with a
+     * space carries its own scheme. Where the token travels on the transport is [transportCredential].
      */
     public var accessTokenProvider: (suspend () -> String?)? = null
+
+    /**
+     * Where the transport carries the connection token. [TransportCredential.HEADER], the default,
+     * sends it as `Authorization` header — on the WebSocket upgrade and on every SSE and Long Polling
+     * request — so it never appears in a URL, where proxy logs and error reports would keep it.
+     * [TransportCredential.QUERY] puts it into the transport URL as `access_token`, for a server
+     * that reads the token only from there.
+     */
+    public var transportCredential: TransportCredential = TransportCredential.HEADER
 
     /** Extra headers for the negotiate request and the transport connection. */
     public var headers: Map<String, String> = emptyMap()
@@ -287,8 +296,12 @@ public class SignalRClient(
             if (candidate == TransportType.SERVER_SENT_EVENTS && protocol.isBinary) continue
             if (negotiated.transports.isNotEmpty() && candidate.wireName !in negotiated.transports) continue
 
-            val url = TransportUrls.transport(negotiated.hubUrl, negotiated.connectionToken, negotiated.accessToken)
-            val transport = TransportFactory.create(candidate, httpClient, protocol.isBinary, options.headers)
+            val accessToken = negotiated.accessToken?.takeIf { it.isNotEmpty() }
+            val inQuery = options.transportCredential == TransportCredential.QUERY
+            val url = TransportUrls.transport(negotiated.hubUrl, negotiated.connectionToken, if (inQuery) accessToken else null)
+            // Same precedence as negotiate: an explicit Authorization in options.headers wins.
+            val headers = if (!inQuery && accessToken != null) mapOf("Authorization" to bearer(accessToken)) + options.headers else options.headers
+            val transport = TransportFactory.create(candidate, httpClient, protocol.isBinary, headers)
             logger.info { "Connecting via ${candidate.wireName}" }
             try {
                 withTimeoutOrNull(options.handshakeTimeout) { transport.connect(url) }

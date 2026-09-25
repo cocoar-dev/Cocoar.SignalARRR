@@ -84,6 +84,30 @@ builder.Services.AddAuthorization(options =>
 });
 ```
 
+### Where the connection token travels
+
+The connection token — the one `[Authorize]` on the hub class checks — goes out with the negotiate request and with every request of the transport. Clients send it as an `Authorization` header wherever the platform lets them. Only a browser cannot: JavaScript can set no header on a WebSocket upgrade or an `EventSource`, so SignalR puts the token into the URL as `access_token` there.
+
+| Client | negotiate | WebSocket | Server-Sent Events | Long Polling |
+|--------|-----------|-----------|--------------------|--------------|
+| .NET | header | header | header | header |
+| TypeScript in the browser | header | URL | URL | header |
+| TypeScript under Node | header | header | URL | header |
+| Swift | header | header | header | header |
+| Kotlin | header | header | header | header |
+
+The TypeScript rows are SignalR's own client (`@microsoft/signalr`); SignalARRR hands it the token unchanged. Swift and Kotlin can be told to use the URL instead (`transportCredential` `.query` / `QUERY`) for a server that reads the token only there.
+
+Authentication handlers read the header, not the URL. To also accept a token from the URL, add the middleware before authentication:
+
+```csharp
+app.UseSignalARRRAccessTokenValidation();   // access_token query → Authorization header
+app.UseAuthentication();
+app.UseAuthorization();
+```
+
+On SignalR endpoints it copies `access_token` into the `Authorization` header — only when the request carries no `Authorization` header of its own; a header the client sent always wins. Leave it out if no browser client connects, and a token in a URL is never accepted.
+
 ### Client-side token provider
 
 #### .NET Client
