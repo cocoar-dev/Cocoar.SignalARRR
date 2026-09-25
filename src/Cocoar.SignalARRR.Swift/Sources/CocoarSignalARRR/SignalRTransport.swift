@@ -184,7 +184,21 @@ final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
         self.url = url
         self.headers = headers
         self.active = true
-        self.pollSession = URLSession(configuration: .default)
+        let session = URLSession(configuration: .default)
+        self.pollSession = session
+
+        // The first poll establishes the transport on the server, which answers it at once and
+        // without data — as the .NET, TypeScript and Kotlin clients do. Without it the handshake
+        // read below received that empty answer and failed with "Incomplete handshake response",
+        // so Long Polling never connected.
+        var request = URLRequest(url: url)
+        request.setHeaders(headers)
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            active = false
+            throw SignalRError.connectionFailed(
+                "Long polling: HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
     }
 
     func send(_ data: Data) async throws {
