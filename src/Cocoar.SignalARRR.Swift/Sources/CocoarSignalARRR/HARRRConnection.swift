@@ -11,6 +11,8 @@ public final class HARRRConnection: @unchecked Sendable {
     let cancellationManager = CancellationManager()
     private let serverRequestHandlers = ServerRequestHandlerStore()
     private let options: HARRRConnectionOptions
+    /// Set when the connection was configured in a way that cannot work; `start()` throws it.
+    private let configurationError: HARRRConfigurationError?
 
     // MARK: - Feature 1: Connection State
 
@@ -42,6 +44,7 @@ public final class HARRRConnection: @unchecked Sendable {
         client: SignalRWebSocketClient,
         accessTokenFactory: @escaping @Sendable () async -> String,
         options: HARRRConnectionOptions,
+        configurationError: HARRRConfigurationError? = nil,
         serverTimeout: TimeInterval,
         keepAliveInterval: TimeInterval,
         handshakeTimeout: TimeInterval
@@ -49,6 +52,7 @@ public final class HARRRConnection: @unchecked Sendable {
         self.client = client
         self.accessTokenFactory = accessTokenFactory
         self.options = options
+        self.configurationError = configurationError
         self.serverTimeoutInterval = serverTimeout
         self.keepAliveIntervalValue = keepAliveInterval
         self.handshakeTimeoutValue = handshakeTimeout
@@ -241,10 +245,15 @@ public final class HARRRConnection: @unchecked Sendable {
     // MARK: - Factory Methods
 
     /// Create a connection with a hub URL.
+    ///
+    /// Credentials come from `options` — `credential`, `connectionCredential`, `messageCredential`.
+    /// `accessTokenFactory` is the former way: one factory that authenticates both the connection
+    /// and each message. Setting it together with a credential in `options` is a configuration
+    /// error, which `start()` throws.
     public static func create(
         url: String,
         hubProtocol: HubProtocolKind = .json,
-        accessTokenFactory: @escaping @Sendable () async -> String = { "" },
+        accessTokenFactory: (@Sendable () async -> String)? = nil,
         transportCredential: TransportCredential = .header,
         options: HARRRConnectionOptions = HARRRConnectionOptions(),
         serverTimeout: TimeInterval = 30,
@@ -254,14 +263,25 @@ public final class HARRRConnection: @unchecked Sendable {
         allowedTransports: [TransportType] = [.webSockets, .serverSentEvents, .longPolling],
         logLevel: SignalRLogLevel = .info
     ) async -> HARRRConnection {
-        // The same factory authenticates both the connection and each message. They are separate
-        // mechanisms — the hub's own [Authorize] is checked at negotiate, a method's [Authorize] per
-        // message — and this convenience overload assumes one credential covers both. Build the
-        // client yourself to give them different ones.
+        let connectionCredential: HARRRCredential?
+        let messageCredential: HARRRCredential?
+        var configurationError: HARRRConfigurationError?
+        if options.usesCredentials {
+            if accessTokenFactory != nil {
+                configurationError = HARRRConfigurationError(message:
+                    "accessTokenFactory and a credential in options are both set. accessTokenFactory is the former way to set one credential for the connection and every message; use options.credential instead.")
+            }
+            connectionCredential = options.resolvedConnectionCredential
+            messageCredential = options.resolvedMessageCredential
+        } else {
+            // The former parameter keeps its former behaviour: one factory for both.
+            connectionCredential = accessTokenFactory
+            messageCredential = accessTokenFactory
+        }
         let client = SignalRWebSocketClient(
             url: url,
             hubProtocol: hubProtocol,
-            accessTokenFactory: accessTokenFactory,
+            accessTokenFactory: connectionCredential,
             transportCredential: transportCredential,
             serverTimeout: serverTimeout,
             keepAliveInterval: keepAliveInterval,
@@ -272,8 +292,9 @@ public final class HARRRConnection: @unchecked Sendable {
         )
         let connection = HARRRConnection(
             client: client,
-            accessTokenFactory: accessTokenFactory,
+            accessTokenFactory: messageCredential ?? { "" },
             options: options,
+            configurationError: configurationError,
             serverTimeout: serverTimeout,
             keepAliveInterval: keepAliveInterval,
             handshakeTimeout: handshakeTimeout
@@ -283,18 +304,31 @@ public final class HARRRConnection: @unchecked Sendable {
     }
 
     /// Create a connection wrapping an existing `SignalRWebSocketClient`.
+    ///
+    /// The client authenticates the connection with its own factory, so only the message credential
+    /// applies here: `options.messageCredential`, or the former `accessTokenFactory`. A connection
+    /// credential in `options` is a configuration error, which `start()` throws.
     public static func create(
         client: SignalRWebSocketClient,
-        accessTokenFactory: @escaping @Sendable () async -> String = { "" },
+        accessTokenFactory: (@Sendable () async -> String)? = nil,
         options: HARRRConnectionOptions = HARRRConnectionOptions(),
         serverTimeout: TimeInterval = 30,
         keepAliveInterval: TimeInterval = 15,
         handshakeTimeout: TimeInterval = 15
     ) async -> HARRRConnection {
+        var configurationError: HARRRConfigurationError?
+        if options.resolvedConnectionCredential != nil {
+            configurationError = HARRRConfigurationError(message:
+                "A connection credential cannot be applied to a SignalRWebSocketClient that is already built; pass it as the client's accessTokenFactory, and only options.messageCredential here.")
+        } else if accessTokenFactory != nil && options.messageCredential != nil {
+            configurationError = HARRRConfigurationError(message:
+                "accessTokenFactory and options.messageCredential are both set. accessTokenFactory is the former name; set only options.messageCredential.")
+        }
         let connection = HARRRConnection(
             client: client,
-            accessTokenFactory: accessTokenFactory,
+            accessTokenFactory: options.messageCredential ?? accessTokenFactory ?? { "" },
             options: options,
+            configurationError: configurationError,
             serverTimeout: serverTimeout,
             keepAliveInterval: keepAliveInterval,
             handshakeTimeout: handshakeTimeout
@@ -306,6 +340,7 @@ public final class HARRRConnection: @unchecked Sendable {
     // MARK: - Lifecycle
 
     public func start() async throws {
+        if let configurationError { throw configurationError }
         try await client.start()
     }
 

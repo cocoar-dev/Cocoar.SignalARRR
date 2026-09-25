@@ -4,7 +4,12 @@ import { ServerRequestMessage } from './models/server-request-message.js';
 import { asCancellationTokenReference } from './models/cancellation-token-reference.js';
 import { isStreamReference, resolveStreamReference, transferAuthHeaders } from './models/stream-reference.js';
 import { parseHARRRError } from './models/harrr-error.js';
-import { HARRRConnectionOptions } from './harrr-connection-options.js';
+import {
+  HARRRConnectionOptions,
+  credentialFactory,
+  resolveConnectionCredential,
+  resolveMessageCredential,
+} from './harrr-connection-options.js';
 import { CancellationManager } from './cancellation-manager.js';
 
 export class HARRRConnection {
@@ -51,14 +56,22 @@ export class HARRRConnection {
     this._hubConnection.keepAliveIntervalInMilliseconds = value;
   }
 
+  /**
+   * Wraps a `HubConnection` that is already built. Its connection credential is SignalR's own
+   * `accessTokenFactory`; only the message credential can be set here.
+   */
   constructor(hubConnection: signalR.HubConnection, options?: HARRRConnectionOptions) {
+    if (resolveConnectionCredential(options) !== undefined) {
+      throw new Error(
+        'A connection credential cannot be applied to a HubConnection that is already built — SignalR fixed its accessTokenFactory when it was built. ' +
+          'Use HARRRConnection.create(url, options) instead, or set accessTokenFactory in withUrl yourself and only messageCredential here.',
+      );
+    }
     this._hubConnection = hubConnection;
 
-    const authorization = options?.authorization;
-    if (typeof authorization === 'function') {
-      this._authorization = authorization;
-    } else if (typeof authorization === 'string') {
-      this._authorization = () => authorization;
+    const messageCredential = resolveMessageCredential(options);
+    if (messageCredential !== undefined) {
+      this._authorization = credentialFactory(messageCredential);
     }
 
     // Native client results — return values are sent back to the server automatically by SignalR.
@@ -316,10 +329,44 @@ export class HARRRConnection {
     return this._hubConnection;
   }
 
+  /**
+   * Creates a connection to a hub URL. SignalARRR builds the SignalR connection itself, so the
+   * connection credential (`credential` or `connectionCredential`) can be applied — it becomes
+   * SignalR's `accessTokenFactory`. `configure` gets the builder after `withUrl`, for the protocol,
+   * automatic reconnect, logging and the like.
+   */
+  public static create(
+    url: string,
+    options?: HARRRConnectionOptions,
+    configure?: (builder: signalR.HubConnectionBuilder) => void,
+  ): HARRRConnection;
+  /** Wraps a `HubConnection`, or builds one through the callback. Only the message credential applies. */
   public static create(
     hubConnection: signalR.HubConnection | ((builder: signalR.HubConnectionBuilder) => void),
     options?: HARRRConnectionOptions,
+  ): HARRRConnection;
+  public static create(
+    hubConnection: string | signalR.HubConnection | ((builder: signalR.HubConnectionBuilder) => void),
+    options?: HARRRConnectionOptions,
+    configure?: (builder: signalR.HubConnectionBuilder) => void,
   ): HARRRConnection {
+    if (typeof hubConnection === 'string') {
+      const messageCredential = resolveMessageCredential(options);
+      const connectionCredential = resolveConnectionCredential(options);
+      const httpOptions: signalR.IHttpConnectionOptions = { ...options?.httpConnectionOptions };
+      if (connectionCredential !== undefined) {
+        if (httpOptions.accessTokenFactory) {
+          throw new Error(
+            "The connection credential is set twice: through httpConnectionOptions.accessTokenFactory and through connectionCredential/credential. Set only one of them.",
+          );
+        }
+        httpOptions.accessTokenFactory = credentialFactory(connectionCredential);
+      }
+      const builder = new signalR.HubConnectionBuilder().withUrl(hubConnection, httpOptions);
+      configure?.(builder);
+      // The connection credential is consumed here; the connection itself only takes the message one.
+      return new HARRRConnection(builder.build(), { messageCredential });
+    }
     if (hubConnection instanceof Function) {
       const builder = new signalR.HubConnectionBuilder();
       hubConnection(builder);

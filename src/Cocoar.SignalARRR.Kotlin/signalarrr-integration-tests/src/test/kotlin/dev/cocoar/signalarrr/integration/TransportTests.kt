@@ -75,6 +75,22 @@ class TransportTests {
         }
     }
 
+    @Test
+    fun `credential authenticates the connection`() = runBlocking {
+        withTimeout(30_000) {
+            val connection = HARRRConnection.create("${IntegrationTestBase.serverUrl}${IntegrationTestBase.HUB_PATH}") {
+                logger = ConsoleLogger(LogLevel.WARNING)
+                credential = { "probe-token" }
+            }
+            try {
+                connection.start()
+                assertEquals("header=Bearer probe-token;query=-", connection.invoke<String>("TransportCredential"))
+            } finally {
+                connection.stop()
+            }
+        }
+    }
+
     @ParameterizedTest
     @EnumSource(TransportType::class)
     fun `connection token travels in the url when asked to`(transport: TransportType) = runBlocking {

@@ -116,7 +116,7 @@ sequenceDiagram
     participant Server
     Client->>Server: InvokeMessageResult (expired token)
     Server->>Client: ChallengeAuthentication(ServerRequestMessage)
-    Client->>Client: Call AccessTokenProvider
+    Client->>Client: Call the message credential
     Note over Client: Handler returns new token (native SignalR client result)
     Server-->>Server: InvokeCoreAsync completes with token
     Server->>Server: Validate new token, continue request

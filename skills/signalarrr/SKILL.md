@@ -95,7 +95,7 @@ whose description matches the task; they are independent of each other.
 
 ### TypeScript client
 
-- [TypeScript Client Setup](references/guide/typescript-client/setup.md) — The @cocoar/signalarrr npm client: install, create a connection, invoke / send / stream, error handling, MessagePack, accessTokenFactory authentication, connection events and properties, method naming
+- [TypeScript Client Setup](references/guide/typescript-client/setup.md) — The @cocoar/signalarrr npm client: install, create a connection, invoke / send / stream, error handling, MessagePack, credential options (credential, connectionCredential, messageCredential), connection events and properties, method naming
 - [Server Method Handlers](references/guide/typescript-client/server-methods.md) — Handle server-to-client calls in TypeScript with onServerMethod(): wire names, return values, throwing and async handlers, chaining, and cancellation via AbortSignal
 
 ### Swift client

@@ -41,34 +41,44 @@ let connection = await HARRRConnection.create(
 
 ## Authentication
 
+A connection has two credentials. Usually they are the same token, so one option sets both:
+
 ```swift
 let connection = await HARRRConnection.create(
     url: "https://localhost:5001/apphub",
-    accessTokenFactory: {
-        await getAuthToken()
-    }
+    options: HARRRConnectionOptions(credential: { await tokenStore.currentToken() })
 )
 ```
 
-Token challenges are handled automatically — when the server detects an expired token, the client calls `accessTokenFactory` to get a fresh token.
-
-The factory authenticates two separate things, and this overload uses it for both:
-
-- **the connection** — sent as an `Authorization` header on the negotiate request and on every request of the transport: the WebSocket upgrade, the SSE stream and its posts, every Long Polling request. The token never appears in a URL, where proxy logs and error reports would keep it. It is fetched again on every connect and reconnect, so a renewed token is picked up. This is what an `[Authorize]` attribute *on the hub class* checks, and without it such a hub rejects the connection at `/negotiate` with 401. For a server that reads the connection token only from the URL, set `transportCredential: .query`; see [where the connection token travels](/guide/server/authorization#where-the-connection-token-travels).
-- **each message** — travels in `ClientRequestMessage.Authorization`. This is what `[Authorize]` on a method or a `ServerMethods` class checks, and it is what answers a token challenge.
-
-To give them different credentials, build the `SignalRWebSocketClient` yourself and pass its own factory:
+To give them different credentials — a single-use connection ticket, say, which has no business being resent with every message — set them separately:
 
 ```swift
-let client = SignalRWebSocketClient(
-    url: "https://localhost:5001/apphub",
-    accessTokenFactory: { await connectionTicket() },   // authenticates the connection
-)
 let connection = await HARRRConnection.create(
-    client: client,
-    accessTokenFactory: { await apiToken() },           // authenticates each message
+    url: "https://localhost:5001/apphub",
+    options: HARRRConnectionOptions(
+        connectionCredential: { await connectionTicket() },
+        messageCredential: { await tokenStore.currentToken() }
+    )
 )
 ```
+
+| Option | Authenticates | Travels as | Checked by | When it expires |
+|---|---|---|---|---|
+| `connectionCredential` | negotiate and the transport | `Authorization` header | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping | fetched again on every connect and reconnect |
+| `messageCredential` | every message, the answer to a challenge, file transfers | the `Authorization` field of the message; a header on file transfers | `[Authorize]` on a method or a `ServerMethods` class | fetched on every use, so a refreshed token is sent from the next call on |
+| `credential` | both of the above | | | |
+
+The options are named the same in every SignalARRR client, and nothing is coupled implicitly: `messageCredential` alone leaves the connection anonymous, `connectionCredential` alone sends no message credential. A `connectionCredential` or `messageCredential` next to `credential` takes its part over. A value without a space is sent as a bearer token; one with a space carries its own scheme. See [Authorization](/guide/server/authorization#the-two-credentials) for the same table across all clients.
+
+The connection credential travels as a header on the negotiate request and on every request of the transport — the WebSocket upgrade, the SSE stream and its posts, every Long Polling request — never in a URL, where proxy logs and error reports would keep it. For a server that reads it only from the URL, set `transportCredential: .query`; see [where the connection token travels](/guide/server/authorization#where-the-connection-token-travels).
+
+Token challenges are handled automatically — while a stream is running the server may send a `ChallengeAuthentication` message, and the client calls the message credential to answer it.
+
+`HARRRConnection.create` does not throw, so a credential set in two places surfaces from `start()` as a `HARRRConfigurationError`: `accessTokenFactory` next to a credential in `options`, or a connection credential passed to `create(client:)`, whose `SignalRWebSocketClient` authenticates the connection with its own factory.
+
+::: tip Former way
+`accessTokenFactory:` on `create(url:)` is the former way to set one factory for both credentials. It still works and keeps that behaviour; replace it with `options: HARRRConnectionOptions(credential: ...)`.
+:::
 
 ## All options
 
@@ -76,8 +86,8 @@ let connection = await HARRRConnection.create(
 let connection = await HARRRConnection.create(
     url: "https://localhost:5001/apphub",
     hubProtocol: .json,                         // or .messagepack
-    accessTokenFactory: { await getAuthToken() },
     transportCredential: .header,               // or .query: connection token in the transport URL
+    options: HARRRConnectionOptions(credential: { await getAuthToken() }),
     serverTimeout: 30,
     keepAliveInterval: 15,
     handshakeTimeout: 15,

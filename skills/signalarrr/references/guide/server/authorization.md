@@ -108,33 +108,38 @@ app.UseAuthorization();
 
 On SignalR endpoints it copies `access_token` into the `Authorization` header — only when the request carries no `Authorization` header of its own; a header the client sent always wins. Leave it out if no browser client connects, and a token in a URL is never accepted.
 
-### Client-side token provider
+### The two credentials
 
-#### .NET Client
+A client connection carries two credentials, checked by different things. Every SignalARRR client names them the same way and treats them the same way:
 
-Provide the credential twice: SignalR's `AccessTokenProvider` authenticates the connection, SignalARRR's `WithAuthorization` authenticates each message and answers a challenge. Usually it is the same credential.
+| | .NET | TypeScript | Swift | Kotlin |
+|---|---|---|---|---|
+| Connection credential | `WithConnectionCredential` | `connectionCredential` | `connectionCredential` | `connectionCredential` |
+| Message credential | `WithMessageCredential` | `messageCredential` | `messageCredential` | `messageCredential` |
+| One credential for both | `WithCredential` | `credential` | `credential` | `credential` |
+
+| Credential | Authenticates | Travels as | Checked by | When it expires |
+|---|---|---|---|---|
+| Connection | negotiate and the transport | `Authorization` header — see [where the connection token travels](#where-the-connection-token-travels) for the browser exception | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping | fetched again on every connect and reconnect; a running connection keeps the identity it negotiated |
+| Message | every message, the answer to a challenge, file transfers | the `Authorization` field of the message; a header on file transfers | `[Authorize]` on a method or a `ServerMethods` class | fetched on every use; the server re-checks it once the [auth cache](#auth-cache) lapses and challenges a running stream for a fresh one |
+
+Nothing is coupled implicitly: a client that sets only the message credential connects anonymously, one that sets only the connection credential sends no message credential. Usually both are the same token, which is what the `credential` shortcut is for. They are separate because they are not always the same thing — a single-use connection ticket belongs on the connection and has no business being resent with every message. A credential set in two places — a former option next to a new one, or the connection credential through both SignalR and SignalARRR — is an error, not a silent choice.
 
 ```csharp
+// .NET
 var connection = HARRRConnection.Create(
-    builder =>
-    {
-        builder.WithUrl("https://localhost:5001/apphub", options =>
-        {
-            options.AccessTokenProvider = () => Task.FromResult(GetCurrentToken());
-        });
-    },
-    options => options.WithAuthorization(() => Task.FromResult(GetCurrentToken())));
+    builder => builder.WithUrl("https://localhost:5001/apphub"),
+    options => options.WithCredential(async () => await tokenStore.GetTokenAsync()));
 ```
-
-#### TypeScript Client
 
 ```ts
-const connection = HARRRConnection.create(builder => {
-    builder.withUrl('https://localhost:5001/apphub', {
-        accessTokenFactory: async () => await getAuthToken(),
-    });
+// TypeScript
+const connection = HARRRConnection.create('https://localhost:5001/apphub', {
+    credential: async () => await getAuthToken(),
 });
 ```
+
+The client guides show the details for each: [.NET](../dotnet-client/connection-setup.md#connection-with-authentication), [TypeScript](../typescript-client/setup.md#authentication), [Swift](../swift-client/setup.md#authentication), [Kotlin](../kotlin-client/setup.md#authentication).
 
 ### When the auth cache expires
 
@@ -148,7 +153,7 @@ That validation runs against a context built for the purpose, since a message ov
 
 1. Server detects the cached authentication has expired while the stream is running
 2. Server sends `ChallengeAuthentication` to the client (via SignalR's native client results)
-3. The client's message credential (`WithAuthorization`, `authorization` — see the client guides) is called
+3. The client's message credential (`WithMessageCredential`, `messageCredential` — see [the two credentials](#the-two-credentials)) is called
 4. Client returns the credential directly from the handler
 5. Server validates it, extends the cache, and the stream continues
 
@@ -156,7 +161,7 @@ This is the only path that challenges. It happens transparently — no client-si
 
 ### If the client has no credential to give
 
-A client can legitimately authenticate its connection and nothing else — a certificate, a cookie, a bearer token passed only to SignalR's own `AccessTokenProvider`. When the cache expires there is nothing to validate and nothing to ask for, so SignalARRR falls back to the principal the connection was established with, exactly as SignalR would.
+A client can legitimately authenticate its connection and nothing else — a certificate, a cookie, a bearer token passed only as the connection credential. When the cache expires there is nothing to validate and nothing to ask for, so SignalARRR falls back to the principal the connection was established with, exactly as SignalR would.
 
 Such a client is challenged once, answers with nothing, and is not asked again — otherwise a stream would cost a round trip per element for an answer that is never going to change. It is asked again as soon as a message does arrive carrying a credential, so a user signing in mid-connection is picked up.
 
@@ -261,7 +266,7 @@ builder.Services.AddAuthentication("Certificate")
 
 #### .NET Client
 
-Configure the client certificate on the connection — no `AccessTokenProvider` needed:
+Configure the client certificate on the connection — no connection credential needed:
 
 ```csharp
 var cert = new X509Certificate2("client.pfx", password);
@@ -286,7 +291,7 @@ var connection = HARRRConnection.Create(builder =>
 
 > **Tip: No token needed**
 >
-> With transport-level auth, neither credential is required: SignalARRR detects that the client is authenticated by the connection and re-validates server-side instead of asking it for a token. `WithAuthorization` is what a token-authenticated client needs; a certificate-authenticated one does not.
+> With transport-level auth, neither credential is required: SignalARRR detects that the client is authenticated by the connection and re-validates server-side instead of asking it for a token. A message credential (`WithMessageCredential` or `WithCredential`) is what a token-authenticated client needs; a certificate-authenticated one does not.
 
 ### Certificate re-validation
 
@@ -364,9 +369,9 @@ public class AppHub : HARRR
 }
 ```
 
-- Client A connects with a token and `WithAuthorization` → message-level auth: the credential travels with every call and is re-validated once the cache lapses, and a running stream is challenged for a fresh one
+- Client A connects with a token and a message credential → message-level auth: the credential travels with every call and is re-validated once the cache lapses, and a running stream is challenged for a fresh one
 - Client B connects with a client certificate → transport-level auth: re-validated server-side, no credential in the message, never challenged
-- Client C connects with a token but configures no `WithAuthorization` → runs on the principal it negotiated with, with that principal's stated expiry enforced
+- Client C connects with a token but configures no message credential → runs on the principal it negotiated with, with that principal's stated expiry enforced
 
 ## Auth cache
 

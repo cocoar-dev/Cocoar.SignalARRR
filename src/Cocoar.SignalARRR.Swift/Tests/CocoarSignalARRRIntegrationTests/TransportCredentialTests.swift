@@ -43,6 +43,22 @@ final class TransportCredentialTests: XCTestCase {
         }
     }
 
+    func testCredentialOptionAuthenticatesTheConnection() async throws {
+        let connection = await HARRRConnection.create(
+            url: "\(serverURL!)/signalr/testhub",
+            options: HARRRConnectionOptions(credential: { "probe-token" })
+        )
+        try await connection.start()
+        do {
+            let result: String = try await connection.invoke("TransportCredential")
+            await connection.stop()
+            XCTAssertEqual(result, "header=Bearer probe-token;query=-")
+        } catch {
+            await connection.stop()
+            throw error
+        }
+    }
+
     func testHeaderByDefaultOverWebSockets() async throws {
         let result = try await transportCredential(.webSockets)
         XCTAssertEqual(result, "header=Bearer probe-token;query=-")
