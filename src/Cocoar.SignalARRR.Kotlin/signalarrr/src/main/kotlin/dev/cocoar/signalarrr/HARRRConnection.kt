@@ -28,14 +28,43 @@ public typealias ServerMethodHandler = suspend (args: ServerMethodArgs) -> Any?
 /** Handles a server-to-client streaming call; each emitted item is sent back to the server. */
 public typealias ServerStreamMethodHandler = suspend (args: ServerMethodArgs) -> Flow<Any?>
 
-/** Options of a [HARRRConnection]; the [SignalRClientOptions] part configures the connection underneath. */
+/**
+ * Options of a [HARRRConnection]; the [SignalRClientOptions] part configures the connection underneath.
+ *
+ * A connection has two credentials, checked by different things. The **connection credential**
+ * authenticates negotiate and the transport and is what `[Authorize]` on the hub class checks. The
+ * **message credential** travels with every message, answers token challenges and authorises file
+ * transfers, and is what `[Authorize]` on a method or a `ServerMethods` class checks. The options
+ * are named the same in every SignalARRR client, and nothing is coupled implicitly: setting one of
+ * the two sets only that one.
+ */
 public class HARRRConnectionOptions : SignalRClientOptions() {
     /**
-     * Authenticates each message: travels as `ClientRequestMessage.Authorization`, answers token
-     * challenges, and authorises file-transfer requests. That is what `[Authorize]` on a method
-     * or a `ServerMethods` class checks. When [SignalRClientOptions.accessTokenProvider] is left
-     * `null`, this provider also authenticates the connection itself.
+     * One credential for the connection and for every message — the common case. A
+     * [connectionCredential] or [messageCredential] set alongside it takes its part over.
      */
+    public var credential: (suspend () -> String?)? = null
+
+    /**
+     * Authenticates the connection: the negotiate request and the transport. Called on every
+     * connect and reconnect. Takes the place of [SignalRClientOptions.accessTokenProvider]; set
+     * only one of the two.
+     */
+    public var connectionCredential: (suspend () -> String?)? = null
+
+    /**
+     * Authenticates each message: travels as `ClientRequestMessage.Authorization`, answers token
+     * challenges, and authorises file-transfer requests. Called per use, so a refreshed token is
+     * picked up.
+     */
+    public var messageCredential: (suspend () -> String?)? = null
+
+    /**
+     * The message credential under its former name. Unlike [messageCredential], it also
+     * authenticates the connection when [SignalRClientOptions.accessTokenProvider] is left `null` —
+     * the implicit coupling the new options no longer have.
+     */
+    @Deprecated("Use messageCredential, or credential for one credential covering the connection and every message.")
     public var messageAccessTokenProvider: (suspend () -> String?)? = null
 
     /** The JSON configuration used to encode arguments and decode results. */
@@ -76,13 +105,35 @@ public class HARRRConnection private constructor(
 
     public companion object {
         /**
-         * Creates a connection to [url]. One token provider covers both the connection and each
-         * message unless [HARRRConnectionOptions.accessTokenProvider] is set separately.
+         * Creates a connection to [url]. Credentials come from [HARRRConnectionOptions.credential],
+         * [HARRRConnectionOptions.connectionCredential] and [HARRRConnectionOptions.messageCredential].
+         *
+         * @throws IllegalArgumentException when a credential is set in two places — the former
+         *   `messageAccessTokenProvider` next to the new options, or `accessTokenProvider` next to
+         *   `connectionCredential`/`credential`.
          */
         public fun create(url: String, configure: HARRRConnectionOptions.() -> Unit = {}): HARRRConnection {
             val options = HARRRConnectionOptions().apply(configure)
-            val messageProvider = options.messageAccessTokenProvider
-            if (options.accessTokenProvider == null) options.accessTokenProvider = messageProvider
+            @Suppress("DEPRECATION")
+            val legacyMessage = options.messageAccessTokenProvider
+            val usesNewOptions = options.credential != null || options.connectionCredential != null || options.messageCredential != null
+            val messageProvider = if (usesNewOptions) {
+                require(legacyMessage == null) {
+                    "messageAccessTokenProvider is the former name of messageCredential; set only messageCredential (or credential)."
+                }
+                val connection = options.connectionCredential ?: options.credential
+                if (connection != null) {
+                    require(options.accessTokenProvider == null) {
+                        "The connection credential is set twice: through accessTokenProvider and through connectionCredential/credential. Set only one of them."
+                    }
+                    options.accessTokenProvider = connection
+                }
+                options.messageCredential ?: options.credential
+            } else {
+                // The former option keeps its former behaviour: it also covers the connection.
+                if (options.accessTokenProvider == null) options.accessTokenProvider = legacyMessage
+                legacyMessage
+            }
             val client = SignalRClient(url, options)
             return create(client, messageProvider, options.json, options)
         }

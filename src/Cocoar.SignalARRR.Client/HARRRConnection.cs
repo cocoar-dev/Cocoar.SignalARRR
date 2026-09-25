@@ -12,8 +12,10 @@ using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
 using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.ProxyGenerator;
+using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cocoar.SignalARRR.Client {
     // IAsyncDisposable, declared rather than merely pattern-matched: `await using` compiled fine
@@ -228,12 +230,31 @@ namespace Cocoar.SignalARRR.Client {
 
         public static HARRRConnection Create(Action<HubConnectionBuilder> builder, Action<HARRRConnectionOptionsBuilder>? optionsBuilder = null) {
             var intermediateBuilder = builder.InvokeAction();
+            HARRRConnectionOptions options = optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder();
+            var connectionCredential = options.ConnectionCredential;
+            if (connectionCredential != null) {
+                // Registered after the caller's WithUrl, so it runs after the options WithUrl set.
+                intermediateBuilder.Services.Configure<HttpConnectionOptions>(httpOptions => {
+                    if (httpOptions.AccessTokenProvider != null) {
+                        throw new InvalidOperationException(
+                            "The connection credential is set twice: through SignalR's AccessTokenProvider in WithUrl and through SignalARRR's ConnectionCredential. Set only one of them.");
+                    }
+                    httpOptions.AccessTokenProvider = async () => await connectionCredential();
+                });
+            }
             var hubConnection = intermediateBuilder.Build();
-            return Create(hubConnection, optionsBuilder);
+            return new HARRRConnection(new ClientConnectionContext(hubConnection.GetServiceProvider(), options));
         }
 
         public static HARRRConnection Create(HubConnection hubConnection, Action<HARRRConnectionOptionsBuilder>? optionsBuilder = null) {
-            var connectionContext = new ClientConnectionContext(hubConnection.GetServiceProvider(), optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder());
+            HARRRConnectionOptions options = optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder();
+            if (options.ConnectionCredential != null) {
+                throw new ArgumentException(
+                    "A connection credential cannot be applied to a HubConnection that is already built: SignalR fixed its AccessTokenProvider when it was built. " +
+                    "Use Create(builder => builder.WithUrl(...), ...) instead, or set AccessTokenProvider in WithUrl yourself and only the message credential here.",
+                    nameof(optionsBuilder));
+            }
+            var connectionContext = new ClientConnectionContext(hubConnection.GetServiceProvider(), options);
             return new HARRRConnection(connectionContext);
         }
 

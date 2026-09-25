@@ -50,8 +50,14 @@ SignalARRR has five client implementations. This page shows what each client sup
 
 | | .NET | .NET Framework | TS | Swift | Kotlin |
 |-|:----:|:--------------:|:--:|:-----:|:------:|
-| Token provider | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `credential` / `connectionCredential` / `messageCredential` | ✓ (`With…`) | ✓ (`With…`) | ✓ | ✓ | ✓ |
+| Connection token on the transport | header | header | header — URL in a browser (WebSocket, SSE) and under Node (SSE) | header | header |
 | Auto challenge/refresh | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Error codes (`HARRRErrorCodes`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| HTTP status of a rejected negotiate | `StatusCode` | `StatusCode` | `statusCode` | `statusCode` | `statusCode` |
+| Extra headers | SignalR options | SignalR options | `httpConnectionOptions` | `headers` | `headers` |
+
+The credential options are named and behave the same in every client — see [the two credentials](../guide/server/authorization.md#the-two-credentials).
 
 ## Proxy Generation
 

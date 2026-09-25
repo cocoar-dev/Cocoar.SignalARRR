@@ -44,9 +44,9 @@ public object TransportUrls {
 
     /**
      * The transport URL: the hub URL plus `id=<connectionToken>` and, when given, `access_token=<token>`.
-     * The token travels as a query item because a WebSocket upgrade and an SSE stream cannot carry a
-     * header portably — that is SignalR's own convention, matched on the server by
-     * `UseSignalARRRAccessTokenValidation` or JwtBearer's `OnMessageReceived`.
+     * The token is only passed here for `TransportCredential.QUERY`; by default it travels as a header.
+     * The server side of the query convention is `UseSignalARRRAccessTokenValidation` or JwtBearer's
+     * `OnMessageReceived`.
      */
     public fun transport(hubUrl: HttpUrl, connectionToken: String, accessToken: String?): HttpUrl {
         val builder = hubUrl.newBuilder().addQueryParameter("id", connectionToken)

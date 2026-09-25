@@ -35,41 +35,53 @@ val connection = HARRRConnection.create("https://localhost:5001/apphub")
 
 ## Authentication
 
-```kotlin
-val connection = HARRRConnection.create("https://localhost:5001/apphub") {
-    messageAccessTokenProvider = { tokenStore.currentToken() }
-}
-```
-
-Token challenges are handled automatically — when the server detects an expired token, the client calls the provider again for a fresh one.
-
-The provider authenticates two separate things, and by default it is used for both:
-
-- **the connection** — sent as an `Authorization` header on the negotiate request and as the `access_token` query item on the transport URL, which is what SignalR itself does for WebSocket and SSE. This is what an `[Authorize]` attribute *on the hub class* checks, and without it such a hub rejects the connection at `/negotiate` with 401.
-- **each message** — travels in `ClientRequestMessage.Authorization`. This is what `[Authorize]` on a method or a `ServerMethods` class checks, and it is what answers a token challenge.
-
-To give them different credentials, set both providers:
+A connection has two credentials. Usually they are the same token, so one option sets both:
 
 ```kotlin
 val connection = HARRRConnection.create("https://localhost:5001/apphub") {
-    accessTokenProvider = { connectionTicket() }         // authenticates the connection
-    messageAccessTokenProvider = { apiToken() }          // authenticates each message
+    credential = { tokenStore.currentToken() }
 }
 ```
 
-A value without a space is sent as a bearer token; one with a space carries its own scheme.
+To give them different credentials — a single-use connection ticket, say, which has no business being resent with every message — set them separately:
+
+```kotlin
+val connection = HARRRConnection.create("https://localhost:5001/apphub") {
+    connectionCredential = { connectionTicket() }
+    messageCredential = { tokenStore.currentToken() }
+}
+```
+
+| Option | Authenticates | Travels as | Checked by | When it expires |
+|---|---|---|---|---|
+| `connectionCredential` | negotiate and the transport | `Authorization` header | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping | fetched again on every connect and reconnect |
+| `messageCredential` | every message, the answer to a challenge, file transfers | the `Authorization` field of the message; a header on file transfers | `[Authorize]` on a method or a `ServerMethods` class | fetched on every use, so a refreshed token is sent from the next call on |
+| `credential` | both of the above | | | |
+
+The options are named the same in every SignalARRR client, and nothing is coupled implicitly: `messageCredential` alone leaves the connection anonymous, `connectionCredential` alone sends no message credential. A `connectionCredential` or `messageCredential` next to `credential` takes its part over. A value without a space is sent as a bearer token; one with a space carries its own scheme. See [Authorization](../server/authorization.md#the-two-credentials) for the same table across all clients.
+
+The connection credential travels as a header on the negotiate request and on every request of the transport — the WebSocket upgrade, the SSE stream and its posts, every Long Polling request — never in a URL, where proxy logs and error reports would keep it. For a server that reads it only from the URL, set `transportCredential = TransportCredential.QUERY`; see [where the connection token travels](../server/authorization.md#where-the-connection-token-travels).
+
+Token challenges are handled automatically — while a stream is running the server may send a `ChallengeAuthentication` message, and the client calls the message credential to answer it.
+
+A credential set in two places fails at `create` with an `IllegalArgumentException`: `accessTokenProvider` (the SignalR-level connection token) next to `connectionCredential` or `credential`, or the former `messageAccessTokenProvider` next to any of the new options.
+
+> **Tip: Former name**
+>
+> `messageAccessTokenProvider` is the message credential under its former name, and it also covered the connection when `accessTokenProvider` was not set. It still works that way and is marked deprecated; replace it with `credential` — or with `messageCredential` if the connection should stay anonymous.
 
 ## All options
 
 ```kotlin
 val connection = HARRRConnection.create("https://localhost:5001/apphub") {
     hubProtocol = HubProtocolKind.JSON                  // or MESSAGE_PACK
-    messageAccessTokenProvider = { tokenStore.currentToken() }
+    credential = { tokenStore.currentToken() }         // or connectionCredential / messageCredential
     serverTimeout = 30.seconds
     keepAliveInterval = 15.seconds
     handshakeTimeout = 15.seconds
     reconnectPolicy = ReconnectPolicy.Default           // immediate, 2s, 10s, 30s — then give up
     allowedTransports = listOf(TransportType.WEB_SOCKETS, TransportType.SERVER_SENT_EVENTS, TransportType.LONG_POLLING)
+    transportCredential = TransportCredential.HEADER    // or QUERY: connection token in the transport URL
     headers = mapOf("X-Api-Key" to apiKey)              // extra headers on negotiate and transport requests
     httpClient = sharedOkHttpClient                     // reuse the app's OkHttp client
     json = Json { ignoreUnknownKeys = true }            // the kotlinx.serialization configuration
@@ -133,7 +145,17 @@ try {
 }
 ```
 
-`e.code` is the code folded to the set this client knows (unknown codes become `internal`); `e.error.code` is the raw wire value, which is where an application's own `HARRRException("room_full", ...)` codes appear. `e.error.innerError` nests the cause chain.
+`e.code` is the code folded to the set this client knows (unknown codes become `internal`); `e.error.code` is the raw wire value, which is where an application's own `HARRRException("room_full", ...)` codes appear. `e.error.innerError` nests the cause chain. The codes are the same in every SignalARRR client.
+
+A connection the server rejects at negotiate — 401 or 403 for a missing or invalid connection credential — fails `start()` with `NegotiationFailedException`, whose `statusCode` carries the HTTP status:
+
+```kotlin
+try {
+    connection.start()
+} catch (e: NegotiationFailedException) {
+    if (e.statusCode == 401) promptLogin() else throw e
+}
+```
 
 ## Connection events
 

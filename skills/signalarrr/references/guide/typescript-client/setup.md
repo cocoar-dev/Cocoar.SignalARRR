@@ -81,27 +81,44 @@ connection.stream<string>('ChatMethods.StreamMessages').subscribe({
 
 ## Error handling
 
-When a server method throws an exception, `invoke()` rejects with a structured error containing the exception type and message:
+When a server call fails, `invoke()` rejects with a `HARRRInvocationError`: the machine-readable code, the message, and the .NET exception type. Branch on `normalizedCode`, never on the message:
 
 ```ts
+import { HARRRErrorCodes, type HARRRInvocationError } from '@cocoar/signalarrr';
+
 try {
-    await connection.invoke('SomeMethod');
-} catch (err: any) {
-    console.log(err.type);    // "System.ArgumentException"
-    console.log(err.message); // "Invalid value provided"
+    await connection.invoke('RoomMethods.Join', roomId);
+} catch (err) {
+    const error = err as HARRRInvocationError;
+    switch (error.normalizedCode) {
+        case HARRRErrorCodes.Unauthorized: promptLogin(); break;
+        case HARRRErrorCodes.MethodNotFound: reportContractMismatch(error); break;
+        default:
+            if (error.code === 'room_full') showRoomFull();   // application codes travel verbatim
+            else showGeneric(error.message);
+    }
 }
 ```
 
-For more control, use `parseHARRRError()` from the package:
+`normalizedCode` is the code folded to the set this client knows (unknown codes become `internal`); `code` is the raw wire value, which is where an application's own `HARRRException("room_full", ...)` codes appear. The codes are the same in every SignalARRR client.
+
+For an error that did not come through `invoke()` — a stream's error callback, say — `parseHARRRError()` reads the same envelope, and `normalizeErrorCode()` folds its `Code`:
 
 ```ts
-import { parseHARRRError } from '@cocoar/signalarrr';
+import { normalizeErrorCode, parseHARRRError } from '@cocoar/signalarrr';
 
+const error = parseHARRRError(err);
+console.log(normalizeErrorCode(error.Code), error.Message);
+```
+
+A connection the server rejects at negotiate — 401 or 403 for a missing or invalid connection credential — makes `start()` reject with SignalR's error, which SignalARRR gives a `statusCode` with the HTTP status (SignalR itself mentions it only in the message):
+
+```ts
 try {
-    await connection.invoke('SomeMethod');
+    await connection.start();
 } catch (err) {
-    const error = parseHARRRError(err);
-    console.log(error.Type, error.Message);
+    if ((err as { statusCode?: number }).statusCode === 401) promptLogin();
+    else throw err;
 }
 ```
 
@@ -126,42 +143,59 @@ The server must also have MessagePack enabled (`.AddMessagePackProtocol()`). Bot
 
 ## Authentication
 
-There are two credentials, and they are configured separately:
+A connection has two credentials. Usually they are the same token, so one option sets both:
+
+```ts
+const connection = HARRRConnection.create('https://localhost:5001/apphub', {
+    credential: async () => await getAuthToken(),
+});
+```
+
+To give them different credentials — a single-use connection ticket, say, which has no business being resent with every message — set them separately:
+
+```ts
+const connection = HARRRConnection.create('https://localhost:5001/apphub', {
+    connectionCredential: async () => await getConnectionTicket(),
+    messageCredential: async () => await getAuthToken(),
+});
+```
+
+| Option | Authenticates | Travels as | Checked by | When it expires |
+|---|---|---|---|---|
+| `connectionCredential` | negotiate and the transport | `Authorization` header; in a browser, the `access_token` URL parameter for WebSocket and SSE (Node: for SSE) | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping | fetched again on every connect and reconnect |
+| `messageCredential` | every message, the answer to a challenge, file transfers | the `Authorization` field of the message; a header on file transfers | `[Authorize]` on a method or a `ServerMethods` class | fetched on every use, so a refreshed token is sent from the next call on |
+| `credential` | both of the above | | | |
+
+The options are named the same in every SignalARRR client, and nothing is coupled implicitly: `messageCredential` alone leaves the connection anonymous, `connectionCredential` alone sends no message credential. A `connectionCredential` or `messageCredential` next to `credential` takes its part over. Each may be synchronous, `async`, or a plain string. See [Authorization](../server/authorization.md#the-two-credentials) for the same table across all clients.
+
+`HARRRConnection.create(url, options, configure?)` builds the SignalR connection itself and hands the connection credential to it as `accessTokenFactory`. SignalR's other connection options go into `options.httpConnectionOptions`; `configure` receives the builder after `withUrl`, for the protocol, automatic reconnect or logging:
 
 ```ts
 const connection = HARRRConnection.create(
-    builder => {
-        builder.withUrl('https://localhost:5001/apphub', {
-            // SignalR's — authenticates the connection: negotiate and transport.
-            accessTokenFactory: async () => await getAuthToken(),
-        });
-    },
+    'https://localhost:5001/apphub',
     {
-        // SignalARRR's — authenticates each message, answers a challenge, and carries the
-        // file transfers.
-        authorization: async () => await getAuthToken(),
+        credential: async () => await getAuthToken(),
+        httpConnectionOptions: { transport: signalR.HttpTransportType.WebSockets },
     },
+    builder => builder.withAutomaticReconnect(),
 );
 ```
 
-| | Configured with | Checked by |
-|---|---|---|
-| **Connection** | SignalR's `accessTokenFactory` | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping |
-| **Message** | SignalARRR's `authorization` | `[Authorize]` on a method or a `ServerMethods` class |
+With `create(builder => ...)` or an existing `HubConnection`, SignalR's own `accessTokenFactory` authenticates the connection, and only `messageCredential` applies — a connection credential there throws, as does `accessTokenFactory` in `httpConnectionOptions` next to `connectionCredential`.
 
-Usually it is one credential, so you pass the same factory to both — as above. They are separate because they answer different questions, and because they are not always the same thing: a single-use connection ticket belongs on the connection and has no business being resent with every message.
+Token challenges are handled automatically — while a stream is running the server may send a `ChallengeAuthentication` message, and the client calls the message credential to answer it.
 
-`authorization` may be synchronous, `async`, or a plain string. The client awaits it before every call.
-
-Token challenges are handled automatically — while a stream is running the server may send a `ChallengeAuthentication` message, and the client calls `authorization()` to answer it.
-
-A connection without `authorization` is not cut off: once the server's auth cache lapses it falls back to the principal established at negotiate, the way plain SignalR would, and the expiry stated on that principal is still enforced. What you lose is the refresh — the server can no longer catch a revoked credential, and cannot ask you for a new one.
+A connection without a message credential is not cut off: once the server's auth cache lapses it falls back to the principal established at negotiate, the way plain SignalR would, and the expiry stated on that principal is still enforced. What you lose is the refresh — the server can no longer catch a revoked credential, and cannot ask you for a new one.
 
 A failing factory surfaces where the call does: `invoke()` and `send()` reject, and `stream()` reports the error to the subscriber — the stream is opened only once the credential is in hand.
 
+> **Tip: Former names**
+>
+> `authorization` is the message credential under its former name. It still works and is marked deprecated; replace it with `messageCredential`. Using it together with `messageCredential` or `credential` throws.
+
 > **Warning: Changed in 5.0.0**
 >
-> The client used to take the message credential from SignalR's `accessTokenFactory` automatically, by reading private fields off the connection. It no longer does. If your tokens are short-lived and refreshed — the usual reason for having them — add `authorization`, or the connection will run on the identity it started with until that identity's stated expiry.
+> The client used to take the message credential from SignalR's `accessTokenFactory` automatically, by reading private fields off the connection. It no longer does. If your tokens are short-lived and refreshed — the usual reason for having them — set a message credential, or the connection will run on the identity it started with until that identity's stated expiry.
 
 ## Connection events
 

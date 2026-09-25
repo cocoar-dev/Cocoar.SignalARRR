@@ -9,12 +9,23 @@ public enum TransportType: String, Sendable, CaseIterable {
     case longPolling = "LongPolling"
 }
 
+/// Where the transport carries the connection token. Negotiate always sends it as a header.
+public enum TransportCredential: Sendable {
+    /// `Authorization` header on the WebSocket upgrade and on every SSE and Long Polling request,
+    /// so the token never appears in a URL. The default.
+    case header
+    /// `access_token` query item of the transport URL, for servers that read the token only there.
+    case query
+}
+
 // MARK: - Transport Protocol
 
 /// Abstraction over the wire transport (WebSocket, SSE, Long Polling).
 protocol SignalRTransport: AnyObject, Sendable {
     /// Open the transport connection.
-    func connect(url: URL) async throws
+    /// - Parameter headers: headers every request of this transport carries — the `Authorization`
+    ///   header for the connection token, and the caller's own.
+    func connect(url: URL, headers: [String: String]) async throws
     /// Send data to the server.
     func send(_ data: Data) async throws
     /// Block until the next chunk of data arrives from the server.
@@ -34,10 +45,12 @@ final class WebSocketTransport: SignalRTransport, @unchecked Sendable {
         self.useBinaryFrames = useBinaryFrames
     }
 
-    func connect(url: URL) async throws {
+    func connect(url: URL, headers: [String: String]) async throws {
         let session = URLSession(configuration: .default)
         self.session = session
-        let task = session.webSocketTask(with: url)
+        var request = URLRequest(url: url)
+        request.setHeaders(headers)
+        let task = session.webSocketTask(with: request)
         self.task = task
         task.resume()
     }
@@ -76,16 +89,19 @@ final class WebSocketTransport: SignalRTransport, @unchecked Sendable {
 @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
 final class SSETransport: SignalRTransport, @unchecked Sendable {
     private var url: URL?
+    private var headers: [String: String] = [:]
     private var session: URLSession?
     private var byteIterator: URLSession.AsyncBytes.AsyncIterator?
 
-    func connect(url: URL) async throws {
+    func connect(url: URL, headers: [String: String]) async throws {
         self.url = url
+        self.headers = headers
         let session = URLSession(configuration: .default)
         self.session = session
 
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setHeaders(headers)
 
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -100,6 +116,7 @@ final class SSETransport: SignalRTransport, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("text/plain;charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.setHeaders(headers)
         request.httpBody = data
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -159,13 +176,29 @@ final class SSETransport: SignalRTransport, @unchecked Sendable {
 /// The server holds each GET until data is available or a timeout occurs.
 final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
     private var url: URL?
+    private var headers: [String: String] = [:]
     private var active = true
     private var pollSession: URLSession?
 
-    func connect(url: URL) async throws {
+    func connect(url: URL, headers: [String: String]) async throws {
         self.url = url
+        self.headers = headers
         self.active = true
-        self.pollSession = URLSession(configuration: .default)
+        let session = URLSession(configuration: .default)
+        self.pollSession = session
+
+        // The first poll establishes the transport on the server, which answers it at once and
+        // without data — as the .NET, TypeScript and Kotlin clients do. Without it the handshake
+        // read below received that empty answer and failed with "Incomplete handshake response",
+        // so Long Polling never connected.
+        var request = URLRequest(url: url)
+        request.setHeaders(headers)
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            active = false
+            throw SignalRError.connectionFailed(
+                "Long polling: HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
     }
 
     func send(_ data: Data) async throws {
@@ -173,6 +206,7 @@ final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("text/plain;charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.setHeaders(headers)
         request.httpBody = data
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -183,7 +217,9 @@ final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
 
     func receive() async throws -> Data {
         guard let url, let session = pollSession, active else { throw SignalRError.disconnected }
-        let (data, response) = try await session.data(from: url)
+        var request = URLRequest(url: url)
+        request.setHeaders(headers)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw SignalRError.disconnected }
 
         if http.statusCode == 204 {
@@ -203,6 +239,7 @@ final class LongPollingTransport: SignalRTransport, @unchecked Sendable {
         if let url {
             var request = URLRequest(url: url)
             request.httpMethod = "DELETE"
+            request.setHeaders(headers)
             _ = try? await URLSession.shared.data(for: request)
         }
         pollSession?.invalidateAndCancel()
@@ -228,10 +265,17 @@ enum TransportFactory {
         }
     }
 
+    /// The `Authorization` header value for a connection token: a value without a space is a bearer
+    /// token, one with a space carries its own scheme.
+    static func authorizationHeader(for token: String) -> String {
+        token.contains(" ") ? token : "Bearer \(token)"
+    }
+
     /// Build the transport URL from the base hub URL and connection token.
-    /// - Parameter accessToken: travels as the `access_token` query item, the convention SignalR
-    ///   uses for WebSocket and SSE because neither can carry a header portably. The server side of
-    ///   that convention is `UseSignalARRRAccessTokenValidation`, or JwtBearer's `OnMessageReceived`.
+    /// - Parameter accessToken: travels as the `access_token` query item. Only passed for
+    ///   `TransportCredential.query`; by default the token travels as a header instead. The server
+    ///   side of the query convention is `UseSignalARRRAccessTokenValidation`, or JwtBearer's
+    ///   `OnMessageReceived`.
     static func transportURL(
         base: String, connectionToken: String, type: TransportType, accessToken: String? = nil
     ) -> URL? {
@@ -251,5 +295,12 @@ enum TransportFactory {
         }
         components.queryItems = queryItems
         return components.url
+    }
+}
+
+extension URLRequest {
+    /// Sets every header of `headers` on the request.
+    mutating func setHeaders(_ headers: [String: String]) {
+        for (name, value) in headers { setValue(value, forHTTPHeaderField: name) }
     }
 }

@@ -222,7 +222,7 @@ app.MapSignalARRRHub<AppHub>("/apphub").RequireAuthorization("files");
 public class AppHub : HARRR { ... }
 ```
 
-The clients authenticate these requests with the same credential they use for the hub: the .NET clients with the connection's `AccessTokenProvider`, TypeScript with its `accessTokenFactory`, Swift with the factory passed to `HARRRConnection.create`. A credential without a space is sent as `Bearer <token>`; one that carries its own scheme (`Basic …`) is sent verbatim — the same rule the server applies to the credential in a message.
+The clients authenticate these requests with their message credential — the one that travels with every hub call: `WithMessageCredential` in .NET and .NET Framework, `messageCredential` in TypeScript, Swift and Kotlin, or the `credential` shortcut that sets it (see [the two credentials](/guide/server/authorization#the-two-credentials)). The connection credential is not used here. A credential without a space is sent as `Bearer <token>`; one that carries its own scheme (`Basic …`) is sent verbatim — the same rule the server applies to the credential in a message.
 
 If you protect the endpoints with something the connection's credential cannot satisfy — a separate policy requiring a claim the hub token does not carry, say — the transfer will 401 while the hub calls keep working. Either widen the policy or hand the clients a credential that satisfies both.
 

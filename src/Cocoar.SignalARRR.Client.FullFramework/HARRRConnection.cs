@@ -18,6 +18,7 @@ using Cocoar.SignalARRR.Common.Constants;
 using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
+using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.SignalR.Protocol;
@@ -55,9 +56,22 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         public event EventHandler<ServerRequestEventArgs> OnServerRequestMessage;
 
-        public HARRRConnection(HubConnection hubConnection, Func<Task<string>> accessTokenProvider = null) {
+        /// <summary>Wraps a <c>HubConnection</c> that is already built, without a message credential.</summary>
+        public HARRRConnection(HubConnection hubConnection) : this(hubConnection, (HARRRConnectionOptions)null) {
+        }
+
+        /// <summary>
+        /// The message credential under its former name: <paramref name="accessTokenProvider"/> is
+        /// what SignalARRR sends with every message, not SignalR's connection token.
+        /// </summary>
+        [Obsolete("Use HARRRConnection.Create(hubConnection, options => options.WithMessageCredential(...)).")]
+        public HARRRConnection(HubConnection hubConnection, Func<Task<string>> accessTokenProvider = null)
+            : this(hubConnection, new HARRRConnectionOptions { MessageCredential = accessTokenProvider }) {
+        }
+
+        private HARRRConnection(HubConnection hubConnection, HARRRConnectionOptions options) {
             _hubConnection = hubConnection;
-            _accessTokenProvider = accessTokenProvider ?? (() => Task.FromResult<string>(null));
+            _accessTokenProvider = options?.MessageCredential ?? (() => Task.FromResult<string>(null));
 
             // Auto-detect protocol: use MessagePackProtocolSerializer if MessagePack is configured
             var serviceProvider = _hubConnection.GetServiceProvider();
@@ -513,15 +527,78 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         #region Factory
 
+        /// <summary>Builds the connection through <paramref name="builder"/>, without credentials.</summary>
+        public static HARRRConnection Create(Action<IHubConnectionBuilder> builder) {
+            return Create(builder, (Action<HARRRConnectionOptionsBuilder>)null);
+        }
+
+        /// <summary>
+        /// Builds the connection through <paramref name="builder"/>. The credentials come from
+        /// <paramref name="optionsBuilder"/>: <c>WithCredential</c>, <c>WithConnectionCredential</c>,
+        /// <c>WithMessageCredential</c> — the same options as in every SignalARRR client.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The connection credential is set both through SignalR's <c>AccessTokenProvider</c> in
+        /// <c>WithUrl</c> and through <c>WithConnectionCredential</c>/<c>WithCredential</c>.
+        /// </exception>
+        public static HARRRConnection Create(Action<IHubConnectionBuilder> builder, Action<HARRRConnectionOptionsBuilder> optionsBuilder) {
+            var hubConnectionBuilder = new HubConnectionBuilder();
+            builder(hubConnectionBuilder);
+            var options = BuildOptions(optionsBuilder);
+            var connectionCredential = options.ConnectionCredential;
+            if (connectionCredential != null) {
+                // Registered after the caller's WithUrl, so it runs after the options WithUrl set.
+                hubConnectionBuilder.Services.Configure<HttpConnectionOptions>(httpOptions => {
+                    if (httpOptions.AccessTokenProvider != null) {
+                        throw new InvalidOperationException(
+                            "The connection credential is set twice: through SignalR's AccessTokenProvider in WithUrl and through SignalARRR's ConnectionCredential. Set only one of them.");
+                    }
+                    httpOptions.AccessTokenProvider = connectionCredential;
+                });
+            }
+            return new HARRRConnection(hubConnectionBuilder.Build(), options);
+        }
+
+        /// <summary>
+        /// Wraps a <c>HubConnection</c> that is already built. Its connection credential is SignalR's
+        /// own <c>AccessTokenProvider</c>; only the message credential can be set here.
+        /// </summary>
+        /// <exception cref="ArgumentException">A connection credential is set in <paramref name="optionsBuilder"/>.</exception>
+        public static HARRRConnection Create(HubConnection hubConnection, Action<HARRRConnectionOptionsBuilder> optionsBuilder) {
+            var options = BuildOptions(optionsBuilder);
+            if (options.ConnectionCredential != null) {
+                throw new ArgumentException(
+                    "A connection credential cannot be applied to a HubConnection that is already built: SignalR fixed its AccessTokenProvider when it was built. " +
+                    "Use Create(builder => builder.WithUrl(...), ...) instead, or set AccessTokenProvider in WithUrl yourself and only the message credential here.",
+                    nameof(optionsBuilder));
+            }
+            return new HARRRConnection(hubConnection, options);
+        }
+
+        /// <summary>
+        /// The message credential under its former name: <paramref name="accessTokenProvider"/> is what
+        /// SignalARRR sends with every message, not SignalR's connection token.
+        /// </summary>
+        [Obsolete("Use Create(builder, options => options.WithMessageCredential(...)), or WithCredential for one credential covering the connection and every message.")]
         public static HARRRConnection Create(Action<IHubConnectionBuilder> builder, Func<Task<string>> accessTokenProvider = null) {
             var hubConnectionBuilder = new HubConnectionBuilder();
             builder(hubConnectionBuilder);
-            var hubConnection = hubConnectionBuilder.Build();
-            return new HARRRConnection(hubConnection, accessTokenProvider);
+            return new HARRRConnection(hubConnectionBuilder.Build(), new HARRRConnectionOptions { MessageCredential = accessTokenProvider });
         }
 
+        /// <summary>
+        /// The message credential under its former name: <paramref name="accessTokenProvider"/> is what
+        /// SignalARRR sends with every message, not SignalR's connection token.
+        /// </summary>
+        [Obsolete("Use Create(hubConnection, options => options.WithMessageCredential(...)).")]
         public static HARRRConnection Create(HubConnection hubConnection, Func<Task<string>> accessTokenProvider = null) {
-            return new HARRRConnection(hubConnection, accessTokenProvider);
+            return new HARRRConnection(hubConnection, new HARRRConnectionOptions { MessageCredential = accessTokenProvider });
+        }
+
+        private static HARRRConnectionOptions BuildOptions(Action<HARRRConnectionOptionsBuilder> optionsBuilder) {
+            var builder = new HARRRConnectionOptionsBuilder();
+            optionsBuilder?.Invoke(builder);
+            return builder;
         }
 
         #endregion

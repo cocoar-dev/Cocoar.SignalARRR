@@ -31,6 +31,17 @@ public enum SignalRError: Error, LocalizedError {
         case .disconnected: return "Connection is not active"
         }
     }
+
+    /// The HTTP status when negotiate was answered with one — 401 or 403 when the server rejected
+    /// the connection credential — and `nil` for every other failure.
+    ///
+    /// A property rather than an associated value, so matching on `.negotiationFailed(let message)`
+    /// keeps working; negotiate reports a status as `"HTTP <code>"`, which this reads back.
+    public var statusCode: Int? {
+        guard case .negotiationFailed(let message) = self, message.hasPrefix("HTTP ") else { return nil }
+        guard let code = Int(message.dropFirst(5)), code > 0 else { return nil }
+        return code
+    }
 }
 
 /// Error thrown when the server returns an error in a CompletionMessage.
@@ -74,7 +85,8 @@ public struct ReconnectPolicy: Sendable {
 public final class SignalRWebSocketClient: @unchecked Sendable {
 
     private let url: String
-    /// Authenticates the connection itself — the negotiate request and the transport URL.
+    /// Authenticates the connection itself — the negotiate request and every transport request.
+    /// Called on every connect and reconnect, so a renewed token is picked up.
     ///
     /// This client used to take no credential at all: negotiate went out as a bare request and the
     /// transport URL carried only the connection token, so the connection was always anonymous. A
@@ -83,6 +95,11 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
     /// carries it. That is a different thing from `HARRRConnection.accessTokenFactory`, which
     /// authenticates each message; pass the same factory to both if they are the same credential.
     private let accessTokenFactory: (@Sendable () async -> String)?
+    /// Where the transport carries the connection token; see `TransportCredential`.
+    private let transportCredential: TransportCredential
+    /// Extra headers on the negotiate request and every transport request. One named
+    /// `Authorization` takes the place of the connection token's.
+    private let headers: [String: String]
     private let serverTimeout: TimeInterval
     private let keepAliveInterval: TimeInterval
     private let handshakeTimeout: TimeInterval
@@ -109,6 +126,8 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         url: String,
         hubProtocol: HubProtocolKind = .json,
         accessTokenFactory: (@Sendable () async -> String)? = nil,
+        transportCredential: TransportCredential = .header,
+        headers: [String: String] = [:],
         serverTimeout: TimeInterval = 30,
         keepAliveInterval: TimeInterval = 15,
         handshakeTimeout: TimeInterval = 15,
@@ -118,6 +137,8 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
     ) {
         self.url = url
         self.accessTokenFactory = accessTokenFactory
+        self.transportCredential = transportCredential
+        self.headers = headers
         self.hubProtocolKind = hubProtocol
         self.hubProtocol = hubProtocol == .messagepack ? MessagePackHubProtocol() : JsonHubProtocol()
         self.serverTimeout = serverTimeout
@@ -336,13 +357,12 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         }
         var request = URLRequest(url: negotiateUrl)
         request.httpMethod = "POST"
-        // Negotiate is an ordinary HTTP request, so the credential travels as a header here. The
-        // transport URL below cannot do that portably and uses the `access_token` query instead,
-        // which is the convention SignalR itself uses for WebSocket and SSE.
+        // Negotiate always carries the credential as a header; the transport does too unless
+        // `transportCredential` is `.query` (see `selectAndConnect`).
         if let credential = await accessTokenFactory?(), !credential.isEmpty {
-            let value = credential.contains(" ") ? credential : "Bearer \(credential)"
-            request.setValue(value, forHTTPHeaderField: "Authorization")
+            request.setValue(TransportFactory.authorizationHeader(for: credential), forHTTPHeaderField: "Authorization")
         }
+        request.setHeaders(headers)
         // Fast-fail instead of hanging on the OS-level connect timeout (~30s). This surfaces
         // unreachable endpoints quickly — notably `localhost` resolving to IPv6 (::1) against an
         // IPv4-only server, where there is no Happy-Eyeballs fallback for the WebSocket upgrade.
@@ -376,11 +396,23 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
         serverTransports: [String],
         connectionToken: String
     ) async throws -> (any SignalRTransport, TransportType) {
-        let accessToken = await accessTokenFactory?()
+        var accessToken = await accessTokenFactory?()
+        if accessToken?.isEmpty == true { accessToken = nil }
+        // A WebSocket upgrade, an SSE stream and Long Polling are all requests this client builds
+        // itself, so all of them can carry the header — unlike in a browser, where SignalR has to
+        // fall back to the query. The query stays available for servers that read only that.
+        let inQuery = transportCredential == .query
+        var transportHeaders: [String: String] = [:]
+        if !inQuery, let accessToken {
+            transportHeaders["Authorization"] = TransportFactory.authorizationHeader(for: accessToken)
+        }
+        // Same precedence as negotiate: an explicit header wins over the token's.
+        transportHeaders.merge(headers) { _, explicit in explicit }
         for preferred in allowedTransports {
             if serverTransports.isEmpty || serverTransports.contains(preferred.rawValue) {
                 guard let transportURL = TransportFactory.transportURL(
-                    base: url, connectionToken: connectionToken, type: preferred, accessToken: accessToken
+                    base: url, connectionToken: connectionToken, type: preferred,
+                    accessToken: inQuery ? accessToken : nil
                 ) else { continue }
 
                 guard let transport = TransportFactory.create(
@@ -388,7 +420,7 @@ public final class SignalRWebSocketClient: @unchecked Sendable {
                     useBinaryFrames: hubProtocolKind == .messagepack
                 ) else { continue }
                 logger.info("Connecting via \(preferred.rawValue)")
-                try await transport.connect(url: transportURL)
+                try await transport.connect(url: transportURL, headers: transportHeaders)
                 logger.info("Transport \(preferred.rawValue) connected")
                 return (transport, preferred)
             }

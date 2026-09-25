@@ -29,42 +29,41 @@ var connection = HARRRConnection.Create(hubConnection);
 
 ### Token-based (Bearer, JWT)
 
-There are two credentials, and they are configured separately:
+A connection has two credentials. Usually they are the same token, so one option sets both:
 
 ```csharp
 var connection = HARRRConnection.Create(
-    builder =>
-    {
-        builder.WithUrl("https://localhost:5001/apphub", options =>
-        {
-            // SignalR's — authenticates the connection: negotiate and transport.
-            options.AccessTokenProvider = () => Task.FromResult(GetCurrentToken());
-        });
-    },
-    options =>
-    {
-        // SignalARRR's — authenticates each message, answers a challenge, and carries the
-        // file transfers.
-        options.WithAuthorization(() => Task.FromResult(GetCurrentToken()));
-    });
+    builder => builder.WithUrl("https://localhost:5001/apphub"),
+    options => options.WithCredential(async () => await tokenStore.GetTokenAsync()));
 ```
 
-| | Configured with | Checked by |
-|---|---|---|
-| **Connection** | SignalR's `AccessTokenProvider` | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping |
-| **Message** | SignalARRR's `WithAuthorization` | `[Authorize]` on a method or a `ServerMethods` class |
+To give them different credentials — a single-use connection ticket, say, which has no business being resent with every message — set them separately:
 
-Usually it is one credential, so you pass the same factory to both — as above. They are separate because they answer different questions, and because they are not always the same thing: a single-use connection ticket belongs on the connection and has no business being resent with every message.
+```csharp
+options => options
+    .WithConnectionCredential(async () => await GetConnectionTicketAsync())
+    .WithMessageCredential(async () => await tokenStore.GetTokenAsync())
+```
 
-The message credential is what keeps a long-lived connection current. It travels with every call, and it is what answers a challenge while a stream is running — so the server can re-check the credential rather than trusting the one it saw at negotiate.
+| Option | Authenticates | Travels as | Checked by | When it expires |
+|---|---|---|---|---|
+| `WithConnectionCredential` | negotiate and the transport | `Authorization` header | `[Authorize]` on the hub class, `.RequireAuthorization()` on the mapping | fetched again on every connect and reconnect |
+| `WithMessageCredential` | every message, the answer to a challenge, file transfers | the `Authorization` field of the message; a header on file transfers | `[Authorize]` on a method or a `ServerMethods` class | fetched on every use, so a refreshed token is sent from the next call on |
+| `WithCredential` | both of the above | | | |
 
-A connection without it is not cut off: once the server's auth cache lapses it falls back to the principal established at negotiate, the way plain SignalR would, and the expiry stated on that principal is still enforced. What you lose is the refresh — the server can no longer catch a revoked credential, and cannot ask you for a new one.
+The options are named the same in every SignalARRR client, and nothing is coupled implicitly: `WithMessageCredential` alone leaves the connection anonymous, `WithConnectionCredential` alone sends no message credential. Each accepts an async factory, a `Func<string>`, or a plain `string` for a credential that does not change. See [Authorization](../server/authorization.md#the-two-credentials) for the same table across all clients.
+
+The message credential is what keeps a long-lived connection current. It travels with every call, and it is what answers a challenge while a stream is running — so the server can re-check the credential rather than trusting the one it saw at negotiate. A connection without it is not cut off: once the server's auth cache lapses it falls back to the principal established at negotiate, the way plain SignalR would, and the expiry stated on that principal is still enforced. What you lose is the refresh — the server can no longer catch a revoked credential, and cannot ask you for a new one.
+
+`WithConnectionCredential` becomes SignalR's `AccessTokenProvider`, so it only works with `Create(builder => ...)`, where SignalARRR builds the `HubConnection`. Setting `AccessTokenProvider` in `WithUrl` as well, or passing a connection credential to `Create(hubConnection)`, fails at `Create` rather than silently picking one.
+
+> **Tip: Former names**
+>
+> `WithAuthorization` is the message credential under its former name. It still works and is marked obsolete; replace it with `WithMessageCredential`, or with `WithCredential` if you also set SignalR's `AccessTokenProvider` to the same token. Using it together with the new options fails at `Create`.
 
 > **Warning: Changed in 5.0.0**
 >
-> SignalARRR used to take the message credential from SignalR's `AccessTokenProvider` automatically, by reflecting into two levels of its private fields. It no longer does. If your tokens are short-lived and refreshed — the usual reason for having them — add `WithAuthorization`, or the connection will run on the identity it started with until that identity's stated expiry.
-
-`WithAuthorization` also accepts a `Func<string>` or a plain `string` for a credential that does not change.
+> SignalARRR used to take the message credential from SignalR's `AccessTokenProvider` automatically, by reflecting into two levels of its private fields. It no longer does. If your tokens are short-lived and refreshed — the usual reason for having them — set a message credential, or the connection will run on the identity it started with until that identity's stated expiry.
 
 ### Certificate-based (mTLS)
 
@@ -127,6 +126,8 @@ try {
     // "argument_binding_failed: Invalid value provided"
 }
 ```
+
+A connection the server rejects at negotiate — 401 or 403 for a missing or invalid connection credential — fails `StartAsync` with SignalR's `HttpRequestException`, whose `StatusCode` carries the HTTP status. The other clients expose the same as `statusCode`.
 
 `HARRRException` extends `HubException`, so the structured error always reaches the client — no `EnableDetailedErrors` configuration needed. **How much detail it carries depends on the code**, and the split is deliberate:
 

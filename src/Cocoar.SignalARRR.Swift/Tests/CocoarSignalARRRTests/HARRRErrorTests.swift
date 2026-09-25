@@ -84,4 +84,29 @@ final class HARRRErrorTests: XCTestCase {
         XCTAssertEqual(error.type, "Error")
         XCTAssertEqual(error.message, json) // Falls back to raw message
     }
+
+    // MARK: - Error codes
+
+    func testParsesVersionedEnvelopeWithCode() {
+        let json = #"{"Version":1,"Code":"unauthorized","Type":"Cocoar.SignalARRR.Server.HARRRException","Message":"Not allowed."}"#
+        let error = parseHARRRError(fromMessage: json)
+        XCTAssertEqual(error.code, "unauthorized")
+        XCTAssertEqual(error.version, 1)
+        XCTAssertEqual(error.normalizedCode, HARRRErrorCodes.unauthorized)
+        XCTAssertEqual(error.message, "Not allowed.")
+    }
+
+    func testAcceptsCodedEnvelopeWhoseTypeIsError() {
+        // A code makes it structured even with the default type — as in the .NET and Kotlin clients.
+        let json = #"{"Code":"timeout","Type":"Error","Message":"Too slow"}"#
+        let error = parseHARRRError(fromMessage: json)
+        XCTAssertEqual(error.code, "timeout")
+        XCTAssertEqual(error.message, "Too slow")
+    }
+
+    func testUnknownAndMissingCodesFoldToInternal() {
+        XCTAssertEqual(HARRRErrorCodes.normalize("room_full"), HARRRErrorCodes.internal)
+        XCTAssertEqual(HARRRErrorCodes.normalize(nil), HARRRErrorCodes.internal)
+        XCTAssertEqual(parseHARRRError(fromMessage: "plain text").normalizedCode, HARRRErrorCodes.internal)
+    }
 }

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import * as signalR from '@microsoft/signalr';
-import { HARRRConnection, parseHARRRError } from '../../src/index.js';
+import { HARRRConnection, HARRRErrorCodes, parseHARRRError } from '../../src/index.js';
 
 const SERVER_URL = process.env['SIGNALARRR_TEST_SERVER_URL'] ?? 'http://127.0.0.1:5000';
 
@@ -42,6 +42,36 @@ describe('Error Handling', () => {
       expect(err.type).not.toBe('System.InvalidOperationException');
       expect(err.message).not.toContain('This operation is not allowed');
       expect(err.message).toMatch(/Correlation id: [0-9a-f]{12}/);
+      expect(err.normalizedCode).toBe(HARRRErrorCodes.Internal);
+    }
+  });
+
+  test('error code: an application code travels verbatim and folds to internal', async () => {
+    try {
+      await connection.invoke<string>('ExtraMethods.ThrowRoomFull');
+      expect.fail('Expected an error to be thrown');
+    } catch (err: any) {
+      expect(err.code).toBe('room_full');
+      expect(err.normalizedCode).toBe(HARRRErrorCodes.Internal);
+      expect(err.message).toBe('The room is full.');
+    }
+  });
+
+  test('error code: an unknown method is method_not_found', async () => {
+    try {
+      await connection.invoke<string>('NonExistentMethod');
+      expect.fail('Expected an error to be thrown');
+    } catch (err: any) {
+      expect(err.normalizedCode).toBe(HARRRErrorCodes.MethodNotFound);
+    }
+  });
+
+  test('error code: a wrong argument count is invalid_argument_count', async () => {
+    try {
+      await connection.invoke<string>('Echo', 'one', 'two');
+      expect.fail('Expected an error to be thrown');
+    } catch (err: any) {
+      expect(err.normalizedCode).toBe(HARRRErrorCodes.InvalidArgumentCount);
     }
   });
 

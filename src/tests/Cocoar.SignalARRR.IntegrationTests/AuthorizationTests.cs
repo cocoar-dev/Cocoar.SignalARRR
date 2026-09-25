@@ -183,19 +183,16 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         /// <summary>
-        /// Configures the same credential twice on purpose: SignalR's provider authenticates the
-        /// connection, SignalARRR's authenticates each message. They are separate settings — the
-        /// second used to be taken from the first by reflecting into SignalR's private fields — and
-        /// handing one credential to both is the common case.
+        /// One credential for the connection and every message, through <c>WithCredential</c>: it
+        /// becomes SignalR's <c>AccessTokenProvider</c>, which authenticates the connection, and
+        /// SignalARRR's message credential. They are separate settings — the second used to be taken
+        /// from the first by reflecting into SignalR's private fields — and handing one credential to
+        /// both is the common case.
         /// </summary>
         private HARRRConnection CreateConnectionWithTokenProvider(Func<Task<string?>> tokenProvider) {
             return HARRRConnection.Create(
-                builder => {
-                    builder.WithUrl($"{_fixture.ServerUrl}/signalr/authtesthub", options => {
-                        options.AccessTokenProvider = tokenProvider;
-                    });
-                },
-                options => options.WithAuthorization(async () => await tokenProvider() ?? string.Empty));
+                builder => builder.WithUrl($"{_fixture.ServerUrl}/signalr/authtesthub"),
+                options => options.WithCredential(async () => await tokenProvider() ?? string.Empty));
         }
 
         /// <summary>A connection that authenticates only its transport, with no per-message credential.</summary>

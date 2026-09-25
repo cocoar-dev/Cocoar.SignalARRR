@@ -1,10 +1,11 @@
 export { HARRRConnection } from './harrr-connection.js';
 export { HARRRConnectionOptions } from './harrr-connection-options.js';
+export type { Credential } from './harrr-connection-options.js';
 export type { ClientRequestMessage } from './models/client-request-message.js';
 export type { ServerRequestMessage } from './models/server-request-message.js';
 export type { CancellationTokenReference } from './models/cancellation-token-reference.js';
 export { REMOTE_REFERENCE_PROPERTY, RemoteReferenceKind } from './models/remote-reference.js';
 export type { StreamReference } from './models/stream-reference.js';
 export { isStreamReference, resolveStreamReference, resolveStreamReferenceAsStream, transferAuthHeaders } from './models/stream-reference.js';
-export type { HARRRError } from './models/harrr-error.js';
-export { parseHARRRError } from './models/harrr-error.js';
+export type { HARRRError, HARRRInvocationError } from './models/harrr-error.js';
+export { parseHARRRError, HARRRErrorCodes, normalizeErrorCode } from './models/harrr-error.js';

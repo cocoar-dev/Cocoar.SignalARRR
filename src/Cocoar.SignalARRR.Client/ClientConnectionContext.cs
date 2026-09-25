@@ -18,7 +18,7 @@ namespace Cocoar.SignalARRR.Client {
         public HubProtocolType HubProtocolType { get; }
         /// <summary>
         /// The credential SignalARRR sends — messages, challenge answers, file transfers. Configured
-        /// through <see cref="HARRRConnectionOptions.Authorization"/>, never taken from SignalR.
+        /// through <see cref="HARRRConnectionOptions.MessageCredential"/>, never taken from SignalR.
         /// </summary>
         internal Func<Task<string>> AuthorizationProvider { get; }
 
@@ -29,7 +29,7 @@ namespace Cocoar.SignalARRR.Client {
 
             BaseUrl = GetBaseUrl();
             HubProtocolType = Enum<HubProtocolType>.Find(_serviceProvider.GetRequiredService<IHubProtocol>().GetType().Name);
-            AuthorizationProvider = options?.Authorization ?? (() => Task.FromResult<string>(null!));
+            AuthorizationProvider = options?.ResolveMessageCredential() ?? (() => Task.FromResult<string>(null!));
             var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<MessageHandler>();
             MessageHandler = new MessageHandler(this, logger: logger);
         }
