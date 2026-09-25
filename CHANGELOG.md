@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
-- **The former credential options**, which keep working with their former behaviour: `WithAuthorization` (.NET) and `authorization` (TypeScript) — the message credential, now `WithMessageCredential`/`messageCredential`; `messageAccessTokenProvider` (Kotlin), which also covered the connection unless `accessTokenProvider` was set — now `credential`, or `messageCredential` for the message alone; and `accessTokenFactory:` on Swift's `HARRRConnection.create(url:)`, one factory for both — now `options: HARRRConnectionOptions(credential:)`. In the .NET Framework client, the `accessTokenProvider` parameter of `HARRRConnection.Create` and of the constructor — despite its name the message credential, not SignalR's connection token — now `WithMessageCredential`. They are planned to go in 6.0.
+- **The former credential options**, which keep working with their former behaviour: `WithAuthorization` (.NET) and `authorization` (TypeScript) — the message credential, now `WithMessageCredential`/`messageCredential`; `messageAccessTokenProvider` (Kotlin), which also covered the connection unless `accessTokenProvider` was set — now `credential`, or `messageCredential` for the message alone; and `accessTokenFactory:` on Swift's `HARRRConnection.create(url:)`, one factory for both — now `options: HARRRConnectionOptions(credential:)`. In the .NET Framework client, the `accessTokenProvider` parameter of `HARRRConnection.Create` and of the constructor — despite its name the message credential, not SignalR's connection token — now `WithMessageCredential`.
 
 ### Fixed
 
