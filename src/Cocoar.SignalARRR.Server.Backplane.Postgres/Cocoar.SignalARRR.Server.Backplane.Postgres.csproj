@@ -30,7 +30,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Npgsql" />
+    <!-- Built against the lowest Npgsql the backplane needs (NpgsqlDataSource and LISTEN/NOTIFY
+         exist since 7), for every target framework: the package then asks for "Npgsql >= 8.0.6"
+         and the application picks the version that fits the rest of its stack. The central
+         version follows the target framework (10.0.3 on net10.0), which made the package demand
+         Npgsql 10 there and blocked applications held on Npgsql 9 by Marten. The integration
+         tests still run on the per-framework versions, so 8, 9 and 10 are all exercised. -->
+    <PackageReference Include="Npgsql" VersionOverride="8.0.6" />
   </ItemGroup>
 
   <ItemGroup>

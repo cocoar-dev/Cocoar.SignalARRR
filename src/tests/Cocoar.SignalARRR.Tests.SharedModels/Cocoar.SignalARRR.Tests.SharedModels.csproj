@@ -15,4 +15,11 @@
                        ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The integration tests see this assembly's internal proxies, the way an API's test project
+         usually sees the API's. The generator must not add a second proxy for these contracts
+         there, or the build breaks with CS0436 (warnings are errors here). -->
+    <InternalsVisibleTo Include="Cocoar.SignalARRR.IntegrationTests" />
+  </ItemGroup>
+
 </Project>
