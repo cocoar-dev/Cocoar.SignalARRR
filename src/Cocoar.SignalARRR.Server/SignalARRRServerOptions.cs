@@ -148,6 +148,21 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         /// <summary>
+        /// Declares authentication schemes whose credential is bound to the connection — a cookie,
+        /// typically — so SignalARRR re-validates them server-side when the auth cache lapses
+        /// instead of asking the client for a per-message credential it does not have. Adds to
+        /// <see cref="SignalARRRServerOptions.ConnectionBoundSchemes"/>; see there for the details.
+        /// </summary>
+        public SignalARRRServerOptionsBuilder WithConnectionBoundSchemes(params string[] schemes) {
+            if (schemes == null) throw new ArgumentNullException(nameof(schemes));
+            foreach (var scheme in schemes) {
+                if (string.IsNullOrWhiteSpace(scheme)) throw new ArgumentException("A scheme name must not be empty.", nameof(schemes));
+                if (!_options.ConnectionBoundSchemes.Contains(scheme)) _options.ConnectionBoundSchemes.Add(scheme);
+            }
+            return this;
+        }
+
+        /// <summary>
         /// Enable or disable certificate revocation checking during transport-level auth revalidation.
         /// Default: true.
         /// </summary>

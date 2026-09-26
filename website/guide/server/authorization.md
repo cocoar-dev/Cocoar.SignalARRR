@@ -199,10 +199,8 @@ For scenarios where credentials exist at the transport layer (TLS client certifi
 Auto-detection covers only credentials that are unmistakably bound to the connection. A cookie identity looks exactly like a bearer identity once it has become a `ClaimsPrincipal`, and treating a bearer one as connection-bound would let a token outlive its own expiry — so SignalARRR does not guess. Declare the scheme instead:
 
 ```csharp
-builder.Services.AddSignalARRR(options =>
-{
-    options.ConnectionBoundSchemes.Add(CookieAuthenticationDefaults.AuthenticationScheme);
-});
+builder.Services.AddSignalARRR(options => options
+    .WithConnectionBoundSchemes(CookieAuthenticationDefaults.AuthenticationScheme));
 ```
 
 Adding a scheme is a statement that the credential lasts as long as the connection. What it buys you is **active re-validation**: once the cache lapses the server runs `ITransportAuthRevalidationService` for that connection rather than falling back to the principal it negotiated with.

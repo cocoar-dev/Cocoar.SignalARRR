@@ -67,7 +67,7 @@ public class SignalARRRGenerator : IIncrementalGenerator {
 
                     if (!referencesContracts) continue;
 
-                    ScanNamespace(reference.GlobalNamespace, results, alreadyGenerated);
+                    ScanNamespace(reference.GlobalNamespace, reference, compilation, results, alreadyGenerated);
                 }
 
                 if (results.Count == 0) return;
@@ -113,6 +113,8 @@ public class SignalARRRGenerator : IIncrementalGenerator {
 
     private static void ScanNamespace(
         INamespaceSymbol ns,
+        IAssemblySymbol assembly,
+        Compilation compilation,
         List<ContractInterfaceInfo> results,
         HashSet<string> exclude) {
 
@@ -125,13 +127,26 @@ public class SignalARRRGenerator : IIncrementalGenerator {
                 if (exclude.Contains(fullName)) continue;
 
                 var info = ExtractFromSymbol(type, CancellationToken.None);
-                if (info.HasValue) results.Add(info.Value);
+                if (!info.HasValue) continue;
+
+                // The referenced assembly generated this proxy itself and registers it in its own
+                // module initializer. Its proxy is internal, so usually invisible here — but with
+                // InternalsVisibleTo (a test project of an API, typically) a second copy generated
+                // here would clash with it (CS0436). Leave it to the one that is already there.
+                if (HasVisibleProxy(assembly, compilation, info.Value)) continue;
+
+                results.Add(info.Value);
             }
         }
 
         foreach (var childNs in ns.GetNamespaceMembers()) {
-            ScanNamespace(childNs, results, exclude);
+            ScanNamespace(childNs, assembly, compilation, results, exclude);
         }
+    }
+
+    private static bool HasVisibleProxy(IAssemblySymbol assembly, Compilation compilation, ContractInterfaceInfo info) {
+        var proxy = assembly.GetTypeByMetadataName($"{info.Namespace}.SignalARRR.{info.ProxyClassName}");
+        return proxy != null && compilation.IsSymbolAccessibleWithin(proxy, compilation.Assembly);
     }
 
     private static bool HasSignalARRRContractAttribute(INamedTypeSymbol type) {
