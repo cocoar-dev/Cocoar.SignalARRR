@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [5.2.0] - 2026-09-30
+
 ### Changed
 
 - **Swift and Kotlin send the connection token as a header on the transport, not in the URL**: the WebSocket upgrade, the SSE stream and its posts and every Long Polling request now carry it as `Authorization` header, like negotiate already did, instead of an `access_token` query item. A token in a URL ends up in proxy access logs and error reports; a native client has no reason to put it there, only a browser does, because JavaScript cannot set a header on a WebSocket upgrade or an `EventSource`. The token is still fetched on every connect and reconnect. Standard ASP.NET Core authentication reads the header, so nothing changes on the server; one that reads the token only from the URL can be kept working with the new `transportCredential` option set to `.query` (Swift) or `TransportCredential.QUERY` (Kotlin).
