@@ -22,7 +22,8 @@ namespace Microsoft.Extensions.DependencyInjection {
             serviceCollection.AddSingleton<PostgresSignalARRRBackplane>();
             serviceCollection.Replace(ServiceDescriptor.Singleton<ISignalARRRBackplane>(sp => sp.GetRequiredService<PostgresSignalARRRBackplane>()));
             serviceCollection.Replace(ServiceDescriptor.Singleton<ISignalARRRConnectionRegistry>(sp => sp.GetRequiredService<PostgresSignalARRRBackplane>()));
-            serviceCollection.AddSingleton<IHostedService>(sp => sp.GetRequiredService<PostgresSignalARRRBackplane>());
+            // Once, however often this is called: one instance, started and stopped once (#85).
+            serviceCollection.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, BackplaneHostedService<PostgresSignalARRRBackplane>>());
 
             return serviceCollection;
         }

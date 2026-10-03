@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A backplane stopped twice at once threw a NullReferenceException** ([#85](https://github.com/cocoar-dev/Cocoar.SignalARRR/issues/85)): `StopAsync` checked the heartbeat fields, waited, and read them again — a second, overlapping call found them already cleared by the first. A test host reports that as a cleanup failure of the whole test class. Stopping is now one shutdown shared by every caller: the first call runs it, every further one waits for the same one and returns only when it is done; a later stop is a no-op, and a restart begins afresh. The Postgres and Redis transports take their fields over before they wait, so they cannot be caught half torn down either. One way to get two stops is registering the backplane twice — `AddSignalARRRPostgresBackplane` or `AddSignalARRRRedisBackplane` called once in the application and again in a test setup — which registered the same instance twice as a hosted service; it is now hosted once however often it is added.
+
 ---
 
 ## [5.2.0] - 2026-09-30
