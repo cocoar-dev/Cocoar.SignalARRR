@@ -20,7 +20,8 @@ namespace Microsoft.Extensions.DependencyInjection {
             serviceCollection.AddSingleton<RedisSignalARRRBackplane>();
             serviceCollection.Replace(ServiceDescriptor.Singleton<ISignalARRRBackplane>(sp => sp.GetRequiredService<RedisSignalARRRBackplane>()));
             serviceCollection.Replace(ServiceDescriptor.Singleton<ISignalARRRConnectionRegistry>(sp => sp.GetRequiredService<RedisSignalARRRBackplane>()));
-            serviceCollection.AddSingleton<IHostedService>(sp => sp.GetRequiredService<RedisSignalARRRBackplane>());
+            // Once, however often this is called: one instance, started and stopped once (#85).
+            serviceCollection.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, BackplaneHostedService<RedisSignalARRRBackplane>>());
 
             return serviceCollection;
         }

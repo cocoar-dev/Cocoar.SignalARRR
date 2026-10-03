@@ -53,14 +53,16 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         protected override async Task StopTransportAsync(CancellationToken cancellationToken) {
-            if (_subscriber != null) {
-                await _subscriber.UnsubscribeAllAsync().ConfigureAwait(false);
+            // Taken over before any await, so a second caller finds nothing left to tear down (#85).
+            var subscriber = Interlocked.Exchange(ref _subscriber, null);
+            var multiplexer = Interlocked.Exchange(ref _multiplexer, null);
+            _database = null;
+
+            if (subscriber != null) {
+                await subscriber.UnsubscribeAllAsync().ConfigureAwait(false);
             }
 
-            _multiplexer?.Dispose();
-            _multiplexer = null;
-            _subscriber = null;
-            _database = null;
+            multiplexer?.Dispose();
         }
 
         protected override Task PublishCommandAsync(SignalARRRBackplaneEnvelope envelope) {

@@ -165,27 +165,29 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         protected override async Task StopTransportAsync(CancellationToken cancellationToken) {
-            if (_listenerCts != null) {
-                _listenerCts.Cancel();
-                _incoming?.Writer.TryComplete();
+            // Taken over before any await, so a second caller finds nothing left to tear down
+            // instead of a field the first one cleared while it waited (#85).
+            var listenerCts = Interlocked.Exchange(ref _listenerCts, null);
+            var listenerTask = Interlocked.Exchange(ref _listenerTask, null);
+            var consumerTask = Interlocked.Exchange(ref _consumerTask, null);
+            var incoming = Interlocked.Exchange(ref _incoming, null);
+            if (listenerCts != null) {
+                listenerCts.Cancel();
+                incoming?.Writer.TryComplete();
 
-                if (_listenerTask != null) {
-                    try { await _listenerTask.ConfigureAwait(false); } catch { }
+                if (listenerTask != null) {
+                    try { await listenerTask.ConfigureAwait(false); } catch { }
                 }
-                if (_consumerTask != null) {
-                    try { await _consumerTask.ConfigureAwait(false); } catch { }
+                if (consumerTask != null) {
+                    try { await consumerTask.ConfigureAwait(false); } catch { }
                 }
 
-                _listenerCts.Dispose();
-                _listenerCts = null;
-                _listenerTask = null;
-                _consumerTask = null;
-                _incoming = null;
+                listenerCts.Dispose();
             }
 
-            if (_dataSource != null) {
-                await _dataSource.DisposeAsync().ConfigureAwait(false);
-                _dataSource = null;
+            var dataSource = Interlocked.Exchange(ref _dataSource, null);
+            if (dataSource != null) {
+                await dataSource.DisposeAsync().ConfigureAwait(false);
             }
         }
 

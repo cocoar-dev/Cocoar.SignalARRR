@@ -47,6 +47,15 @@ namespace Cocoar.SignalARRR.Server {
         private CancellationTokenSource? _heartbeatCts;
         private Task? _heartbeatTask;
         private bool _started;
+
+        /// <summary>
+        /// The shutdown in progress or done, shared by every caller of <see cref="StopAsync"/>. A host
+        /// can stop the same instance twice at once — it is registered twice, its services stop
+        /// concurrently, or a test fixture tears the host down along two paths — and the second call
+        /// used to find the fields the first had just cleared (#85). Reset by <see cref="StartAsync"/>.
+        /// </summary>
+        private Task? _stopTask;
+        private readonly object _lifecycleLock = new object();
         private DateTime? _lastSuccessfulHeartbeatUtc;
 
         /// <summary>
@@ -145,6 +154,18 @@ namespace Cocoar.SignalARRR.Server {
         // --- Lifecycle ---
 
         public async Task StartAsync(CancellationToken cancellationToken) {
+            // A restart after a stop: let a shutdown still in flight finish, then start afresh.
+            Task? previousStop;
+            lock (_lifecycleLock) {
+                previousStop = _stopTask;
+            }
+            if (previousStop != null) {
+                try { await previousStop.ConfigureAwait(false); } catch { /* reported to its own callers */ }
+                lock (_lifecycleLock) {
+                    if (_stopTask == previousStop) _stopTask = null;
+                }
+            }
+
             if (_started) {
                 return;
             }
@@ -169,15 +190,27 @@ namespace Cocoar.SignalARRR.Server {
             _heartbeatTask = RunHeartbeatLoopAsync(_heartbeatCts.Token);
         }
 
-        public async Task StopAsync(CancellationToken cancellationToken) {
-            if (_heartbeatCts != null) {
-                await _heartbeatCts.CancelAsync().ConfigureAwait(false);
-                if (_heartbeatTask != null) {
-                    await _heartbeatTask.ConfigureAwait(false);
+        /// <summary>
+        /// Stops the heartbeat, deregisters this node and closes the transport. Safe to call more
+        /// than once and concurrently: every caller waits for the same shutdown, so none returns
+        /// while it is still running.
+        /// </summary>
+        public Task StopAsync(CancellationToken cancellationToken) {
+            lock (_lifecycleLock) {
+                return _stopTask ??= StopCoreAsync(cancellationToken);
+            }
+        }
+
+        private async Task StopCoreAsync(CancellationToken cancellationToken) {
+            // Taken over before any await, so nothing else can find them half torn down.
+            var heartbeatCts = Interlocked.Exchange(ref _heartbeatCts, null);
+            var heartbeatTask = Interlocked.Exchange(ref _heartbeatTask, null);
+            if (heartbeatCts != null) {
+                await heartbeatCts.CancelAsync().ConfigureAwait(false);
+                if (heartbeatTask != null) {
+                    await heartbeatTask.ConfigureAwait(false);
                 }
-                _heartbeatCts.Dispose();
-                _heartbeatCts = null;
-                _heartbeatTask = null;
+                heartbeatCts.Dispose();
             }
 
             if (_started) {
@@ -195,7 +228,7 @@ namespace Cocoar.SignalARRR.Server {
 
         public virtual void Dispose() {
             _cleanupSemaphore.Dispose();
-            _heartbeatCts?.Dispose();
+            Interlocked.Exchange(ref _heartbeatCts, null)?.Dispose();
         }
 
         // --- ISignalARRRBackplane ---
