@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [5.2.2] - 2026-10-10
+
 ### Fixed
 
 - **A backplane stopped during its first heartbeat failed the shutdown** ([#88](https://github.com/cocoar-dev/Cocoar.SignalARRR/issues/88)): the heartbeat loop treated a cancellation as shutdown only once it was ticking; the first iteration, run before the first tick, was not covered. A host stopped while that iteration was still in flight — a test host, a command-line run, a container restarted right after it came up, most likely on a cold start — got an `OperationCanceledException` out of `StopAsync` (with the Postgres backplane: "Query was cancelled", `57014`), which a test host reports as a cleanup failure. The rest of the shutdown was skipped with it: the node stayed registered until its heartbeat lapsed, and the transport was not stopped. A stop during the first iteration is now a shutdown like any other, and the shutdown deregisters the node and stops the transport however the heartbeat loop ended.
