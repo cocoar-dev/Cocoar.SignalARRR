@@ -15,13 +15,17 @@ namespace Cocoar.SignalARRR.Tests;
 /// <summary>
 /// A host can stop a backplane twice at once (#85): the second <c>StopAsync</c> used to find the
 /// heartbeat fields the first had just cleared and threw a NullReferenceException, which a test host
-/// reports as a cleanup failure of the whole test class.
+/// reports as a cleanup failure of the whole test class. And a host can stop it while the very first
+/// heartbeat iteration is still running, which used to throw the cancellation out of <c>StopAsync</c>.
 /// </summary>
 public class BackplaneStopTests {
 
     /// <summary>A backplane without a store; its heartbeat write is slow enough to overlap two stops.</summary>
     private sealed class SlowHeartbeatBackplane : SignalARRRBackplaneBase {
         public int TransportStops;
+        public int NodeCleanups;
+        public bool MaintenanceWaitsForCancellation;
+        public readonly TaskCompletionSource MaintenanceRunning = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly TaskCompletionSource HeartbeatRunning = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public SlowHeartbeatBackplane() : base(
@@ -47,13 +51,22 @@ public class BackplaneStopTests {
             await Task.Delay(100, CancellationToken.None);
         }
 
+        protected override async Task RunMaintenanceAsync(CancellationToken cancellationToken) {
+            if (!MaintenanceWaitsForCancellation) return;
+            MaintenanceRunning.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+
         protected override Task PublishCommandAsync(SignalARRRBackplaneEnvelope envelope) => Task.CompletedTask;
         protected override Task PublishResponseAsync(string targetNodeId, SignalARRRBackplaneEnvelope envelope) => Task.CompletedTask;
         protected override Task StoreRegistrationAsync(SignalARRRConnectionRegistration registration, CancellationToken cancellationToken) => Task.CompletedTask;
         protected override Task<SignalARRRConnectionRegistration?> LoadRegistrationAsync(string connectionId, CancellationToken cancellationToken) => Task.FromResult<SignalARRRConnectionRegistration?>(null);
         protected override Task<bool> IsNodeAliveAsync(string nodeId, CancellationToken cancellationToken) => Task.FromResult(true);
         protected override Task<IReadOnlyList<string>> GetKnownNodeIdsAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
-        protected override Task CleanupNodeAsync(string nodeId, CancellationToken cancellationToken) => Task.CompletedTask;
+        protected override Task CleanupNodeAsync(string nodeId, CancellationToken cancellationToken) {
+            Interlocked.Increment(ref NodeCleanups);
+            return Task.CompletedTask;
+        }
         public override Task<TimeSpan?> PingAsync(CancellationToken cancellationToken = default) => Task.FromResult<TimeSpan?>(TimeSpan.Zero);
         public override Task UnregisterConnectionAsync(string connectionId, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public override Task<IReadOnlyList<SignalARRRConnectionRegistration>> FindConnectionsAsync(
@@ -96,6 +109,20 @@ public class BackplaneStopTests {
         await backplane.StopAsync(CancellationToken.None);
 
         Assert.Equal(2, backplane.TransportStops);
+    }
+
+    [Fact]
+    public async Task A_stop_during_the_first_heartbeat_iteration_completes_the_shutdown() {
+        var backplane = new SlowHeartbeatBackplane { MaintenanceWaitsForCancellation = true };
+        await backplane.StartAsync(CancellationToken.None);
+        await backplane.MaintenanceRunning.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var cleanupsAfterStart = backplane.NodeCleanups;
+
+        await backplane.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(cleanupsAfterStart + 1, backplane.NodeCleanups);
+        Assert.Equal(1, backplane.TransportStops);
+        Assert.False(backplane.HeartbeatLoopFaulted);
     }
 
     [Fact]

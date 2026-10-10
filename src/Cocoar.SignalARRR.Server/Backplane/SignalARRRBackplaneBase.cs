@@ -208,7 +208,15 @@ namespace Cocoar.SignalARRR.Server {
             if (heartbeatCts != null) {
                 await heartbeatCts.CancelAsync().ConfigureAwait(false);
                 if (heartbeatTask != null) {
-                    await heartbeatTask.ConfigureAwait(false);
+                    // However the loop ended, the node is still deregistered and the transport
+                    // still stopped below; shutdown must not throw.
+                    try {
+                        await heartbeatTask.ConfigureAwait(false);
+                    } catch (OperationCanceledException) {
+                        // Shutdown.
+                    } catch (Exception ex) {
+                        _logger.LogWarning(ex, "The heartbeat loop of node {NodeId} ended with an error.", NodeId);
+                    }
                 }
                 heartbeatCts.Dispose();
             }
@@ -725,9 +733,11 @@ namespace Cocoar.SignalARRR.Server {
         private async Task RunHeartbeatLoopAsync(CancellationToken cancellationToken) {
             using var timer = new PeriodicTimer(_heartbeatInterval);
 
-            await RunHeartbeatIterationAsync(cancellationToken).ConfigureAwait(false);
-
             try {
+                // Inside the try: a stop that arrives during the very first iteration is a
+                // shutdown like any other, not a fault of the loop.
+                await RunHeartbeatIterationAsync(cancellationToken).ConfigureAwait(false);
+
                 while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false)) {
                     await RunHeartbeatIterationAsync(cancellationToken).ConfigureAwait(false);
                 }
