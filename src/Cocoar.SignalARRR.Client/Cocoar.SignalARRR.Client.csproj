@@ -6,6 +6,9 @@
     <RootNamespace>Cocoar.SignalARRR.Client</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Trim and AOT analyzers on every net8.0+ target (warnings are errors): the .NET client runs
+         under NativeAOT, and anything new that would break that fails the build here. -->
+    <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">true</IsAotCompatible>
     <!-- The netstandard2.0 source generator is referenced as an assembly (see the ProjectReference
          below) and brings Roslyn's System.Collections.Immutable, which conflicts with net8.0's own.
          The generator is never loaded at runtime, so the conflict is irrelevant. Consumers do not see

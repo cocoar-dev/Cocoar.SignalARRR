@@ -6,6 +6,9 @@
     <RootNamespace>Cocoar.SignalARRR.Common</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Trim and AOT analyzers on every net8.0+ target (warnings are errors): the .NET client runs
+         under NativeAOT, and anything new that would break that fails the build here. -->
+    <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net8.0'))">true</IsAotCompatible>
   </PropertyGroup>
 
   <PropertyGroup>
