@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Cocoar.SignalARRR.Contracts;
 
-// These interfaces must match the namespaces and names used on the server.
-// No [SignalARRRContract] needed — FullFramework client uses DispatchProxy.
+// These interfaces must match the namespaces and names used on the server. As in the .NET client,
+// [SignalARRRContract] has the source generator create their proxies and dispatchers.
 
 namespace Cocoar.SignalARRR.Tests.SharedModels {
+    [SignalARRRContract]
     public interface ITestServerMethods {
         string GetName();
         Task<string> GetNameAsync();
@@ -18,6 +20,7 @@ namespace Cocoar.SignalARRR.Tests.SharedModels {
 }
 
 namespace TestShared {
+    [SignalARRRContract]
     public interface ITestClientMethods {
         void Nix();
         List<string> GetContent(int count);

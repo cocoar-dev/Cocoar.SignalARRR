@@ -6,6 +6,11 @@
     <RootNamespace>Cocoar.SignalARRR.Client.FullFramework</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>annotations</Nullable>
+    <!-- The netstandard2.0 source generator is referenced as an assembly (see the ProjectReference
+         below) and brings Roslyn's own System.Collections.Immutable and System.Memory versions. It
+         is never loaded at runtime, so the conflict is irrelevant; consumers receive the generator
+         as an analyzer, which assembly resolution never touches. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -23,15 +28,19 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
-    <PackageReference Include="Cocoar.Reflectensions" />
-    <PackageReference Include="Cocoar.Reflectensions.Invoke" />
-    <PackageReference Include="System.Reflection.DispatchProxy" />
     <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" />
     <PackageReference Include="System.Threading.Channels" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.ProxyGenerator\Cocoar.SignalARRR.ProxyGenerator.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.Contracts\Cocoar.SignalARRR.Contracts.csproj" />
+    <!-- Proxies and dispatchers are generated, as in the .NET client: the generator reaches
+         consumers as a dependency on the Cocoar.SignalARRR.SourceGenerator package. See
+         Cocoar.SignalARRR.Client.csproj for why it is referenced this way. -->
+    <ProjectReference Include="..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="true" Private="false" PrivateAssets="compile;runtime" />
   </ItemGroup>
 
 </Project>

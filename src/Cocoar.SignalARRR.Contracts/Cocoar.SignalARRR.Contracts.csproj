@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <!-- netstandard2.0 so .NET Framework projects can declare [SignalARRRContract] interfaces too. -->
+    <TargetFrameworks>netstandard2.0;net8.0;net9.0;net10.0</TargetFrameworks>
     <AssemblyName>Cocoar.SignalARRR.Contracts</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Contracts</RootNamespace>
     <LangVersion>latest</LangVersion>
