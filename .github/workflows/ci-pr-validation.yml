@@ -203,6 +203,29 @@ jobs:
           DOTNET_TEST_FILTER: "(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)"
         run: scripts/run-integration-tests.sh
 
+  aot-smoke:
+    name: NativeAOT smoke test (.NET client)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      # Publishes the client with PublishAot and runs it against the IntegrationTestServer. Fails
+      # on a failed step and on any ILC warning raised in a Cocoar.SignalARRR assembly.
+      - name: NativeAOT smoke test
+        run: chmod +x scripts/run-aot-smoke.sh scripts/test-server.sh && scripts/run-aot-smoke.sh
+
   test-fullframework:
     name: Test .NET Framework 4.8 Client
     runs-on: windows-latest

@@ -23,7 +23,12 @@ namespace Microsoft.Extensions.DependencyInjection {
             // JsonProtocolSerializer handles JsonElement natively, and its JSON round-trip
             // fallback works for MessagePack-deserialized values (plain .NET objects) too.
             // SignalR supports both protocols simultaneously — different clients can use different protocols.
-            serviceCollection.AddSingleton<IProtocolSerializer, JsonProtocolSerializer>();
+            // It converts with the hub protocol's JSON options, the ones the arguments were written with.
+            serviceCollection.AddSingleton<IProtocolSerializer>(sp => {
+                var payloadOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.SignalR.JsonHubProtocolOptions>>().Value.PayloadSerializerOptions;
+                SignalARRRJson.AddTo(payloadOptions);
+                return new JsonProtocolSerializer(payloadOptions);
+            });
             serviceCollection.AddSingleton(sp => new ServerPushStreamManager(
                 sp.GetRequiredService<SignalARRRServerOptions>().UploadSlotExpiration));
             serviceCollection.AddSingleton(sp => new ServerStreamManager(

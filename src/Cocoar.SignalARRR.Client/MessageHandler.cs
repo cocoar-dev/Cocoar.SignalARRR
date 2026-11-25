@@ -25,13 +25,11 @@ namespace Cocoar.SignalARRR.Client {
         private readonly ClientConnectionContext _connectionContext;
         private readonly Common.Serialization.IProtocolSerializer _serializer;
         private readonly ILogger _logger;
-        private ISignalARRRMethodsCollection MethodsCollection { get; set; } = new SignalARRRMethodsCollection();
-
         private ISignalARRRInterfaceCollection InterfaceCollection { get; set; } = new SignalARRRInterfaceCollection();
 
-        public MessageHandler(ClientConnectionContext connectionContext, Common.Serialization.IProtocolSerializer? serializer = null, ILogger? logger = null) {
+        public MessageHandler(ClientConnectionContext connectionContext, Common.Serialization.IProtocolSerializer serializer, ILogger? logger = null) {
             _connectionContext = connectionContext;
-            _serializer = serializer ?? new Common.Serialization.JsonProtocolSerializer();
+            _serializer = serializer;
             _logger = logger ?? NullLogger.Instance;
         }
 
@@ -222,23 +220,7 @@ namespace Cocoar.SignalARRR.Client {
 
 
         private Task<object> InvokeAsync(ServerRequestMessage serverRequestMessage) {
-
-            if (serverRequestMessage.Method.Contains("|")) {
-                return InvokeInterfaceMethodAsync(serverRequestMessage);
-            }
-
-            return InvokeMethodAsync(serverRequestMessage);
-        }
-        private async Task<object> InvokeMethodAsync(ServerRequestMessage serverRequestMessage) {
-
-
-
-            var methodCallInfo = MethodsCollection.GetMethodInformations(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
-
-            var instance = methodCallInfo.Factory.DynamicInvoke(_connectionContext.GetHubConnection().GetServiceProvider())!;
-
-            return InvokeMethodInfoAsync(instance, methodCallInfo.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
-
+            return InvokeInterfaceMethodAsync(serverRequestMessage);
         }
 
         private Task<object> InvokeInterfaceMethodAsync(ServerRequestMessage serverRequestMessage) {

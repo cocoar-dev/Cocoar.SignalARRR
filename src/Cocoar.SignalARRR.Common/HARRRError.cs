@@ -65,7 +65,7 @@ namespace Cocoar.SignalARRR.Common {
             }
 
             try {
-                var error = JsonSerializer.Deserialize<HARRRError>(jsonCandidate);
+                var error = JsonSerializer.Deserialize(jsonCandidate, Serialization.SignalARRRJsonContext.Default.HARRRError);
                 // Accepted when it carries actual error content — a versioned envelope, a code, or
                 // a concrete type. A bare "{}" (or unrelated JSON) falls through to the fallbacks.
                 if (error != null && (error.Version >= 1 || !string.IsNullOrEmpty(error.Code) || (!string.IsNullOrEmpty(error.Type) && error.Type != "Error"))) {

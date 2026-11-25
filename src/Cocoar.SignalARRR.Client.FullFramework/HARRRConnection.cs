@@ -78,7 +78,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             var hubProtocol = serviceProvider?.GetService<IHubProtocol>();
             _serializer = hubProtocol?.Name == "messagepack"
                 ? (Common.Serialization.IProtocolSerializer)new Common.Serialization.MessagePackProtocolSerializer()
-                : new Common.Serialization.JsonProtocolSerializer();
+                : new Common.Serialization.JsonProtocolSerializer(JsonPayloadOptions(serviceProvider));
             _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<HARRRConnection>() ?? (ILogger)NullLogger.Instance;
 
             // Native client results — return values are sent back to the server automatically by SignalR
@@ -631,6 +631,17 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         public async Task DisposeAsync() => await _hubConnection.DisposeAsync();
 
         #endregion
+
+        /// <summary>
+        /// The hub protocol's JSON options with SignalARRR's contracts appended — the options the
+        /// arguments were written with, so conversions agree with them.
+        /// </summary>
+        private static System.Text.Json.JsonSerializerOptions JsonPayloadOptions(IServiceProvider serviceProvider) {
+            var options = serviceProvider?.GetService<Microsoft.Extensions.Options.IOptions<JsonHubProtocolOptions>>()?.Value.PayloadSerializerOptions
+                ?? new System.Text.Json.JsonSerializerOptions();
+            Common.Serialization.SignalARRRJson.AddTo(options);
+            return options;
+        }
     }
 
     public class ServerRequestEventArgs : EventArgs {
@@ -639,5 +650,6 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         public ServerRequestEventArgs(ServerRequestMessage serverRequestMessage) {
             ServerRequestMessage = serverRequestMessage;
         }
+
     }
 }
