@@ -4,7 +4,8 @@ namespace Cocoar.SignalARRR.Common.Serialization {
     /// <summary>
     /// Abstraction for protocol-level serialization/deserialization.
     /// Handles conversion of wire protocol values to typed objects.
-    /// Implementations exist for JSON (default) and MessagePack.
+    /// <see cref="JsonProtocolSerializer"/> handles both hub protocols: JSON values directly,
+    /// MessagePack values through a JSON round-trip.
     /// </summary>
     public interface IProtocolSerializer {
 
