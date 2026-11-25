@@ -92,8 +92,8 @@ namespace Cocoar.SignalARRR.Common {
                 type => new ClientInterfaceMethodsCache(factory, type, implementationType, _slotPolicy),
                 (type, del) => new ClientInterfaceMethodsCache(factory, type, implementationType, _slotPolicy));
 
-            // Both proxy flavours put the interface's FullName on the wire (the source generator via
-            // its Prefix constant, the DispatchProxy directly). The assembly-qualified name is
+            // Generated proxies put the interface's FullName on the wire (via their Prefix constant,
+            // unless [MessageName] says otherwise). The assembly-qualified name is
             // indexed as well so a caller that sends the more specific form still resolves.
             foreach (var wireName in GetWireNames(interfaceType)) {
                 // Re-registering the same interface (e.g. with a new factory) replaces its cache;

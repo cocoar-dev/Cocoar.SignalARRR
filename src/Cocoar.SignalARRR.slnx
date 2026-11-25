@@ -7,10 +7,8 @@
   <Project Path="Cocoar.SignalARRR.ProxyGenerator/Cocoar.SignalARRR.ProxyGenerator.csproj" />
   <Project Path="Cocoar.SignalARRR.Contracts/Cocoar.SignalARRR.Contracts.csproj" />
   <Project Path="Cocoar.SignalARRR.SourceGenerator/Cocoar.SignalARRR.SourceGenerator.csproj" />
-  <Project Path="Cocoar.SignalARRR.DynamicProxy/Cocoar.SignalARRR.DynamicProxy.csproj" />
   <Project Path="tests/Cocoar.SignalARRR.Tests.SharedModels/Cocoar.SignalARRR.Tests.SharedModels.csproj" />
   <Project Path="tests/Cocoar.SignalARRR.Tests/Cocoar.SignalARRR.Tests.csproj" />
   <Project Path="tests/Cocoar.SignalARRR.IntegrationTests/Cocoar.SignalARRR.IntegrationTests.csproj" />
-  <Project Path="tests/Cocoar.SignalARRR.DynamicProxy.Tests/Cocoar.SignalARRR.DynamicProxy.Tests.csproj" />
   <Project Path="benchmarks/Cocoar.SignalARRR.Benchmarks/Cocoar.SignalARRR.Benchmarks.csproj" />
 </Solution>

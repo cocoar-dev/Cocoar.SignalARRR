@@ -104,8 +104,8 @@ namespace Microsoft.Extensions.DependencyInjection {
         /// registered exactly like one written as a contract, and each of its members is callable
         /// by any client that can reach the hub. <c>[SignalARRRContract]</c> does not gate this and
         /// is not checked here: it marks an interface for the source generator, and gating on it
-        /// would break the DynamicProxy, .NET Framework, TypeScript and Swift clients, which
-        /// legitimately use contracts that carry no attribute. Gating would also fail silently —
+        /// would break the TypeScript, Swift and Kotlin clients, which legitimately call contracts
+        /// that carry no attribute. Gating would also fail silently —
         /// an unregistered interface only shows up as "not registered" at call time.
         /// </para>
         /// <para>
