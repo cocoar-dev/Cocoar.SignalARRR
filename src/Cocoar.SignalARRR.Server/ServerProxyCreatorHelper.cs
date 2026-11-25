@@ -30,6 +30,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override async Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            ServerToClientGenericArguments.Reject(methodName, genericArguments);
 
             using var registrations = new CancellationRegistrations();
             var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments, registrations).ToList();
@@ -37,7 +38,6 @@ namespace Cocoar.SignalARRR.Server {
             var msg = new ServerRequestMessage(methodName, preparedArguments);
             registrations.Add(RegisterCallCancellation(msg, arguments, cancellationToken));
 
-            msg.GenericArguments = genericArguments;
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
@@ -66,12 +66,12 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override async Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            ServerToClientGenericArguments.Reject(methodName, genericArguments);
             using var registrations = new CancellationRegistrations();
             var preparedArguments = _methodArgumentPreparer.PrepareArguments(arguments, registrations).ToList();
 
             var msg = new ServerRequestMessage(methodName, preparedArguments);
             registrations.Add(RegisterCallCancellation(msg, arguments, cancellationToken));
-            msg.GenericArguments = genericArguments;
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
             var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
@@ -85,6 +85,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override IAsyncEnumerable<TResult> StreamAsync<TResult>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
+            ServerToClientGenericArguments.Reject(methodName, genericArguments);
             // Not a `using`: unlike an invoke or a send, this method returns before the work is over.
             // The callbacks have to stay hooked for as long as the stream can still be cancelled, so
             // the enumerable below owns them and unhooks on completion.
@@ -93,7 +94,6 @@ namespace Cocoar.SignalARRR.Server {
 
             var streamId = Guid.NewGuid();
             var msg = new ServerRequestMessage(methodName, preparedArguments);
-            msg.GenericArguments = genericArguments;
             msg.StreamId = streamId;
 
             registrations.Add(RegisterCallCancellation(msg, arguments, cancellationToken));

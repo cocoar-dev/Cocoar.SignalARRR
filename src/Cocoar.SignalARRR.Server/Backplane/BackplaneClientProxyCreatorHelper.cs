@@ -52,9 +52,8 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private static ServerRequestMessage CreateMessage(string methodName, IEnumerable<object> arguments, string[] genericArguments) {
-            var message = new ServerRequestMessage(methodName, arguments.ToList()).WithTraceContext();
-            message.GenericArguments = genericArguments;
-            return message;
+            ServerToClientGenericArguments.Reject(methodName, genericArguments);
+            return new ServerRequestMessage(methodName, arguments.ToList()).WithTraceContext();
         }
 
         private static void ValidateSupported(string methodName, IEnumerable<object> arguments, Type? resultType) {
