@@ -33,8 +33,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cocoar.Reflectensions" />
-    <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>

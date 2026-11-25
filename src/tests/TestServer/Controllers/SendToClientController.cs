@@ -75,7 +75,7 @@ namespace TestServer.Controllers {
             if (cl == null)
                 return NotFound();
 
-            var res = cl.Invoke<DateTime>("test");
+            var res = cl.GetById("test");
 
 
             return Ok(res);

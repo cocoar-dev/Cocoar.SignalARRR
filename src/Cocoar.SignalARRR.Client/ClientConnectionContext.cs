@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common.Serialization;
@@ -37,8 +37,10 @@ namespace Cocoar.SignalARRR.Client {
 
             AuthorizationProvider = options?.ResolveMessageCredential() ?? (() => Task.FromResult<string>(null!));
             var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger<MessageHandler>();
-            MessageHandler = new MessageHandler(this, new JsonProtocolSerializer(JsonPayloadOptions), logger);
+            MessageHandler = new MessageHandler(this, logger);
         }
+
+        public T? GetService<T>() where T : class => _serviceProvider.GetService<T>();
 
         public HubConnection GetHubConnection() {
             return _serviceProvider.GetRequiredService<HubConnection>();

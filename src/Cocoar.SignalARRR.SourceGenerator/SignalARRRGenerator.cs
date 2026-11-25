@@ -6,6 +6,7 @@ using Cocoar.SignalARRR.SourceGenerator.Emitters;
 using Cocoar.SignalARRR.SourceGenerator.Helpers;
 using Cocoar.SignalARRR.SourceGenerator.Model;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Cocoar.SignalARRR.SourceGenerator;
@@ -31,11 +32,34 @@ public class SignalARRRGenerator : IIncrementalGenerator {
             foreach (var info in interfaces) {
                 var proxySource = ProxyEmitter.Emit(info);
                 spc.AddSource($"{info.InterfaceName}.SignalARRRProxy.g.cs", proxySource);
+                spc.AddSource($"{info.InterfaceName}.SignalARRRDispatcher.g.cs", DispatcherEmitter.Emit(info));
             }
 
             var registrationSource = RegistrationEmitter.Emit(interfaces.ToList());
             if (!string.IsNullOrEmpty(registrationSource)) {
                 spc.AddSource("SignalARRRProxyRegistration.g.cs", registrationSource);
+            }
+        });
+
+        // Targets without ModuleInitializerAttribute (netstandard2.0, .NET Framework) get an internal
+        // copy: the compiler recognizes the attribute by name, and every CLR runs module
+        // initializers. Without it the registrations below would not compile there.
+        var needsModuleInitializerPolyfill = context.CompilationProvider.Select(static (compilation, _) =>
+            NeedsModuleInitializerPolyfill(compilation));
+        context.RegisterSourceOutput(needsModuleInitializerPolyfill, static (spc, needed) => {
+            if (needed) {
+                spc.AddSource("SignalARRRModuleInitializerAttribute.g.cs", RegistrationEmitter.ModuleInitializerPolyfill);
+            }
+        });
+
+        // The generated code uses C# 10 syntax. A .NET Framework project defaults to C# 7.3 and
+        // would otherwise fail with a pile of syntax errors inside generated files.
+        var languageVersion = context.ParseOptionsProvider.Select(static (options, _) =>
+            options is CSharpParseOptions csharp ? (int)csharp.LanguageVersion : int.MaxValue);
+        context.RegisterSourceOutput(languageVersion.Combine(collected), static (spc, pair) => {
+            var (version, interfaces) = pair;
+            if (!interfaces.IsDefaultOrEmpty && version < (int)LanguageVersion.CSharp10) {
+                spc.ReportDiagnostic(Diagnostic.Create(Diagnostics.LanguageVersionTooLow, Location.None, ((LanguageVersion)version).ToDisplayString()));
             }
         });
 
@@ -74,6 +98,7 @@ public class SignalARRRGenerator : IIncrementalGenerator {
 
                 foreach (var info in results) {
                     spc.AddSource($"{info.InterfaceName}.Ref.SignalARRRProxy.g.cs", ProxyEmitter.Emit(info));
+                    spc.AddSource($"{info.InterfaceName}.Ref.SignalARRRDispatcher.g.cs", DispatcherEmitter.Emit(info));
                 }
 
                 spc.AddSource("SignalARRRProxyRegistration.Ref.g.cs", RegistrationEmitter.EmitReferenced(results));
@@ -102,12 +127,14 @@ public class SignalARRRGenerator : IIncrementalGenerator {
             ? interfaceName.Substring(1) + "Proxy"
             : interfaceName + "Proxy";
 
+        var dispatcherClassName = proxyClassName.Substring(0, proxyClassName.Length - "Proxy".Length) + "Dispatcher";
+
         var methods = interfaceSymbol.GetAllInterfaceMethods()
-            .Select(m => ExtractMethodInfo(m, ct))
+            .Select(m => ExtractMethodInfo(m.Method, m.IsInherited, ct))
             .ToArray();
 
         return new ContractInterfaceInfo(
-            ns, interfaceName, fullName, MessageName(interfaceSymbol) ?? fullName, proxyClassName,
+            ns, interfaceName, fullName, MessageName(interfaceSymbol) ?? fullName, proxyClassName, dispatcherClassName,
             new EquatableArray<ContractMethodInfo>(methods));
     }
 
@@ -142,6 +169,20 @@ public class SignalARRRGenerator : IIncrementalGenerator {
         foreach (var childNs in ns.GetNamespaceMembers()) {
             ScanNamespace(childNs, assembly, compilation, results, exclude);
         }
+    }
+
+    private static bool NeedsModuleInitializerPolyfill(Compilation compilation) {
+        var attribute = compilation.GetTypeByMetadataName("System.Runtime.CompilerServices.ModuleInitializerAttribute");
+        if (attribute != null && compilation.IsSymbolAccessibleWithin(attribute, compilation.Assembly)) {
+            return false;
+        }
+
+        // Only where SignalARRR's generated registrations can appear at all.
+        foreach (var reference in compilation.ReferencedAssemblyNames) {
+            if (reference.Name == "Cocoar.SignalARRR.ProxyGenerator") return true;
+        }
+
+        return false;
     }
 
     private static bool HasVisibleProxy(IAssemblySymbol assembly, Compilation compilation, ContractInterfaceInfo info) {
@@ -184,7 +225,7 @@ public class SignalARRRGenerator : IIncrementalGenerator {
         return null;
     }
 
-    private static ContractMethodInfo ExtractMethodInfo(IMethodSymbol method, CancellationToken ct) {
+    private static ContractMethodInfo ExtractMethodInfo(IMethodSymbol method, bool isInherited, CancellationToken ct) {
         ct.ThrowIfCancellationRequested();
 
         var (category, elementType) = ReturnTypeClassifier.Classify(method.ReturnType);
@@ -204,6 +245,8 @@ public class SignalARRRGenerator : IIncrementalGenerator {
             returnTypeFullName: method.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             elementTypeFullName: elementType,
             parameters: new EquatableArray<ContractParameterInfo>(parameters),
-            typeParameterNames: new EquatableArray<string>(typeParameterNames));
+            typeParameterNames: new EquatableArray<string>(typeParameterNames),
+            isInherited: isInherited,
+            declaringInterface: method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
     }
 }

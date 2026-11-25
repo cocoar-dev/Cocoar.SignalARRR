@@ -939,7 +939,6 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             public SemaphoreSlim Received { get; } = new SemaphoreSlim(0);
 
             public void Nix() => Received.Release();
-            public T Invoke<T>(string command, System.Collections.Generic.Dictionary<string, object>? variables = null) => default!;
             public System.Collections.Generic.List<string> GetContent(int count) => new System.Collections.Generic.List<string>();
             public string GetById(string id) => id;
             public string GetByGenericId(Guid id) => id.ToString();

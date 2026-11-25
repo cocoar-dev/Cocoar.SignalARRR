@@ -58,7 +58,7 @@ await Step("StartAsync", async () => { await c.StartAsync(); return c.Connection
 var typed = c.GetTypedMethods<ITestServerMethods>();
 await Step("Proxy GetNameAsync (string)", async () => {
     var name = await typed.GetNameAsync();
-    Expect(name == "MyName", $"expected 'MyName', got '{name}'");
+    Expect(name == "MyNameAsync", $"expected 'MyNameAsync', got '{name}'");
     return name;
 });
 await Step("Proxy GetGuidAsync (Guid)", async () => {

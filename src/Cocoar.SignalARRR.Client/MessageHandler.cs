@@ -1,35 +1,32 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions.ExtensionMethods;
-using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Client.ExtensionMethods;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
-using Cocoar.SignalARRR.Common.Interfaces;
+using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
+using Cocoar.SignalARRR.ProxyGenerator;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.SignalR.Protocol;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cocoar.SignalARRR.Client {
     internal class MessageHandler {
         private readonly ClientConnectionContext _connectionContext;
-        private readonly Common.Serialization.IProtocolSerializer _serializer;
         private readonly ILogger _logger;
-        private ISignalARRRInterfaceCollection InterfaceCollection { get; set; } = new SignalARRRInterfaceCollection();
 
-        public MessageHandler(ClientConnectionContext connectionContext, Common.Serialization.IProtocolSerializer serializer, ILogger? logger = null) {
+        public MessageHandler(ClientConnectionContext connectionContext, ILogger? logger = null) {
             _connectionContext = connectionContext;
-            _serializer = serializer;
             _logger = logger ?? NullLogger.Instance;
         }
 
@@ -48,7 +45,6 @@ namespace Cocoar.SignalARRR.Client {
             });
 
         public async Task<object?> InvokeServerRequest(ServerRequestMessage message) {
-            message = PrepareServerRequestMessage(message);
             using var logScope = BeginServerRequestLogScope(message);
             using var activity = SignalARRRClientTelemetry.StartIncomingCall(message);
             try {
@@ -116,8 +112,7 @@ namespace Cocoar.SignalARRR.Client {
         public async Task InvokeServerMessage(ServerRequestMessage message) {
 
             try {
-                message = PrepareServerRequestMessage(message);
-                using var logScope = BeginServerRequestLogScope(message);
+                    using var logScope = BeginServerRequestLogScope(message);
                 using var activity = SignalARRRClientTelemetry.StartIncomingCall(message);
                 try {
                     if (message.StreamId.HasValue) {
@@ -152,91 +147,135 @@ namespace Cocoar.SignalARRR.Client {
             }
         }
 
-        private static async Task StreamResultToServer(HubConnection hubConnection, Guid streamId, object result) {
+        private static async Task StreamResultToServer(HubConnection hubConnection, Guid streamId, object? result) {
             if (result == null) return;
 
-            // Try to enumerate as IAsyncEnumerable<T> using reflection-free helper
-            var enumerateMethod = typeof(MessageHandler)
-                .GetMethod(nameof(EnumerateAsyncEnumerable), BindingFlags.NonPublic | BindingFlags.Static);
-
-            // Find the IAsyncEnumerable<T> interface to get T
-            var asyncEnumInterface = result.GetType().GetInterfaces()
-                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
-
-            if (asyncEnumInterface == null && result.GetType().IsGenericType && result.GetType().GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>)) {
-                asyncEnumInterface = result.GetType();
-            }
-
-            if (asyncEnumInterface != null) {
-                var elementType = asyncEnumInterface.GetGenericArguments()[0];
-                var genericMethod = enumerateMethod!.MakeGenericMethod(elementType);
-                await (Task)genericMethod.Invoke(null, new object[] { hubConnection, streamId, result })!;
+            if (result is IStreamingResult streaming) {
+                // The generated dispatcher knows the element type; no reflection to find it.
+                await streaming.ForEachAsync(
+                    item => hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object?[] { streamId, item }),
+                    CancellationToken.None);
             } else {
                 // Single result — send as one item
                 await hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, result });
             }
         }
 
-        private static async Task EnumerateAsyncEnumerable<T>(HubConnection hubConnection, Guid streamId, IAsyncEnumerable<T> source) {
-            await foreach (var item in source) {
-                await hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, item! });
+        /// <summary>One registered contract: its generated dispatcher and where the implementation comes from.</summary>
+        private sealed class Registration {
+            public Registration(ContractDispatcher dispatcher, Func<IServiceProvider, object> factory) {
+                Dispatcher = dispatcher;
+                Factory = factory;
+            }
+
+            public ContractDispatcher Dispatcher { get; }
+            public Func<IServiceProvider, object> Factory { get; }
+        }
+
+        /// <summary>
+        /// The registered contracts by the names that may appear on the wire. This index is the
+        /// allow-list: a call to anything not registered here fails as not found.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, Registration> _registrations =
+            new ConcurrentDictionary<string, Registration>(StringComparer.Ordinal);
+
+        public void RegisterInterface<TInterface>(Func<IServiceProvider, TInterface> factory) where TInterface : class {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+
+            var dispatcher = DispatcherRegistry.Find<TInterface>()
+                ?? throw new InvalidOperationException(
+                    $"'{typeof(TInterface).FullName}' has no generated dispatcher, so the client cannot receive calls on it. " +
+                    "Mark the interface with [SignalARRRContract] and make sure the project that declares or uses it references Cocoar.SignalARRR.Client (or the source generator).");
+
+            if (dispatcher.UnsupportedReason is { } reason) {
+                throw new InvalidOperationException(reason);
+            }
+
+            var registration = new Registration(dispatcher, sp => factory(sp));
+            foreach (var wireName in GetWireNames(dispatcher)) {
+                // Re-registering the same interface (e.g. with a new factory) replaces it; a
+                // different interface under the same wire name would silently take over every call
+                // of the first one, so that fails here instead.
+                if (_registrations.TryGetValue(wireName, out var existing) && existing.Dispatcher.ContractType != dispatcher.ContractType) {
+                    throw new InvalidOperationException(
+                        $"Cannot register interface '{dispatcher.ContractType.AssemblyQualifiedName}': " +
+                        $"'{existing.Dispatcher.ContractType.AssemblyQualifiedName}' is already registered under the wire name '{wireName}'.");
+                }
+
+                _registrations[wireName] = registration;
             }
         }
 
+        private static IEnumerable<string> GetWireNames(ContractDispatcher dispatcher) {
+            yield return dispatcher.WireName;
 
-        public void RegisterInterface<TInterface, TClass>() where TClass : class, TInterface {
-            InterfaceCollection.RegisterInterface<TInterface, TClass>();
-        }
-        public void RegisterInterface<TInterface, TClass>(TClass instance) where TClass : class, TInterface {
-
-            InterfaceCollection.RegisterInterface<TInterface, TClass>(instance);
-        }
-
-        public void RegisterInterface<TInterface, TClass>(Func<IServiceProvider, TClass> factory)
-            where TClass : class, TInterface {
-
-            InterfaceCollection.RegisterInterface<TInterface, TClass>(factory);
+            // A declared [MessageName] replaces the type's identity on the wire. Without one, the
+            // assembly-qualified name is accepted as well, as it always was.
+            if (dispatcher.WireName == dispatcher.ContractType.FullName && dispatcher.ContractType.AssemblyQualifiedName is { } assemblyQualifiedName) {
+                yield return assemblyQualifiedName;
+            }
         }
 
+        /// <summary>
+        /// Fails when the hub protocol's JSON options cannot serialize a type a registered contract
+        /// sends or receives, naming every one of them.
+        /// </summary>
+        /// <remarks>
+        /// Only where reflection-based JSON is off (NativeAOT, or an app that switched it off):
+        /// otherwise reflection covers whatever the app did not declare. Checked at start so a
+        /// missing type surfaces at once, not as a lost push or a failed call much later.
+        /// </remarks>
+        internal void EnsureWireTypesSerializable() {
+            if (JsonSerializer.IsReflectionEnabledByDefault) return;
 
-        public void RegisterInterface(Type interfaceType, Type instanceType) {
+            var protocol = _connectionContext.GetService<IHubProtocol>();
+            if (protocol != null && protocol.Name != "json") return;
 
-            InterfaceCollection.RegisterInterface(interfaceType, instanceType);
+            var options = _connectionContext.JsonPayloadOptions;
+            var missing = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var registration in new HashSet<Registration>(_registrations.Values)) {
+                foreach (var type in registration.Dispatcher.WireTypes) {
+                    if (!options.TryGetTypeInfo(type, out _)) {
+                        missing.Add($"{type.FullName} (used by {registration.Dispatcher.ContractType.FullName})");
+                    }
+                }
+            }
+
+            if (missing.Count == 0) return;
+
+            var message = new StringBuilder("These types cross the wire but the hub protocol's JSON options have no contract for them, and reflection-based JSON is off:");
+            foreach (var entry in missing) {
+                message.Append(Environment.NewLine).Append("  - ").Append(entry);
+            }
+            message.Append(Environment.NewLine)
+                .Append("Add them to your JsonSerializerContext ([JsonSerializable(typeof(...))]) and insert it into PayloadSerializerOptions.TypeInfoResolverChain in AddJsonProtocol.");
+            throw new InvalidOperationException(message.ToString());
         }
 
-        public void RegisterInterface(Type interfaceType, object instance) {
-            InterfaceCollection.RegisterInterface(interfaceType, instance);
-        }
+        private async Task<object?> InvokeAsync(ServerRequestMessage message) {
 
-        public void RegisterInterface(Type interfaceType, Func<IServiceProvider, object> factory) {
-            InterfaceCollection.RegisterInterface(interfaceType, factory);
-        }
+            var separator = message.Method.IndexOf(WireName.Separator);
+            if (separator < 0) {
+                throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound, $"Method '{message.Method}' not found!");
+            }
 
+            var interfaceName = message.Method.Substring(0, separator);
+            var methodName = message.Method.Substring(separator + 1);
 
+            if (!_registrations.TryGetValue(interfaceName, out var registration)) {
+                throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound, $"Interface '{interfaceName}' is not registered.");
+            }
 
+            if (message.GenericArguments is { Length: > 0 }) {
+                // Older servers can still send these; resolving a type argument by name needs reflection.
+                throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound,
+                    $"Method '{methodName}' was called with generic arguments, which a client does not support.");
+            }
 
-
-
-
-
-        private Task<object> InvokeAsync(ServerRequestMessage serverRequestMessage) {
-            return InvokeInterfaceMethodAsync(serverRequestMessage);
-        }
-
-        private Task<object> InvokeInterfaceMethodAsync(ServerRequestMessage serverRequestMessage) {
-
-            var invokeInfos = InterfaceCollection.GetInvokeInformation(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
-            var instance = invokeInfos.Factory.DynamicInvoke(_connectionContext.GetHubConnection().GetServiceProvider())!;
-            return InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
-
-        }
-
-
-        private async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, Guid? cancellationTokenGuid) {
+            var instance = registration.Factory(_connectionContext.GetHubConnection().GetServiceProvider());
 
             // Every linked source this invocation creates, so the finally can let go of all of
-            // them: the call-level one below, plus one per CancellationToken parameter bound in
-            // BuildExecuteMethodParameters.
+            // them: the call-level one below, plus one per CancellationToken parameter.
             var ownedTokenIds = new List<Guid>(1);
             var ownershipTransferred = false;
 
@@ -244,53 +283,94 @@ namespace Cocoar.SignalARRR.Client {
                 // Connection lifetime rather than None: the handler notices its caller's world ending
                 // even when the server never sends an explicit cancellation.
                 CancellationToken cancellationToken = _connectionLifetime.Token;
-                if (cancellationTokenGuid.HasValue) {
+                if (message.CancellationGuid.HasValue) {
                     var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
-                    cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cancellation);
-                    ownedTokenIds.Add(cancellationTokenGuid.Value);
+                    cancellationTokenSources.TryAdd(message.CancellationGuid.Value, cancellation);
+                    ownedTokenIds.Add(message.CancellationGuid.Value);
                     cancellationToken = cancellation.Token;
                 }
 
+                var context = new ClientCallContext(this, cancellationToken, ownedTokenIds);
+                var arguments = new JsonArgumentReader(message.Arguments, _connectionContext.JsonPayloadOptions, context);
 
-                var parameters = await BuildExecuteMethodParameters(methodInfo, arguments, cancellationToken, ownedTokenIds);
-
-                if (genericArguments?.Any() == true) {
-
-                    var arrType = genericArguments.Select(TypeHelper.FindType).ToList();
-                    methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray()!);
+                object? result;
+                try {
+                    result = await registration.Dispatcher.InvokeUntypedAsync(instance, methodName, arguments);
+                } catch (DispatchException dispatchException) {
+                    throw new MethodResolutionException(dispatchException.Code, dispatchException.Message);
                 }
 
-                object? result = null;
-                if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
-                    await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
-                } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
-                    // IAsyncEnumerable<T> — invoke directly, don't try to await as Task
-                    result = methodInfo.Invoke(instance, parameters);
-
+                if (result is IStreamingResult) {
                     // The stream is consumed after this method returns, so its token has to outlive
                     // us. Cleaning up here would hand the caller an already-cancelled enumeration.
-                    // These sources are released when the connection ends, as they were before.
+                    // These sources are released when the connection ends.
                     ownershipTransferred = true;
-                } else {
-                    result = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
                 }
 
-                return result!;
+                return result;
             }
             finally {
                 // Dispose, not merely remove. CreateLinkedTokenSource registers a callback on the
                 // parent, and the parent here is the connection lifetime — so a source that is
                 // dropped without being disposed leaves that registration attached for as long as
                 // the connection lives. On a long-lived connection taking a server push every few
-                // seconds, that grows without bound and nothing fails while it happens. The
-                // per-parameter sources were worse: nothing removed them at all unless the server
-                // happened to cancel them.
+                // seconds, that grows without bound and nothing fails while it happens.
                 if (!ownershipTransferred) {
                     foreach (var id in ownedTokenIds) {
                         if (cancellationTokenSources.TryRemove(id, out var cts)) {
                             cts.Dispose();
                         }
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Resolves the slots of one call that the connection, not JSON, has to fill: tokens the
+        /// server can cancel, and streams that travel through file transfer.
+        /// </summary>
+        private sealed class ClientCallContext : CallContext {
+            private readonly MessageHandler _handler;
+            private readonly ICollection<Guid> _ownedTokenIds;
+
+            public ClientCallContext(MessageHandler handler, CancellationToken callCancellation, ICollection<Guid> ownedTokenIds) {
+                _handler = handler;
+                CallCancellation = callCancellation;
+                _ownedTokenIds = ownedTokenIds;
+            }
+
+            public override CancellationToken CallCancellation { get; }
+
+            public override CancellationToken ResolveCancellationToken(ArgumentReader reader, int index) {
+                var reference = index < reader.Count ? TryRead<CancellationTokenReference>(reader, index) : null;
+                if (reference == null || reference.Id == Guid.Empty) {
+                    return CallCancellation;
+                }
+
+                // Linked to the connection lifetime: a per-token cancellation the server can no longer
+                // deliver (the connection is gone) must still fire.
+                var cts = CancellationTokenSource.CreateLinkedTokenSource(_handler._connectionLifetime.Token);
+                _handler.cancellationTokenSources.TryAdd(reference.Id, cts);
+                _ownedTokenIds.Add(reference.Id);
+                return cts.Token;
+            }
+
+            public override async Task<Stream?> ResolveStreamAsync(ArgumentReader reader, int index) {
+                if (index >= reader.Count) return null;
+                if (reader.GetRaw(index) is Stream stream) return stream;
+
+                var reference = TryRead<StreamReference>(reader, index);
+                if (reference == null || string.IsNullOrEmpty(reference.Uri)) return null;
+
+                return await new StreamReferenceResolver(reference, _handler._connectionContext).ProcessStreamArgument();
+            }
+
+            private static T? TryRead<T>(ArgumentReader reader, int index) where T : class {
+                try {
+                    return reader.Read<T>(index);
+                } catch (Exception ex) when (ex is JsonException || ex is InvalidOperationException || ex is NotSupportedException) {
+                    // Not a reference: an ordinary value in a slot the contract declares as token or stream.
+                    return null;
                 }
             }
         }
@@ -319,114 +399,6 @@ namespace Cocoar.SignalARRR.Client {
             var previous = Interlocked.Exchange(ref _connectionLifetime, new CancellationTokenSource());
             previous.Cancel();
             previous.Dispose();
-        }
-
-        // GetParameters() clones a fresh ParameterInfo[] on every call; the registry's MethodInfo
-        // instances live for the process, so the clone is cached per method (P-6).
-        private static readonly ConcurrentDictionary<MethodInfo, ParameterInfo[]> ParameterCache = new();
-
-        private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default, ICollection<Guid>? ownedTokenIds = null) {
-
-            int paramsPosition = 0;
-            var @params = parameters as IList<object> ?? parameters.ToList();
-
-            var methodParameters = ParameterCache.GetOrAdd(methodInfo, static m => m.GetParameters());
-            var bound = new object[methodParameters.Length];
-
-            for (var i = 0; i < methodParameters.Length; i++) {
-                var parameterInfo = methodParameters[i];
-                // `<=`, and before the index. The guard used to read `@params.Count < paramsPosition`
-                // *and* sat above the access anyway, so it could never fire: the position advances by
-                // one per parameter, so it reaches Count but never passes it. The bare index threw an
-                // IndexOutOfRangeException with nothing to say about which parameter was missing.
-                if (paramsPosition >= @params.Count) {
-                    throw new ArgumentException(
-                        $"Parameter '{parameterInfo.Name}' (position {paramsPosition}) of '{methodInfo.Name}': " +
-                        $"not enough arguments provided. Expected at least {paramsPosition + 1}, got {@params.Count}.");
-                }
-
-                var par = @params[paramsPosition];
-                paramsPosition++;
-
-                if (parameterInfo.ParameterType == typeof(CancellationToken)) {
-                    // Check if the argument is a CancellationTokenReference (per-parameter cancellation from server)
-                    var tokenFromRef = TryGetCancellationTokenFromReference(par, ownedTokenIds);
-                    bound[i] = tokenFromRef ?? cancellation;
-                    continue;
-                }
-
-                par = await PrepareArgumentForType(parameterInfo.ParameterType, par);
-
-                if (par == null) {
-                    bound[i] = null!;
-                    continue;
-                }
-
-                if (parameterInfo.ParameterType != par.GetType()) {
-                    if (par.Reflect().TryTo(parameterInfo.ParameterType, out var pt)) {
-                        par = pt;
-                    } else {
-                        par = _serializer.ConvertTo(par, parameterInfo.ParameterType);
-                    }
-                }
-
-                bound[i] = par!;
-            }
-
-            return bound;
-        }
-
-        private async Task<object?> PrepareArgumentForType(Type type, object argument) {
-
-            if (argument == null) {
-                if (!type.IsValueType || type.IsNullableType()) {
-                    // Reference types (string, classes, etc.) and Nullable<T> accept null
-                    return null;
-                } else {
-                    // Non-nullable value types (int, Guid, etc.) get their default value
-                    return Activator.CreateInstance(type);
-                }
-            }
-
-            if (type == typeof(Stream)) {
-                var streamReference = _serializer.TryConvertTo<StreamReference>(argument);
-                if (streamReference != null && !string.IsNullOrEmpty(streamReference.Uri)) {
-                    var resolver = new StreamReferenceResolver(streamReference, _connectionContext);
-                    return await resolver.ProcessStreamArgument();
-                }
-            }
-
-            return argument;
-        }
-
-
-
-
-        private ServerRequestMessage PrepareServerRequestMessage(ServerRequestMessage message) {
-            // Re-deserialize to ensure consistent typing (e.g., JsonElement → typed objects)
-            var converted = _serializer.TryConvertTo<ServerRequestMessage>(message);
-            return converted ?? message;
-        }
-
-        private static bool IsAsyncEnumerableType(Type type) {
-            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
-                return true;
-            return type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
-        }
-
-        private CancellationToken? TryGetCancellationTokenFromReference(object argument, ICollection<Guid>? ownedTokenIds = null) {
-            if (argument == null) return null;
-
-            var reference = _serializer.TryConvertTo<CancellationTokenReference>(argument);
-
-            if (reference == null || reference.Id == Guid.Empty) return null;
-
-            // Linked to the connection lifetime: a per-token cancellation the server can no longer
-            // deliver (the connection is gone) must still fire.
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
-            cancellationTokenSources.TryAdd(reference.Id, cts);
-            ownedTokenIds?.Add(reference.Id);
-            return cts.Token;
         }
 
         public void CancelTokenFromServer(ServerRequestMessage requestMessage) {

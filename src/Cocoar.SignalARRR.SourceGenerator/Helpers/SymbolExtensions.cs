@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Cocoar.SignalARRR.SourceGenerator.Model;
 using Microsoft.CodeAnalysis;
@@ -9,13 +9,14 @@ internal static class SymbolExtensions {
     public static string ToFullyQualifiedString(this ITypeSymbol symbol) =>
         symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-    public static IEnumerable<IMethodSymbol> GetAllInterfaceMethods(this INamedTypeSymbol interfaceSymbol) {
+    /// <summary>The contract's own methods first, then those of every interface it inherits.</summary>
+    public static IEnumerable<(IMethodSymbol Method, bool IsInherited)> GetAllInterfaceMethods(this INamedTypeSymbol interfaceSymbol) {
         foreach (var method in interfaceSymbol.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary))
-            yield return method;
+            yield return (method, false);
 
         foreach (var baseInterface in interfaceSymbol.AllInterfaces) {
             foreach (var method in baseInterface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary))
-                yield return method;
+                yield return (method, true);
         }
     }
 
@@ -28,7 +29,9 @@ internal static class SymbolExtensions {
             defaultValueLiteral = FormatDefaultValue(parameter);
         }
 
-        var typeFullName = parameter.Type.ToFullyQualifiedString();
+        var clrTypeName = parameter.Type.ToFullyQualifiedString();
+        var isStream = clrTypeName == "global::System.IO.Stream";
+        var typeFullName = clrTypeName;
         if (parameter.NullableAnnotation == NullableAnnotation.Annotated
             && !typeFullName.EndsWith("?"))
             typeFullName += "?";
@@ -38,7 +41,9 @@ internal static class SymbolExtensions {
             name: parameter.Name,
             hasDefaultValue: parameter.HasExplicitDefaultValue,
             defaultValueLiteral: defaultValueLiteral,
-            isCancellationToken: isCancellationToken);
+            isCancellationToken: isCancellationToken,
+            clrTypeName: clrTypeName,
+            isStream: isStream);
     }
 
     private static string FormatDefaultValue(IParameterSymbol parameter) {
