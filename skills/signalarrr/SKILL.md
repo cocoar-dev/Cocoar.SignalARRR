@@ -10,7 +10,7 @@ description: >
   PostgreSQL backplane, or cluster subjects.
 metadata:
   author: Bernhard Windisch
-  version: "5.1"
+  version: "6.0"
   source: https://docs.cocoar.dev/signalarrr/
 ---
 
@@ -29,10 +29,9 @@ bottom says which page answers what.
 | `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | Multi-node scale-out over Redis, Valkey or Garnet (`AddSignalARRRRedisBackplane`) |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | Multi-node scale-out over the PostgreSQL primary the app already has (`AddSignalARRRPostgresBackplane`), with catch-up after a subscription drop |
-| `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers |
-| `Cocoar.SignalARRR.Client.FullFramework` | .NET Framework 4.6.2+ client: typed proxies via `DispatchProxy`, no item streaming |
+| `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers; runs under NativeAOT |
+| `Cocoar.SignalARRR.Client.FullFramework` | .NET Framework 4.6.2+ client: the same generated proxies (SDK-style project, C# 10+), no item streaming |
 | `Cocoar.SignalARRR.Contracts` | `[SignalARRRContract]` attribute; reference from shared interface projects (the source generator comes with Server and Client) |
-| `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via `DispatchProxy`, for plugin scenarios |
 | `Cocoar.SignalARRR.Common`, `.ProxyGenerator`, `.SourceGenerator` | Referenced transitively; not added by hand |
 | `@cocoar/signalarrr` (npm) | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
 | `CocoarSignalARRR` (Swift Package) | Swift client for iOS, macOS, tvOS, watchOS with the `@HubProxy` macro |
@@ -54,6 +53,12 @@ bottom says which page answers what.
 - **Server-to-client calls use SignalR client results natively.** Register handlers with
   `RegisterInterface` (.NET), `onServerMethod` (TypeScript, Swift, Kotlin) or the interface
   handler before connecting; `On()` on the raw `HubConnection` is not the contract path.
+- **Every .NET contract needs `[SignalARRRContract]`**, on .NET Framework too: proxies and the
+  dispatchers that receive server calls are source-generated, and there is no runtime fallback.
+  Server-to-client contracts cannot have generic methods.
+- **A NativeAOT client adds its own `JsonSerializerContext`** for its argument and result types,
+  inserted at index 0 of `PayloadSerializerOptions.TypeInfoResolverChain`; `StartAsync` lists any
+  type still missing. MessagePack does not work under AOT.
 - **A `System.IO.Stream` parameter travels over HTTP, not the WebSocket.** Download endpoints are
   one-time; uploads go through `RequestUploadSlot` and `POST /hub/upload/{id}`; slots per
   connection are capped.
@@ -116,11 +121,12 @@ whose description matches the task; they are independent of each other.
 ### Advanced
 
 - [HTTP Stream References](references/guide/advanced/http-streams.md) — HTTP stream references: a System.IO.Stream parameter in a server-to-client or client-to-server call travels over HTTP instead of the WebSocket — how it works, the endpoints, upload slots, limitations
-- [Proxy Generation](references/guide/advanced/proxy-generation.md) — The Roslyn source generator behind typed proxies: setup, [SignalARRRContract], generated code and naming, return type classification, multi-assembly support, the DynamicProxy fallback, the ProxyCreator API
+- [Proxy Generation](references/guide/advanced/proxy-generation.md) — The Roslyn source generator behind typed proxies: setup, [SignalARRRContract], generated proxies and dispatchers, naming, return type classification, multi-assembly support, NativeAOT, the ProxyCreator API
 - [Cancellation Propagation](references/guide/advanced/cancellation.md) — Server-initiated cancellation of client operations: pass a CancellationToken to a client method and cancel it remotely, AbortSignal on the TypeScript client, and the CancelTokenFromServer flow underneath
 
 ### Migration
 
+- [Migration from v5.x](references/guide/migration/from-v5.md) — Upgrade from 5.x to 6.0: the .NET client under NativeAOT, [SignalARRRContract] required everywhere, the removed DynamicProxy package, the new RegisterInterface overloads, no generic server-to-client methods, the .NET Framework client on the source generator
 - [Migration from v4.x](references/guide/migration/from-v4.md) — Upgrade from 4.x to 5.0: WithHub<T>() returns IClientQuery, the message credential for token clients, the moved namespaces, the separate Redis backplane package, removed APIs, and exception detail that no longer reaches the caller
 - [Migration from v2.x](references/guide/migration/from-v2.md) — Upgrade from 2.x to 4.x: target frameworks, source-generated proxies instead of ImpromptuInterface, the authentication model, hub-level authorization inheritance, removed APIs and new packages
 

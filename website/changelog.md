@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [6.0.0]
+
+The .NET client runs under NativeAOT. To get there, both .NET clients stopped using reflection:
+proxies and the dispatchers that receive server calls are generated at compile time, and what only
+worked through reflection is gone. The wire protocol is unchanged — a 6.0 client talks to a 5.x
+server and the other way round, except for generic server-to-client calls. What to change is in the
+[migration guide](https://docs.cocoar.dev/signalarrr/guide/migration/from-v5).
+
+### Breaking
+
+- **`[SignalARRRContract]` is required to receive server calls and on .NET Framework**: `RegisterInterface` calls the contract's generated dispatcher, so an interface without the attribute throws at registration, naming it. The .NET Framework client now uses the generated proxies and dispatchers as well, which needs an SDK-style project (the generator comes as an analyzer through the package) compiling with C# 10 or later; otherwise the generator reports error `SARRR001`.
+- **Generic server-to-client methods are no longer supported**: their type argument travels as a name, which only reflection can turn into a call. Registering a contract with a generic method on a client throws, naming the method; the server refuses to send a call to a generic client method with a `NotSupportedException` on every path (per-client proxy, broadcast, backplane, captured calls); a .NET client receiving generic arguments from an older server answers `method_not_found`. The TypeScript, Swift and Kotlin clients never evaluated them, so this aligns the .NET clients with them. Generic methods called from client to server are unaffected.
+- **The `Type`-based `RegisterInterface` overloads are removed**: `RegisterInterface(Type, Type)`, `(Type, object)` and `(Type, Func<IServiceProvider, object>)` cannot reach a generated dispatcher. Use the generic overloads.
+- **Server-only reflection registry types moved from `Cocoar.SignalARRR.Common` to `Cocoar.SignalARRR.Server`**, same namespaces: `SignalARRRInterfaceCollection`, `ISignalARRRInterfaceCollection`, `SignalARRRMethodsCollection`, `ISignalARRRMethodsCollection`, `ClientInterfaceMethodsCache`, `WireSlotPolicy`, `TypeHelper`, `WireTypeName`. `JsonProtocolSerializer` now takes the hub's `JsonSerializerOptions` in its constructor.
+
+### Added
+
+- **NativeAOT support for the .NET client** (`Cocoar.SignalARRR.Client`): an AOT app inserts its own `JsonSerializerContext` with its argument and result types at the front of `PayloadSerializerOptions.TypeInfoResolverChain`; SignalARRR appends the metadata of its envelope types (`SignalARRRJsonContext`) at the end of the chain itself. No `TrimmerRootAssembly` or other workaround is needed. When reflection-based JSON is off, `StartAsync` checks that every type the registered contracts send or receive has a JSON contract and throws listing all that do not. JIT apps are unaffected: the reflection resolver stays last in the chain. The MessagePack hub protocol is not supported under AOT (MessagePack 2.x generates code at runtime); in JIT apps it keeps working. The server is not AOT-capable yet.
+- **Generated dispatchers for server-to-client calls**: next to each proxy, the source generator emits a dispatcher per `[SignalARRRContract]` interface — a switch on method name and argument count, statically typed argument reads, a direct call — registered by module initializer in `DispatcherRegistry`. It replaces `GetInterfaceMap`, `MethodInfo.Invoke` and `MakeGenericMethod` on both .NET clients and keeps their rules: omitted trailing default parameters, overloads by argument count, inherited interface members, a declared member hiding inherited ones of the same wire name, `[MessageName]`, every supported return type, `CancellationToken` and `Stream` parameters.
+- **`RegisterInterface<TInterface>(instance)` and `RegisterInterface<TInterface>(Func<IServiceProvider, TInterface>)`** on both .NET clients, for registering a handler without naming its class.
+- **A NativeAOT smoke test** (`src/tests/Cocoar.SignalARRR.AotSmoke`, `scripts/run-aot-smoke.sh`, CI job `aot-smoke`): publishes a client with `PublishAot` and runs proxy calls, a stream, pushes and a server call with result against the IntegrationTestServer; fails on any ILC warning from `Cocoar.SignalARRR.*`.
+
+### Changed
+
+- **The .NET Framework client uses the source generator**: the same generated proxies and dispatchers as the .NET client instead of `DispatchProxy` and reflection. `Cocoar.SignalARRR.ProxyGenerator` and `Cocoar.SignalARRR.Contracts` now also target netstandard2.0, so a .NET Framework project can reference shared contract projects; `ModuleInitializerAttribute` is polyfilled on targets that lack it.
+- **`Cocoar.SignalARRR.Client`, `.Contracts`, `.ProxyGenerator` and `.Common` (net8.0+) are marked `IsAotCompatible`**: the trim and AOT analyzers run on every build and their warnings fail it.
+- **`Cocoar.SignalARRR.Common` no longer depends on MessagePack**, and the client packages no longer depend on `Cocoar.Reflectensions`.
+
+### Removed
+
+- **`Cocoar.SignalARRR.DynamicProxy`** and `ProxyCreator.RegisterFallbackFactory`: the `DispatchProxy` fallback for interfaces without generated code. `[SignalARRRContract]` and the source generator are the only way to get a proxy.
+- **`MessagePackProtocolSerializer` and `ClientMethodsCache`**, and the unused `HubProtocolType` enum of the client.
+
+### Security
+
+- **Package bumps past new NuGet advisories**: MessagePack 2.5.303 ([GHSA-qhrr-8q5h-9q3h](https://github.com/advisories/GHSA-qhrr-8q5h-9q3h)); `Microsoft.AspNetCore.SignalR.*` 8.0.34 / 9.0.23 / 10.0.15 ([GHSA-334f-vvp4-7g6p](https://github.com/advisories/GHSA-334f-vvp4-7g6p), [GHSA-86xp-94pg-8r6r](https://github.com/advisories/GHSA-86xp-94pg-8r6r)).
+
+---
+
 ## [5.2.2] - 2026-10-10
 
 ### Fixed

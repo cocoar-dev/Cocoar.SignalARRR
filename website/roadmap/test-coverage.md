@@ -11,7 +11,6 @@ All three client ecosystems (.NET, TypeScript, Swift) test against one shared `I
 | Platform | Framework | Tests |
 |----------|-----------|------:|
 | .NET Unit (SourceGenerator) | xUnit | 3 |
-| .NET Unit (DynamicProxy) | xUnit | 12 |
 | .NET Integration (JSON) | xUnit | 50 |
 | .NET Integration (MessagePack) | xUnit | 5 |
 | TypeScript Integration (JSON) | vitest | 25 |
@@ -31,11 +30,12 @@ All three client ecosystems (.NET, TypeScript, Swift) test against one shared `I
 - **File Transfer:** RequestUploadSlot, HTTP upload, automatic Stream argument preparation, Stream return values
 - **Advanced:** `[FromServices]` injection, ClientContext.Attributes from headers
 - **MessagePack:** invoke, send, echo, guid, multi-param — same scenarios as JSON
-- **Proxy Generation:** ModuleInitializer registration, all 7 return type categories, method name format, CancellationToken extraction, fallback factory
+- **Proxy Generation:** ModuleInitializer registration, all 7 return type categories, method name format, CancellationToken extraction, generated dispatchers (overloads by argument count, default parameters, inherited members, unreceivable contracts)
 
 ## Test Infrastructure
 
 - **IntegrationTestServer** — standalone .NET server, dynamic port, shared by all clients
 - **`scripts/test-server.sh`** — server lifecycle coordinator (acquire/release with ref counting)
 - **`scripts/run-integration-tests.sh`** — runs all available client tests in sequence
+- **`scripts/run-aot-smoke.sh`** — publishes `src/tests/Cocoar.SignalARRR.AotSmoke` with NativeAOT and runs proxy calls, a stream, pushes and a server call with result against the IntegrationTestServer; fails on any ILC warning from `Cocoar.SignalARRR.*` (CI job `aot-smoke`)
 - **.NET fixture** auto-starts server if no `SIGNALARRR_TEST_SERVER_URL` environment variable

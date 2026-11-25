@@ -36,7 +36,7 @@ The backplane ships separately, so that single-node applications — the majorit
 `StackExchange.Redis` and its transitive closure for a feature they never switch on:
 
 ```xml
-<PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Redis" Version="5.*" />
+<PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Redis" Version="6.*" />
 ```
 
 > **Warning: Moved out of the server package in 5.0**
@@ -70,7 +70,7 @@ instance.
 ## PostgreSQL backplane
 
 ```xml
-<PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Postgres" Version="5.*" />
+<PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Postgres" Version="6.*" />
 ```
 
 ```csharp

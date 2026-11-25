@@ -8,13 +8,12 @@ SignalARRR is distributed as multiple NuGet packages, one npm package, one Swift
 
 | Package | Target | Purpose |
 |---------|--------|---------|
-| `Cocoar.SignalARRR.Contracts` | net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute. Reference from shared interface projects. |
+| `Cocoar.SignalARRR.Contracts` | netstandard2.0 / net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute. Reference from shared interface projects, including .NET Framework ones. |
 | `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | net8.0 / net9.0 / net10.0 | Multi-node scale-out: `AddSignalARRRRedisBackplane`. Add only when running more than one node — this is where the `StackExchange.Redis` dependency lives. |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | net8.0 / net9.0 / net10.0 | Multi-node scale-out over PostgreSQL `LISTEN`/`NOTIFY`: `AddSignalARRRPostgresBackplane`. For deployments whose only stateful dependency is Postgres — this is where the `Npgsql` dependency lives. Requires Npgsql 8.0.6 or later on every target framework, so it fits whatever version the rest of your stack (Marten, EF Core) pins. |
-| `Cocoar.SignalARRR.Client` | net8.0 / net9.0 / net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. |
-| `Cocoar.SignalARRR.Client.FullFramework` | netstandard2.0 (.NET Framework 4.6.2+) | Client for .NET Framework — typed proxies via `DispatchProxy`, streaming via polyfills. |
-| `Cocoar.SignalARRR.DynamicProxy` | net8.0 / net9.0 / net10.0 | Optional runtime proxy fallback via `DispatchProxy`. For plugin/dynamic scenarios. |
+| `Cocoar.SignalARRR.Client` | net8.0 / net9.0 / net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. NativeAOT- and trim-compatible — see [NativeAOT](../guide/advanced/proxy-generation.md#nativeaot). |
+| `Cocoar.SignalARRR.Client.FullFramework` | netstandard2.0 (.NET Framework 4.6.2+) | Client for .NET Framework — the same generated proxies and dispatchers as the .NET client, streaming via polyfills. |
 
 ### Internal packages
 
@@ -22,9 +21,9 @@ These packages are referenced transitively — you normally don't need to refere
 
 | Package | Purpose |
 |---------|---------|
-| `Cocoar.SignalARRR.Common` | Shared types, wire protocol constants, message models |
-| `Cocoar.SignalARRR.ProxyGenerator` | Base classes for proxy creation (`ProxyCreator`, `ProxyCreatorHelper`) |
-| `Cocoar.SignalARRR.SourceGenerator` | Roslyn incremental source generator — a dependency of Server and Client, so it runs in the projects that use proxies |
+| `Cocoar.SignalARRR.Common` | Shared types, wire protocol constants, message models, the JSON metadata of the envelope types |
+| `Cocoar.SignalARRR.ProxyGenerator` | Runtime for generated code: `ProxyCreator`, `ProxyCreatorHelper`, `DispatcherRegistry` |
+| `Cocoar.SignalARRR.SourceGenerator` | Roslyn incremental source generator — a dependency of Server and both clients, so it runs in the projects that use proxies |
 
 ## npm Package
 
@@ -110,7 +109,7 @@ dependencies {
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="5.*" />
+    <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="6.*" />
   </ItemGroup>
 </Project>
 ```
@@ -119,7 +118,7 @@ dependencies {
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Server" Version="5.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Server" Version="6.*" />
   <ProjectReference Include="..\Shared\Shared.csproj" />
 </ItemGroup>
 ```
@@ -129,7 +128,7 @@ Optional multi-node scale-out — separate packages, so single-node applications
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Redis" Version="5.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Redis" Version="6.*" />
 </ItemGroup>
 ```
 
@@ -142,7 +141,7 @@ This backplane is Redis-compatible and works with Redis, Valkey, and Garnet.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Postgres" Version="5.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Server.Backplane.Postgres" Version="6.*" />
 </ItemGroup>
 ```
 
@@ -158,24 +157,26 @@ This backplane uses the PostgreSQL primary your application already has; see
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Client" Version="5.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Client" Version="6.*" />
   <ProjectReference Include="..\Shared\Shared.csproj" />
 </ItemGroup>
 ```
 
 ### .NET Framework Client (4.6.2+ / 4.8)
 
-For legacy .NET Framework projects (e.g., SCCM/SCSM integration, WinForms, WPF on .NET Framework):
+For legacy .NET Framework projects (e.g., SCCM/SCSM integration, WinForms, WPF on .NET Framework). The project must be SDK-style, so the source generator arrives as an analyzer through the package, and compile with C# 10 or later:
 
 ```xml
+<PropertyGroup>
+  <TargetFramework>net48</TargetFramework>
+  <LangVersion>10</LangVersion>
+</PropertyGroup>
 <ItemGroup>
-  <PackageReference Include="Cocoar.SignalARRR.Client.FullFramework" Version="5.*" />
+  <PackageReference Include="Cocoar.SignalARRR.Client.FullFramework" Version="6.*" />
 </ItemGroup>
 ```
 
-> **Info: No shared interface project needed**
->
-> The FullFramework client uses `DispatchProxy` at runtime. Define the same interface in your .NET Framework project (same namespace and method names) — no `[SignalARRRContract]` attribute needed.
+Contracts need `[SignalARRRContract]`, as on modern .NET. Reference the shared interface project — `Cocoar.SignalARRR.Contracts` targets netstandard2.0 — or declare the same interface in the .NET Framework project with the same namespace and method names. A project on an older language version gets error `SARRR001`.
 
 ### TypeScript Client
 
@@ -222,7 +223,6 @@ graph TD
     Common["Cocoar.SignalARRR.Common"]
     ProxyGen["Cocoar.SignalARRR.ProxyGenerator"]
     SourceGen["Cocoar.SignalARRR.SourceGenerator"]
-    DynProxy["Cocoar.SignalARRR.DynamicProxy"]
     npm["@cocoar/signalarrr"]
     signalr["@microsoft/signalr"]
 
@@ -233,11 +233,10 @@ graph TD
     Server --> ProxyGen
     Server --> SourceGen
     Client --> SourceGen
-    DynProxy --> ProxyGen
     npm --> signalr
 ```
 
-The source generator comes with `Server` and `Client` as a package dependency, so a project that references both (an ASP.NET integration test project, for example) still runs it once. A contract project that references only `Contracts` gets no generator.
+The source generator comes with `Server` and the clients as a package dependency, so a project that references both (an ASP.NET integration test project, for example) still runs it once. A contract project that references only `Contracts` gets no generator.
 
 ## Next steps
 

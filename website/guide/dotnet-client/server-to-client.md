@@ -8,7 +8,7 @@ The server can call methods on the client and optionally await a response. Regis
 
 ## Typed handlers via interfaces
 
-The cleanest approach: define a shared contract interface, implement it on the client, and register it.
+Define a shared contract interface, implement it on the client, and register it. The source generator emits a dispatcher for every `[SignalARRRContract]` interface, which turns an incoming call into a direct call on your implementation — no reflection, so it works under NativeAOT.
 
 ### 1. Define the contract (shared library)
 
@@ -44,13 +44,13 @@ public class ChatClientHandler : IChatClient
 var connection = HARRRConnection.Create(builder => { ... });
 
 // Register with an instance
-connection.RegisterInterface<IChatClient, ChatClientHandler>(new ChatClientHandler());
-
-// Or let SignalARRR create the instance (parameterless constructor)
-connection.RegisterInterface<IChatClient, ChatClientHandler>();
+connection.RegisterInterface<IChatClient>(new ChatClientHandler());
 
 // Or with a factory (for dependency injection)
-connection.RegisterInterface<IChatClient, ChatClientHandler>(sp => new ChatClientHandler(sp.GetRequiredService<ILogger>()));
+connection.RegisterInterface<IChatClient>(sp => new ChatClientHandler(sp.GetRequiredService<ILogger>()));
+
+// Or name the implementation: taken from DI if registered there, else created with ActivatorUtilities
+connection.RegisterInterface<IChatClient, ChatClientHandler>();
 
 await connection.StartAsync();
 ```
@@ -67,6 +67,20 @@ var name = await client.GetClientName();               // awaits response
 ::: warning Register before StartAsync
 `RegisterInterface` must be called **before** `StartAsync()`. The server may invoke client methods immediately after connection.
 :::
+
+### What a contract must be
+
+`RegisterInterface` throws at once, with the reason, for an interface the client cannot receive:
+
+- **No `[SignalARRRContract]`** — without it there is no generated dispatcher. This applies to the .NET Framework client too.
+- **Two members reachable under the same name with an overlapping argument count** — the wire carries no parameter types, so they cannot be told apart. Overloads with different argument counts, trailing default parameters and inherited members are fine; see [Proxy Generation](/guide/advanced/proxy-generation#generated-code).
+- **A generic method** — see below.
+
+### Generic methods cannot be received
+
+A server-to-client call carries a generic type argument only as a type name, and only reflection can turn a name into a call — which is what NativeAOT rules out. So since 6.0 a contract with a generic method cannot be registered on a client, and the server refuses to send a call to one (`NotSupportedException`, on every path: per-client proxy, broadcast, backplane). A .NET client that receives generic arguments from an older server answers `method_not_found`. The TypeScript, Swift and Kotlin clients never evaluated them.
+
+Declare a concrete method per type instead. Generic methods on the **server**, called by a client, are unaffected — see [Typed Methods](/guide/dotnet-client/typed-methods#generic-method-support).
 
 ::: danger Removed in 5.0: `OnServerRequest`
 Earlier versions documented `connection.OnServerRequest("MethodName", handler)` for registering
@@ -149,7 +163,7 @@ when you need results — or errors — from a set of clients.
 When the server calls a client method:
 
 1. Server sends `InvokeServerRequest` (expects reply) or `InvokeServerMessage` (fire-and-forget)
-2. Client receives the message and dispatches to the registered handler
+2. Client receives the message and the contract's generated dispatcher calls the registered handler
 3. If `InvokeServerRequest`, the handler's return value is sent back automatically via SignalR's native client results (no separate reply message needed)
 
 The `ChallengeAuthentication` message is handled automatically — the client's token factory is called and the token is sent back without developer intervention.

@@ -105,6 +105,7 @@ export const baseConfig = defineConfig({
           text: 'Migration',
           collapsed: true,
           items: [
+            { text: 'Migration from v5.x', link: '/guide/migration/from-v5' },
             { text: 'Migration from v4.x', link: '/guide/migration/from-v4' },
             { text: 'Migration from v2.x', link: '/guide/migration/from-v2' },
           ],

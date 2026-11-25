@@ -10,7 +10,7 @@ description: >
   PostgreSQL backplane, or cluster subjects.
 metadata:
   author: Bernhard Windisch
-  version: "5.1"
+  version: "6.0"
   source: https://docs.cocoar.dev/signalarrr/
 ---
 
@@ -29,10 +29,9 @@ bottom says which page answers what.
 | `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | Multi-node scale-out over Redis, Valkey or Garnet (`AddSignalARRRRedisBackplane`) |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | Multi-node scale-out over the PostgreSQL primary the app already has (`AddSignalARRRPostgresBackplane`), with catch-up after a subscription drop |
-| `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers |
-| `Cocoar.SignalARRR.Client.FullFramework` | .NET Framework 4.6.2+ client: typed proxies via `DispatchProxy`, no item streaming |
+| `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers; runs under NativeAOT |
+| `Cocoar.SignalARRR.Client.FullFramework` | .NET Framework 4.6.2+ client: the same generated proxies (SDK-style project, C# 10+), no item streaming |
 | `Cocoar.SignalARRR.Contracts` | `[SignalARRRContract]` attribute; reference from shared interface projects (the source generator comes with Server and Client) |
-| `Cocoar.SignalARRR.DynamicProxy` | Opt-in runtime proxy fallback via `DispatchProxy`, for plugin scenarios |
 | `Cocoar.SignalARRR.Common`, `.ProxyGenerator`, `.SourceGenerator` | Referenced transitively; not added by hand |
 | `@cocoar/signalarrr` (npm) | TypeScript/JavaScript client: `HARRRConnection`, `invoke`, `send`, `stream`, `onServerMethod` |
 | `CocoarSignalARRR` (Swift Package) | Swift client for iOS, macOS, tvOS, watchOS with the `@HubProxy` macro |
@@ -54,6 +53,12 @@ bottom says which page answers what.
 - **Server-to-client calls use SignalR client results natively.** Register handlers with
   `RegisterInterface` (.NET), `onServerMethod` (TypeScript, Swift, Kotlin) or the interface
   handler before connecting; `On()` on the raw `HubConnection` is not the contract path.
+- **Every .NET contract needs `[SignalARRRContract]`**, on .NET Framework too: proxies and the
+  dispatchers that receive server calls are source-generated, and there is no runtime fallback.
+  Server-to-client contracts cannot have generic methods.
+- **A NativeAOT client adds its own `JsonSerializerContext`** for its argument and result types,
+  inserted at index 0 of `PayloadSerializerOptions.TypeInfoResolverChain`; `StartAsync` lists any
+  type still missing. MessagePack does not work under AOT.
 - **A `System.IO.Stream` parameter travels over HTTP, not the WebSocket.** Download endpoints are
   one-time; uploads go through `RequestUploadSlot` and `POST /hub/upload/{id}`; slots per
   connection are capped.

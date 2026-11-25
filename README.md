@@ -11,9 +11,9 @@ Server and client call each other's methods through shared interfaces — with c
 
 > **[Read the full documentation](https://docs.cocoar.dev/signalarrr/)**
 
-> **Upgrading from 4.x?** v5 carries breaking changes from a full code review. Most need nothing from
-> you; what does is in the **[migration guide](https://docs.cocoar.dev/signalarrr/guide/migration/from-v4)**,
-> grouped by whether it is likely to affect you at all.
+> **Upgrading from 5.x?** v6 runs the .NET client under NativeAOT and removes the runtime proxy
+> fallback. What to change is in the **[migration guide](https://docs.cocoar.dev/signalarrr/guide/migration/from-v5)**;
+> coming from 4.x, read the **[v4 guide](https://docs.cocoar.dev/signalarrr/guide/migration/from-v4)** first.
 
 ## Packages
 
@@ -21,10 +21,9 @@ Server and client call each other's methods through shared interfaces — with c
 
 | Package | Purpose |
 |---|---|
-| [`Cocoar.SignalARRR.Contracts`](https://www.nuget.org/packages/Cocoar.SignalARRR.Contracts) | `[SignalARRRContract]` attribute + source generator — reference from shared interface projects |
+| [`Cocoar.SignalARRR.Contracts`](https://www.nuget.org/packages/Cocoar.SignalARRR.Contracts) | `[SignalARRRContract]` attribute — reference from shared interface projects (the source generator comes with Server and the clients) |
 | [`Cocoar.SignalARRR.Server`](https://www.nuget.org/packages/Cocoar.SignalARRR.Server) | Server-side: HARRR hub, ServerMethods, authorization, ClientManager |
-| [`Cocoar.SignalARRR.Client`](https://www.nuget.org/packages/Cocoar.SignalARRR.Client) | Client-side: HARRRConnection, typed proxies, event handlers |
-| [`Cocoar.SignalARRR.DynamicProxy`](https://www.nuget.org/packages/Cocoar.SignalARRR.DynamicProxy) | Opt-in runtime proxy fallback via DispatchProxy |
+| [`Cocoar.SignalARRR.Client`](https://www.nuget.org/packages/Cocoar.SignalARRR.Client) | Client-side: HARRRConnection, typed proxies, event handlers — runs under NativeAOT |
 | [`Cocoar.SignalARRR.Client.FullFramework`](https://www.nuget.org/packages/Cocoar.SignalARRR.Client.FullFramework) | Client for .NET Framework 4.6.2+ — typed proxies, streaming, file transfer |
 
 ### TypeScript / JavaScript

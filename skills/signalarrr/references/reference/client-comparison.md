@@ -17,7 +17,7 @@ SignalARRR has five client implementations. This page shows what each client sup
 |-|:----:|:--------------:|:--:|:-----:|:------:|
 | Invoke (await result) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Send (fire & forget) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Generic arguments | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Generic arguments (client → server) | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Item Streaming
 
@@ -63,12 +63,13 @@ The credential options are named and behave the same in every client — see [th
 
 | | .NET | .NET Framework | TS | Swift | Kotlin |
 |-|:----:|:--------------:|:--:|:-----:|:------:|
-| Compile-time proxies | Source Generator | — | — | `@HubProxy` Macro | `@HubProxy` + KSP |
-| Runtime proxies | DispatchProxy | DispatchProxy | — | — | — |
+| Compile-time proxies | Source Generator | Source Generator | — | `@HubProxy` Macro | `@HubProxy` + KSP |
+| Runtime proxies | — | — | — | — | — |
+| NativeAOT | ✓ | N/A | N/A | N/A | N/A |
 
-> **Info: .NET Framework uses DispatchProxy only**
+> **Info: .NET Framework needs C# 10**
 >
-> The Roslyn source generator requires projects to reference `Cocoar.SignalARRR.Contracts` which targets net8.0+. On .NET Framework, typed proxies are created at runtime via `DispatchProxy`. The interfaces don't need `[SignalARRRContract]` — any C# interface works.
+> Both .NET clients use the same generated proxies and dispatchers, so contracts need `[SignalARRRContract]` on .NET Framework too. The project must be SDK-style and compile with C# 10 or later (`<LangVersion>10</LangVersion>`); otherwise the generator reports `SARRR001`. See [Packages](./packages.md#net-framework-client-4-6-2-4-8).
 
 ## Connection
 
@@ -185,14 +186,15 @@ var chat = connection.GetTypedMethods<IChatHub>();
 await chat.SendMessage("Alice", "Hello!");
 ```
 
-```csharp [.NET Framework — DispatchProxy]
-// Define interface (no attribute needed)
+```csharp [.NET Framework — Source Generator]
+// Shared project (netstandard2.0) or the .NET Framework project itself
+[SignalARRRContract]
 public interface IChatHub {
     Task SendMessage(string user, string message);
     Task<List<string>> GetHistory();
 }
 
-// Client: get typed proxy (runtime-generated via DispatchProxy)
+// Client: get typed proxy
 var chat = connection.GetTypedMethods<IChatHub>();
 await chat.SendMessage("Alice", "Hello!");
 ```
@@ -295,11 +297,11 @@ connection.stream<Int>("Method.Name").collect { item -> println(item) }
 
 
 ```csharp [.NET]
-connection.RegisterInterface<IChatClient, ChatClientImpl>(new ChatClientImpl());
+connection.RegisterInterface<IChatClient>(new ChatClientImpl());
 ```
 
 ```csharp [.NET Framework]
-connection.RegisterInterface<IChatClient, ChatClientImpl>(new ChatClientImpl());
+connection.RegisterInterface<IChatClient>(new ChatClientImpl());
 ```
 
 ```ts [TypeScript]

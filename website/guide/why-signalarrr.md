@@ -111,7 +111,7 @@ Separately from file transfer, SignalARRR supports **item streaming** — sendin
 | Client Manager (outside hub) | Manual | Built-in |
 | TypeScript client | Basic | Full protocol support |
 | Swift client (iOS/macOS) | No | Native client with `@HubProxy` macro |
-| .NET Framework 4.x client | Basic (string-based) | Typed RPC via DispatchProxy |
+| .NET Framework 4.x client | Basic (string-based) | Typed RPC via the same generated proxies |
 
 ## Bridge between .NET Core and .NET Framework
 
@@ -135,7 +135,7 @@ Real-world example: Your server runs on .NET 10 with the latest frontend technol
 └──────────────────┘ └──────────────────┘ └─────────────────────┘
 ```
 
-The FullFramework client (`Cocoar.SignalARRR.Client.FullFramework`) has near-full feature parity: typed proxies via `DispatchProxy`, streaming, server-to-client RPC, cancellation, file transfer, and MessagePack — all on netstandard2.0.
+The FullFramework client (`Cocoar.SignalARRR.Client.FullFramework`) has near-full feature parity: the same source-generated proxies and dispatchers as the .NET client, streaming, server-to-client RPC, cancellation, file transfer, and MessagePack — all on netstandard2.0.
 
 ## How it works
 

@@ -62,7 +62,7 @@ The proxy determines the protocol message based on the method's return type:
 
 ## Generic method support
 
-Proxies support generic method arguments. The type arguments are serialized as strings and resolved on the server:
+Proxies support generic server methods. The type arguments are serialized as strings and resolved on the server:
 
 ```csharp
 [SignalARRRContract]
@@ -77,6 +77,8 @@ var data = connection.GetTypedMethods<IDataHub>();
 var user = await data.GetItem<User>("user-123");
 ```
 
+This works in the client-to-server direction only: a client cannot receive a generic method — see [Server-to-Client Handlers](./server-to-client.md#generic-methods-cannot-be-received).
+
 ## Proxy caching
 
 `GetTypedMethods<T>()` caches proxy instances. Calling it multiple times with the same type returns the same proxy object.
@@ -86,10 +88,10 @@ var user = await data.GetItem<User>("user-123");
 For proxy generation to work, the shared interface project must reference `Cocoar.SignalARRR.Contracts`:
 
 ```xml
-<PackageReference Include="Cocoar.SignalARRR.Contracts" Version="5.*" />
+<PackageReference Include="Cocoar.SignalARRR.Contracts" Version="6.*" />
 ```
 
-The `[SignalARRRContract]` attribute marks the interface for the Roslyn source generator, which comes with `Cocoar.SignalARRR.Client` and produces the proxy class at build time in your client project. See [Proxy Generation](../advanced/proxy-generation.md) for details on how this works.
+The `[SignalARRRContract]` attribute marks the interface for the Roslyn source generator, which comes with `Cocoar.SignalARRR.Client` and produces the proxy and dispatcher classes at build time in your client project. See [Proxy Generation](../advanced/proxy-generation.md) for details on how this works.
 
 ## Next steps
 

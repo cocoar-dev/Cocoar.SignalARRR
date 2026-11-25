@@ -170,7 +170,7 @@ Neither gRPC nor REST can offer this: typed bidirectional RPC between modern and
 
 | | .NET | .NET Framework | TypeScript | Swift |
 |---|---|---|---|---|
-| Typed proxies | Source generator | DispatchProxy | Method name strings | `@HubProxy` macro |
+| Typed proxies | Source generator | Source generator | Method name strings | `@HubProxy` macro |
 | Streaming | `IAsyncEnumerable<T>` | `IAsyncEnumerable<T>` (polyfill) | `subscribe()` | `AsyncThrowingStream` |
 | Server-to-client RPC | Full typed | Full typed | `onServerMethod()` | `onServerMethod()` |
 | File transfer | `Stream` parameters | `Stream` parameters | HTTP stream refs | HTTP stream refs |

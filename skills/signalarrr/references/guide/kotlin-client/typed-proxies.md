@@ -55,7 +55,7 @@ interface AppHubMethods {
 
 ### Generic methods
 
-A contract member with a type parameter needs the .NET type names of its type arguments on the wire. Declare them with `@GenericArguments`:
+A server method with a type parameter needs the .NET type names of its type arguments on the wire. Declare them with `@GenericArguments`:
 
 ```kotlin
 @HubProxy(name = "MyApp.Contracts.IQueryHub")

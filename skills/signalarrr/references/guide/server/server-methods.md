@@ -55,7 +55,7 @@ public class OrderMethods : ServerMethods<AppHub>, IOrderRepository {
 }
 ```
 
-Registration does not distinguish an interface you intended as a contract from one you implement for other reasons. `[SignalARRRContract]` does not narrow this — it tells the source generator to emit a proxy and nothing else; interfaces without it are registered just the same, which is what lets the DynamicProxy, .NET Framework, TypeScript and Swift clients work without it.
+Registration does not distinguish an interface you intended as a contract from one you implement for other reasons. `[SignalARRRContract]` does not narrow this — it tells the source generator to emit a proxy and a dispatcher and nothing else; interfaces without it are registered just the same, which is what lets the TypeScript, Swift and Kotlin clients call them by wire name.
 
 Authorization still applies: whatever `[Authorize]` guards the hub or the implementing class guards these members too. But if the hub is reachable, so are they.
 
