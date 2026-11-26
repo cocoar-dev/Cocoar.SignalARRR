@@ -152,6 +152,10 @@ jobs:
     needs: [validate-release, test-multiplatform, test-swift]
     permissions:
       contents: read
+      # npm trusted publishing (OIDC): npm accepts this job by the repository and workflow file it
+      # was connected to, so there is no token that can expire. Connected once per package with
+      # `npm trust github`; see CONTRIBUTING.md, "Releasing".
+      id-token: write
     env:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
@@ -178,7 +182,10 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - name: Use an npm with trusted publishing
+        run: npm install -g npm@11.21.3
 
       - name: Build and pack npm package
         working-directory: ./src/Cocoar.SignalARRR.Typescript
@@ -225,7 +232,6 @@ jobs:
       - name: Publish npm package
         working-directory: ./src/Cocoar.SignalARRR.Typescript
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TAG: ${{ needs.validate-release.outputs.npm-tag }}
         run: npm publish --tag "$NPM_TAG"
 

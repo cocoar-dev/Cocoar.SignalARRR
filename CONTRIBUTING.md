@@ -46,6 +46,20 @@ A prerelease therefore publishes its documentation without overwriting the stabl
 keeps "latest" on the highest stable version, so the preview shows up in the version list without
 becoming the default.
 
+The npm package `@cocoar/signalarrr` is published through **trusted publishing** (OIDC): npm
+accepts the `Publish Packages` job of `cd-deploy-stable.yml` by its repository and workflow file, so
+there is no token that can expire, and every version gets a provenance statement. The connection is
+made once, by an owner of `@cocoar` logged in with 2FA:
+
+```sh
+npx npm@11.21.3 login
+npx npm@11.21.3 trust github @cocoar/signalarrr --file cd-deploy-stable.yml \
+  --repository cocoar-dev/Cocoar.SignalARRR --allow-publish
+```
+
+npm drops a connection that has no successful publish within two days, so make it shortly before
+the next release.
+
 The Kotlin packages (`dev.cocoar:signalarrr`, `dev.cocoar:signalarrr-ksp`) go to Maven Central
 through the Sonatype Central Portal, signed, with the repository secrets `MAVEN_CENTRAL_USERNAME`
 and `MAVEN_CENTRAL_PASSWORD` (a user token from the portal, not the login) and
