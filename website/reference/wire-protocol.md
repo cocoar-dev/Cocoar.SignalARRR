@@ -50,6 +50,8 @@ Sent from client to server with every RPC call.
 | `Authorization` | string | No | Bearer token for authenticated methods |
 | `GenericArguments` | string[] | No | .NET type names of the type arguments of a generic server method |
 
+The server accepts only the instantiations the method declares with [`[GenericArguments]`](/guide/server/server-methods#generic-methods). A name matches a declared type by its `FullName` — what the .NET proxy sends, `typeof(T).FullName` — or, for a name without a dot, as `System.<Name>` ignoring case, so `"Int32"` and `"string"` match `System.Int32` and `System.String`. Any other name is refused with an error naming `[GenericArguments]`.
+
 ### ServerRequestMessage
 
 Sent from server to client for bidirectional RPC.

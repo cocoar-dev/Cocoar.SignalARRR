@@ -243,8 +243,10 @@ What the subject guarantees:
   want to know the backplane has the event.
 - **No type names on the wire.** The event type is fixed at registration. A node deserializes
   into it or drops the event with a warning, so a rolling update with mixed builds cannot make a
-  node materialize a type it does not know. Polymorphic payloads are yours to configure through
-  `ClusterSubjectOptions.SerializerOptions`.
+  node materialize a type it does not know. Its JSON contract comes from the hub protocol's
+  resolvers — under [NativeAOT](#nativeaot), the app's `JsonSerializerContext`. Polymorphic
+  payloads, or any other serialization, are yours to configure through
+  `ClusterSubjectOptions.SerializerOptions`, which replaces those resolvers for the subject.
 - **Delivery is the backplane's.** Transient with Redis; replayed after a subscription drop with
   the Postgres catch-up. Without a backplane, the subject is a plain local one and nothing changes.
 
@@ -322,6 +324,23 @@ builder.Services.AddSignalARRRPostgresBackplane(options => options
 ```
 
 Lower values remove stale registrations faster after crashes, but also increase sensitivity to short pauses. The node timeout must be longer than the heartbeat interval; the Postgres backplane refuses a configuration where it is not.
+
+### Rolling updates from 5.x
+
+The envelopes the nodes exchange kept their format in 6.0, so 5.x and 6.0 nodes run side by side on one backplane while you update them one at a time.
+
+## NativeAOT
+
+Both backplane packages run under NativeAOT on net9.0 and net10.0, like the [server](../advanced/proxy-generation.md#nativeaot). The envelopes between nodes are serialized through a JSON context SignalARRR generates, so they need nothing from the app. A client's answer to a server call travels between nodes as raw JSON; only the node that made the call deserializes it, into the result type its own `JsonSerializerContext` already covers. The one type to add is the event type of each [cluster subject](#cluster-aware-observables): put it into the same `JsonSerializerContext` you insert in `AddJsonProtocol`.
+
+```csharp
+[JsonSerializable(typeof(OrderChanged))]
+partial class AppJson : JsonSerializerContext { }
+
+builder.Services.AddSignalR()
+    .AddJsonProtocol(o => o.PayloadSerializerOptions.TypeInfoResolverChain.Insert(0, AppJson.Default));
+builder.Services.AddSignalARRRClusterSubject<OrderChanged>("orders");
+```
 
 ## When to use it
 

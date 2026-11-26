@@ -1,10 +1,10 @@
 ---
-description: "Organize hub logic in ServerMethods<T> classes: auto-discovery, several classes per hub, why every declared interface is a public RPC surface, method naming, DI and [FromServices], server-to-client calls, custom names"
+description: "Organize hub logic in ServerMethods<T> classes: compile-time discovery, several classes per hub, why every declared interface is a public RPC surface, method naming and overloads, DI and [FromServices], generic methods and [GenericArguments], server-to-client calls, custom names"
 ---
 
 # Server Methods
 
-`ServerMethods<T>` classes let you organize hub logic into separate, focused classes instead of putting everything into a single hub. They are auto-discovered, support full dependency injection, and implement shared contract interfaces.
+`ServerMethods<T>` classes let you organize hub logic into separate, focused classes instead of putting everything into a single hub. The source generator finds them at compile time, they support full dependency injection, and implement shared contract interfaces.
 
 ## Basic usage
 
@@ -32,7 +32,7 @@ public class ChatMethods : ServerMethods<ChatHub>, IChatHub
 }
 ```
 
-No registration needed — `AddSignalARRR()` discovers all `ServerMethods<T>` classes in the scanned assemblies.
+No registration needed — the source generator finds every `ServerMethods<T>` class at compile time, and `AddSignalARRR()` registers those of the assemblies you pass to `AddServerMethodsFrom`. There is no runtime scanning: an assembly built without the generator, which comes with `Cocoar.SignalARRR.Server`, fails at startup, naming it.
 
 ## Multiple classes per hub
 
@@ -89,6 +89,18 @@ await connection.invoke('ChatMethods.SendMessage', 'Alice', 'Hello!');
 
 When using typed proxies on the .NET client, the naming is handled automatically through the interface mapping.
 
+| Declared on | Wire name |
+|---|---|
+| The hub class | `MethodName` |
+| A `ServerMethods` class | `ClassName.MethodName` |
+| An interface the hub or class declares (including members it inherits from base interfaces) | `Namespace.InterfaceName\|MethodName` |
+
+A member an interface declares itself hides inherited members of the same wire name. Public overrides of `Hub` and `object` members — `OnConnectedAsync`, `ToString` — are not callable.
+
+### Overloads and default parameters
+
+The wire carries a method name and an argument list, no parameter types. Methods sharing a wire name are told apart by argument count: trailing parameters with a default value may be omitted, and `CancellationToken` and `[FromServices]` parameters take no argument slot. Two methods reachable under the same name with an overlapping argument count — also through defaults, or two base interfaces declaring the same member — cannot be told apart, and the build fails with `SARRR002`. Rename one of them.
+
 ## Available properties
 
 Every `ServerMethods` class has these properties auto-injected at invocation time:
@@ -137,6 +149,22 @@ public async Task ProcessData(
     await processor.Process(input);
 }
 ```
+
+## Generic methods
+
+A client names the type argument of a generic call as a string, and the server calls only instantiations generated at compile time. Declare them with `[GenericArguments]` (`Cocoar.SignalARRR.Common.Attributes`):
+
+```csharp
+[GenericArguments(typeof(Order), typeof(Invoice))]   // Load<Order> and Load<Invoice>
+public Task<T> Load<T>(Guid id) { ... }
+
+// several type parameters: one attribute per allowed instantiation, in parameter order
+[GenericArguments(typeof(int), typeof(string))]
+[GenericArguments(typeof(string), typeof(int))]
+public string Pair<A, B>(A a, B b) { ... }
+```
+
+The server accepts exactly the declared instantiations; a call with any other type argument is refused with an error naming `[GenericArguments]`. A generic method without the attribute, or an attribute with the wrong number of types, fails the build with `SARRR003`. How a type name on the wire matches a declared type is in [Wire Protocol](/reference/wire-protocol#clientrequestmessage). The .NET proxy sends the names itself; Kotlin declares them with [`@GenericArguments`](/guide/kotlin-client/typed-proxies#generic-methods); Swift passes them in the `genericArguments` parameter of `invoke` and `send`; TypeScript has no generic calls.
 
 ## Server-to-client calls
 
@@ -189,7 +217,7 @@ Use `[MessageName]` to override the default method name:
 public Task MyMethod() { ... }
 ```
 
-Clients call this as `ClassName.CustomName` instead of `ClassName.MyMethod`.
+Clients call this as `ClassName.CustomName` instead of `ClassName.MyMethod`. A name that is empty or contains `|` — the separator between interface and method — fails the build with `SARRR004`.
 
 ## Next steps
 

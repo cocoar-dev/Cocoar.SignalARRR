@@ -26,7 +26,7 @@ bottom says which page answers what.
 
 | Package | Purpose |
 |---|---|
-| `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects |
+| `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects; runs under NativeAOT on net9.0+ |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | Multi-node scale-out over Redis, Valkey or Garnet (`AddSignalARRRRedisBackplane`) |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | Multi-node scale-out over the PostgreSQL primary the app already has (`AddSignalARRRPostgresBackplane`), with catch-up after a subscription drop |
 | `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers; runs under NativeAOT |
@@ -56,9 +56,13 @@ bottom says which page answers what.
 - **Every .NET contract needs `[SignalARRRContract]`**, on .NET Framework too: proxies and the
   dispatchers that receive server calls are source-generated, and there is no runtime fallback.
   Server-to-client contracts cannot have generic methods.
-- **A NativeAOT client adds its own `JsonSerializerContext`** for its argument and result types,
-  inserted at index 0 of `PayloadSerializerOptions.TypeInfoResolverChain`; `StartAsync` lists any
-  type still missing. MessagePack does not work under AOT.
+- **A NativeAOT client or server adds its own `JsonSerializerContext`** for its argument and
+  result types, inserted at index 0 of `PayloadSerializerOptions.TypeInfoResolverChain` in
+  `AddJsonProtocol`; the client's `StartAsync` and the server's startup list any type still
+  missing. The server runs under AOT on net9.0+. MessagePack does not work under AOT.
+- **A generic server method needs `[GenericArguments(typeof(...))]`** listing the instantiations
+  clients may call; without it the build fails with `SARRR003`. Server methods sharing a wire name
+  must differ in argument count (`SARRR002`).
 - **A `System.IO.Stream` parameter travels over HTTP, not the WebSocket.** Download endpoints are
   one-time; uploads go through `RequestUploadSlot` and `POST /hub/upload/{id}`; slots per
   connection are capped.
@@ -86,11 +90,11 @@ whose description matches the task; they are independent of each other.
 ### Server
 
 - [Hub Setup](references/guide/server/hub-setup.md) — Create a HARRR hub, register it with AddSignalARRR and MapSignalARRRHub<T>, enable MessagePack, run several hubs, tune connection options, and use the hub lifecycle and properties
-- [Server Methods](references/guide/server/server-methods.md) — Organize hub logic in ServerMethods<T> classes: auto-discovery, several classes per hub, why every declared interface is a public RPC surface, method naming, DI and [FromServices], server-to-client calls, custom names
+- [Server Methods](references/guide/server/server-methods.md) — Organize hub logic in ServerMethods<T> classes: compile-time discovery, several classes per hub, why every declared interface is a public RPC surface, method naming and overloads, DI and [FromServices], generic methods and [GenericArguments], server-to-client calls, custom names
 - [Authorization](references/guide/server/authorization.md) — [Authorize] at method, class and hub level; message-level token authentication with ChallengeAuthentication and the auth cache; transport-level authentication with client certificates, Negotiate and cookies; re-validation and mixed mode
 - [Client Manager](references/guide/server/client-manager.md) — ClientManager: query clients with IClientQuery, single-client calls, SendAsync / InvokeAllAsync / InvokeOneAsync, presence snapshots, groups, use from controllers and background services, ClientContext properties and custom attributes
 - [Contract Wire Names](references/guide/server/contracts-wire-names.md) — Declare the wire name of a contract interface (the ClassName|Method halves), the rules for it, versioning contracts side by side, and where wire names do not apply
-- [Backplane & Clustering](references/guide/server/backplane.md) — Multi-node clustering with the Redis-compatible or PostgreSQL backplane: choosing between them, catch-up after a subscription drop, schema and permissions, cluster subjects for cluster-wide observables, distributed operations, presence and cluster semantics
+- [Backplane & Clustering](references/guide/server/backplane.md) — Multi-node clustering with the Redis-compatible or PostgreSQL backplane: choosing between them, catch-up after a subscription drop, schema and permissions, cluster subjects for cluster-wide observables, distributed operations, presence, cluster semantics, rolling updates and NativeAOT
 
 ### .NET client
 
@@ -121,12 +125,12 @@ whose description matches the task; they are independent of each other.
 ### Advanced
 
 - [HTTP Stream References](references/guide/advanced/http-streams.md) — HTTP stream references: a System.IO.Stream parameter in a server-to-client or client-to-server call travels over HTTP instead of the WebSocket — how it works, the endpoints, upload slots, limitations
-- [Proxy Generation](references/guide/advanced/proxy-generation.md) — The Roslyn source generator behind typed proxies: setup, [SignalARRRContract], generated proxies and dispatchers, naming, return type classification, multi-assembly support, NativeAOT, the ProxyCreator API
+- [Proxy Generation](references/guide/advanced/proxy-generation.md) — The Roslyn source generator behind typed proxies and server dispatch: setup, [SignalARRRContract], generated proxies and dispatchers, the server's method table, naming, return type classification, multi-assembly support, NativeAOT for client and server, the ProxyCreator API
 - [Cancellation Propagation](references/guide/advanced/cancellation.md) — Server-initiated cancellation of client operations: pass a CancellationToken to a client method and cancel it remotely, AbortSignal on the TypeScript client, and the CancelTokenFromServer flow underneath
 
 ### Migration
 
-- [Migration from v5.x](references/guide/migration/from-v5.md) — Upgrade from 5.x to 6.0: the .NET client under NativeAOT, [SignalARRRContract] required everywhere, the removed DynamicProxy package, the new RegisterInterface overloads, no generic server-to-client methods, the .NET Framework client on the source generator
+- [Migration from v5.x](references/guide/migration/from-v5.md) — Upgrade from 5.x to 6.0: the .NET client and the server under NativeAOT, [SignalARRRContract] required everywhere, the removed DynamicProxy package, the new RegisterInterface overloads, no generic server-to-client methods, [GenericArguments] on generic server methods, the new build errors SARRR002–004, the .NET Framework client on the source generator
 - [Migration from v4.x](references/guide/migration/from-v4.md) — Upgrade from 4.x to 5.0: WithHub<T>() returns IClientQuery, the message credential for token clients, the moved namespaces, the separate Redis backplane package, removed APIs, and exception detail that no longer reaches the caller
 - [Migration from v2.x](references/guide/migration/from-v2.md) — Upgrade from 2.x to 4.x: target frameworks, source-generated proxies instead of ImpromptuInterface, the authentication model, hub-level authorization inheritance, removed APIs and new packages
 

@@ -11,7 +11,7 @@ SignalARRR is distributed as multiple NuGet packages, one npm package, one Swift
 | Package | Target | Purpose |
 |---------|--------|---------|
 | `Cocoar.SignalARRR.Contracts` | netstandard2.0 / net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute. Reference from shared interface projects, including .NET Framework ones. |
-| `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. |
+| `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. NativeAOT- and trim-compatible on net9.0 and net10.0, with the backplane packages — see [NativeAOT](/guide/advanced/proxy-generation#nativeaot). |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | net8.0 / net9.0 / net10.0 | Multi-node scale-out: `AddSignalARRRRedisBackplane`. Add only when running more than one node — this is where the `StackExchange.Redis` dependency lives. |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | net8.0 / net9.0 / net10.0 | Multi-node scale-out over PostgreSQL `LISTEN`/`NOTIFY`: `AddSignalARRRPostgresBackplane`. For deployments whose only stateful dependency is Postgres — this is where the `Npgsql` dependency lives. Requires Npgsql 8.0.6 or later on every target framework, so it fits whatever version the rest of your stack (Marten, EF Core) pins. |
 | `Cocoar.SignalARRR.Client` | net8.0 / net9.0 / net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. NativeAOT- and trim-compatible — see [NativeAOT](/guide/advanced/proxy-generation#nativeaot). |
@@ -25,7 +25,7 @@ These packages are referenced transitively — you normally don't need to refere
 |---------|---------|
 | `Cocoar.SignalARRR.Common` | Shared types, wire protocol constants, message models, the JSON metadata of the envelope types |
 | `Cocoar.SignalARRR.ProxyGenerator` | Runtime for generated code: `ProxyCreator`, `ProxyCreatorHelper`, `DispatcherRegistry` |
-| `Cocoar.SignalARRR.SourceGenerator` | Roslyn incremental source generator — a dependency of Server and both clients, so it runs in the projects that use proxies |
+| `Cocoar.SignalARRR.SourceGenerator` | Roslyn incremental source generator — a dependency of Server and both clients, so it runs in the projects that use proxies and in those that declare hubs and `ServerMethods` classes |
 
 ## npm Package
 

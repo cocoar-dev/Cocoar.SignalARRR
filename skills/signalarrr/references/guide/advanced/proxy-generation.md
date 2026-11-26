@@ -2,7 +2,7 @@
 
 # Proxy Generation
 
-SignalARRR uses a Roslyn source generator to produce, at compile time, a typed proxy for every call you make through a contract and a dispatcher for every call you receive through one. Neither side uses reflection, which is what lets the .NET client run under NativeAOT.
+SignalARRR uses a Roslyn source generator to produce, at compile time, a typed proxy for every call you make through a contract and a dispatcher for every call you receive through one. On the server it also produces the [table of methods](#server-method-table) clients may call on each hub. None of this uses reflection, which is what lets the .NET client and the server run under NativeAOT.
 
 ## How it works
 
@@ -152,28 +152,52 @@ MyServer.dll         →  ChatHubProxy, AdminHubProxy  (generated and registered
 
 Interfaces that are only known at runtime, for example from plugins loaded later, are not covered: an interface needs `[SignalARRRContract]` and must be visible to the compiler of a project that runs the generator. There is no runtime fallback — `GetTypedMethods<T>()` and `RegisterInterface<T>(...)` throw for an interface without generated code.
 
+## Server method table
+
+In a project that references `Cocoar.SignalARRR.Server`, the generator also covers every hub (a class deriving from `HARRR`) and every `ServerMethods<THub>` class. For each method a client may call it emits the wire name, the argument counts it accepts, a statically typed call and the `[Authorize]`/`[AllowAnonymous]` plan, resolved at compile time (`SignalARRRServerDispatch.g.cs`). A module initializer registers it; `AddSignalARRR` builds each hub's table from it for the assemblies selected with `AddServerMethodsFrom`, and the hub calls the generated delegate instead of `MethodInfo.Invoke`.
+
+The table follows the rules described in [Server Methods](../server/server-methods.md#method-naming) and [Authorization](../server/authorization.md). What the wire cannot tell apart fails the build:
+
+| Error | Cause |
+|---|---|
+| `SARRR002` | Two methods reachable under the same wire name with overlapping argument counts, also through omitted default parameters or two base interfaces declaring the same member |
+| `SARRR003` | A generic method without [`[GenericArguments]`](../server/server-methods.md#generic-methods), or an attribute with the wrong number of types |
+| `SARRR004` | A `[MessageName]` that is empty or contains `\|` |
+
+An assembly passed to `AddServerMethodsFrom` that was built without the generator has no table and fails at startup, naming it. There is no reflection fallback.
+
 ## NativeAOT
 
-The .NET client (`Cocoar.SignalARRR.Client`) runs under NativeAOT and trimming. Proxies and dispatchers are generated, so the one thing an AOT app adds is JSON metadata for its own argument and result types: a `JsonSerializerContext`, inserted at the front of the hub protocol's resolver chain.
+The .NET client (`Cocoar.SignalARRR.Client`) and the server (`Cocoar.SignalARRR.Server`, with the Redis and Postgres backplanes) run under NativeAOT and trimming — the server on net9.0 and net10.0, since SignalR supports a NativeAOT server only from .NET 9; on net8.0 it stays JIT-only. Proxies, dispatchers and the server's method table are generated, so the one thing an AOT app adds is JSON metadata for its own argument and result types: a `JsonSerializerContext`, inserted at the front of the hub protocol's resolver chain.
 
 ```csharp
 [JsonSerializable(typeof(LiveNudge))]
 [JsonSerializable(typeof(List<string>))]
 partial class AppJson : JsonSerializerContext { }
 
+// Client
 var connection = HARRRConnection.Create(b => b
     .WithUrl(url)
     .AddJsonProtocol(o => o.PayloadSerializerOptions.TypeInfoResolverChain.Insert(0, AppJson.Default)));
+
+// Server
+builder.Services.AddSignalR()
+    .AddJsonProtocol(o => o.PayloadSerializerOptions.TypeInfoResolverChain.Insert(0, AppJson.Default));
+builder.Services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(ChatHub).Assembly));
 ```
 
-SignalARRR appends the metadata for its own envelope types (`SignalARRRJsonContext`) at the end of the chain itself. No `TrimmerRootAssembly` or other workaround is needed.
+SignalARRR appends the metadata for its own types (`SignalARRRJsonContext`) behind the app's itself. No `TrimmerRootAssembly` or other workaround is needed.
 
-- **A missing type fails at start, not mid-call.** When reflection-based JSON is off — as under AOT — `StartAsync` checks that every type the registered contracts send or receive has a JSON contract, and throws listing all that do not.
+- **A missing type fails at start, not mid-call.** When reflection-based JSON is off — as under AOT — the client's `StartAsync` checks that every type the registered contracts send or receive has a JSON contract, and the server checks every argument and result type of its methods at startup; both throw listing all that are missing.
 - **JIT apps change nothing.** Where reflection-based JSON is enabled, the reflection resolver stays last in the chain and serves every type no context covers.
-- **MessagePack is not supported under AOT.** The MessagePack hub protocol (MessagePack 2.x) generates code at runtime; use JSON in an AOT app. In JIT apps MessagePack keeps working.
-- **The server is not AOT-capable yet.** `Cocoar.SignalARRR.Server` still dispatches through reflection. The wire protocol is the same, so an AOT client talks to any server.
+- **MessagePack is not supported under AOT.** The MessagePack hub protocol (MessagePack 2.x, and SignalR's server side of it) generates code at runtime; use JSON in an AOT app. In JIT apps MessagePack keeps working.
+- **Generic server methods declare their type arguments.** A generic call can only reach an instantiation generated at compile time — see [`[GenericArguments]`](../server/server-methods.md#generic-methods).
+- **Backplane and cluster subjects.** The backplane's own envelopes come with SignalARRR; the event type of a cluster subject goes into the app's `JsonSerializerContext` — see [Backplane & Clustering](../server/backplane.md#nativeaot).
+- **AOT and JIT mix freely.** The wire protocol is the same, so an AOT client talks to any server and an AOT server to any client.
 
-The repository's CI publishes a smoke-test client with `PublishAot` (`src/tests/Cocoar.SignalARRR.AotSmoke`, run by `scripts/run-aot-smoke.sh`) and fails on any ILC warning from a SignalARRR assembly.
+Under AOT, SignalR invokes the hub's entry points through reflection and wraps exceptions in `TargetInvocationException`; SignalARRR registers a hub filter that unwraps them, so structured error codes such as `unauthorized` still reach clients.
+
+The repository's CI publishes a smoke-test client and server with `PublishAot` (`src/tests/Cocoar.SignalARRR.AotSmoke`, `src/tests/Cocoar.SignalARRR.AotSmokeServer`, run by `scripts/run-aot-smoke.sh`), runs the native client against the native server and against the IntegrationTestServer, and fails on any ILC warning from a SignalARRR assembly.
 
 ## ProxyCreator API
 

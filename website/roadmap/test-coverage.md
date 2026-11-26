@@ -37,5 +37,5 @@ All three client ecosystems (.NET, TypeScript, Swift) test against one shared `I
 - **IntegrationTestServer** — standalone .NET server, dynamic port, shared by all clients
 - **`scripts/test-server.sh`** — server lifecycle coordinator (acquire/release with ref counting)
 - **`scripts/run-integration-tests.sh`** — runs all available client tests in sequence
-- **`scripts/run-aot-smoke.sh`** — publishes `src/tests/Cocoar.SignalARRR.AotSmoke` with NativeAOT and runs proxy calls, a stream, pushes and a server call with result against the IntegrationTestServer; fails on any ILC warning from `Cocoar.SignalARRR.*` (CI job `aot-smoke`)
+- **`scripts/run-aot-smoke.sh`** — publishes `src/tests/Cocoar.SignalARRR.AotSmoke` and `src/tests/Cocoar.SignalARRR.AotSmokeServer` with NativeAOT and runs the native client — proxy calls, a stream, pushes, a server call with result, `ServerMethods`, interfaces, defaults, generics, `[FromServices]`, an upload, `[Authorize]`/`[AllowAnonymous]` — against the native server and against the IntegrationTestServer; fails on any ILC warning from `Cocoar.SignalARRR.*` (CI job `aot-smoke`)
 - **.NET fixture** auto-starts server if no `SIGNALARRR_TEST_SERVER_URL` environment variable

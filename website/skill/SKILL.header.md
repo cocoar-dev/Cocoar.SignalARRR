@@ -26,7 +26,7 @@ bottom says which page answers what.
 
 | Package | Purpose |
 |---|---|
-| `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects |
+| `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects; runs under NativeAOT on net9.0+ |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | Multi-node scale-out over Redis, Valkey or Garnet (`AddSignalARRRRedisBackplane`) |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | Multi-node scale-out over the PostgreSQL primary the app already has (`AddSignalARRRPostgresBackplane`), with catch-up after a subscription drop |
 | `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers; runs under NativeAOT |
@@ -56,9 +56,13 @@ bottom says which page answers what.
 - **Every .NET contract needs `[SignalARRRContract]`**, on .NET Framework too: proxies and the
   dispatchers that receive server calls are source-generated, and there is no runtime fallback.
   Server-to-client contracts cannot have generic methods.
-- **A NativeAOT client adds its own `JsonSerializerContext`** for its argument and result types,
-  inserted at index 0 of `PayloadSerializerOptions.TypeInfoResolverChain`; `StartAsync` lists any
-  type still missing. MessagePack does not work under AOT.
+- **A NativeAOT client or server adds its own `JsonSerializerContext`** for its argument and
+  result types, inserted at index 0 of `PayloadSerializerOptions.TypeInfoResolverChain` in
+  `AddJsonProtocol`; the client's `StartAsync` and the server's startup list any type still
+  missing. The server runs under AOT on net9.0+. MessagePack does not work under AOT.
+- **A generic server method needs `[GenericArguments(typeof(...))]`** listing the instantiations
+  clients may call; without it the build fails with `SARRR003`. Server methods sharing a wire name
+  must differ in argument count (`SARRR002`).
 - **A `System.IO.Stream` parameter travels over HTTP, not the WebSocket.** Download endpoints are
   one-time; uploads go through `RequestUploadSlot` and `POST /hub/upload/{id}`; slots per
   connection are capped.
