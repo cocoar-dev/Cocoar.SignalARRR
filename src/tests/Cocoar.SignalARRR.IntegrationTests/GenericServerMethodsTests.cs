@@ -51,6 +51,18 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         [Fact]
+        public async Task AnUndeclaredTypeArgument_IsRefused() {
+            // Guid is a perfectly loadable type, but the method did not declare it.
+            var message = new ClientRequestMessage("GenericMethods.Echo", new object[] { System.Guid.NewGuid() }) {
+                GenericArguments = new[] { typeof(System.Guid).FullName! },
+            };
+
+            var error = await Assert.ThrowsAsync<Cocoar.SignalARRR.Common.Exceptions.HARRRRemoteException>(
+                () => _connection.InvokeCoreAsync<System.Guid>(message, TestContext.Current.CancellationToken));
+            Assert.Contains("[GenericArguments]", error.Message);
+        }
+
+        [Fact]
         public async Task ShortSystemTypeName_IsAccepted() {
             // What a Kotlin contract may send: @GenericArguments("Int32") rather than the FullName.
             var message = new ClientRequestMessage("GenericMethods.Echo", new object[] { 7 }) {

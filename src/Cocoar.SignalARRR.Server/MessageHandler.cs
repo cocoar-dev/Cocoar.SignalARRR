@@ -1,137 +1,36 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using System.Text.Json;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions.ExtensionMethods;
-using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Exceptions;
-using Cocoar.SignalARRR.Common.Interfaces;
-using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
-using Microsoft.AspNetCore.Mvc;
+using Cocoar.SignalARRR.ProxyGenerator;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using SignalARRRObservableExtensions = Cocoar.SignalARRR.Server.ExtensionMethods.SignalARRRObservableExtensions;
-using TypeHelper = Cocoar.SignalARRR.Common.Helper.TypeHelper;
 
 namespace Cocoar.SignalARRR.Server {
+    /// <summary>
+    /// Runs one client call: resolves the method in the hub's generated table, authorizes it and
+    /// calls it with the message's arguments.
+    /// </summary>
     internal class MessageHandler {
 
-        private ISignalARRRMethodsCollection MethodsCollection { get; }
+        private readonly HARRR _hub;
+        private readonly ClientContext _clientContext;
+        private readonly ServerMethodTable _methods;
+        private readonly IServiceProvider _serviceProvider;
 
-        private ISignalARRRInterfaceCollection InterfaceCollection { get; }
-
-        private ILogger Logger { get; }
-
-        private ClientContext ClientContext { get; }
-
-        private HARRR HARRR { get; }
-
-        private IServiceProvider _serviceProvider;
-
-        public MessageHandler(HARRR harrr, ClientContext clientContext, ISignalARRRMethodsCollection methodsCollection, IServiceProvider serviceProvider, ISignalARRRInterfaceCollection signalARRRInterfaceCollection) {
-            HARRR = harrr;
-            MethodsCollection = methodsCollection;
-            InterfaceCollection = signalARRRInterfaceCollection;
-            ClientContext = clientContext;
+        public MessageHandler(HARRR hub, ClientContext clientContext, ServerMethodTable methods, IServiceProvider serviceProvider) {
+            _hub = hub;
+            _clientContext = clientContext;
+            _methods = methods;
             _serviceProvider = serviceProvider;
-            Logger = LoggerCache.For(_serviceProvider, GetType());
         }
-
-
 
         public async Task<IAsyncEnumerable<object>> InvokeStreamAsync(ClientRequestMessage clientMessage, CancellationToken cancellationToken) {
-
-
-            if (clientMessage.Method.Contains("|")) {
-                return await InvokeInterfaceStreamAsync(clientMessage, cancellationToken);
-
-            }
-
-            return await InvokeMethodStreamAsync(clientMessage, cancellationToken);
+            var result = await InvokeCoreAsync(clientMessage, cancellationToken, cancellationToken).ConfigureAwait(false);
+            return result as IAsyncEnumerable<object>
+                   ?? throw new NotSupportedException($"Method '{clientMessage.Method}' does not return a stream.");
         }
-
-        public async Task<IAsyncEnumerable<object>> InvokeMethodStreamAsync(ClientRequestMessage clientMessage, CancellationToken cancellationToken) {
-
-            var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method, clientMessage.Arguments.Length);
-
-
-            var authentication = new SignalARRRAuthentication(_serviceProvider);
-            var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, methodInformations.MethodInfo);
-
-            if (!result.Succeeded) {
-                throw new UnauthorizedException();
-            }
-
-            // Methods declared on the hub run on the hub instance SignalR created for this
-            // invocation. Constructing a second one via ActivatorUtilities bypassed IHubActivator
-            // and any hub filters, re-ran the hub constructor on every message, made state
-            // established in OnConnectedAsync invisible to the method, and leaked: Hub is
-            // IDisposable, but ActivatorUtilities does not register the instance for scope disposal.
-            object instance;
-            if (methodInformations.MethodInfo.DeclaringType == HARRR.GetType()) {
-                instance = HARRR;
-            } else {
-                instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType!);
-            }
-
-            return await InvokeStreamMethodInfoAsync(instance, methodInformations.MethodInfo, clientMessage.Arguments, cancellationToken);
-
-        }
-
-        public async Task<IAsyncEnumerable<object>> InvokeInterfaceStreamAsync(ClientRequestMessage clientMessage, CancellationToken cancellationToken) {
-
-            var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method, clientMessage.Arguments.Length);
-
-            var authentication = new SignalARRRAuthentication(_serviceProvider);
-            var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, invokeInfos.MethodInfo);
-
-            if (!result.Succeeded) {
-                throw new UnauthorizedException();
-            }
-
-            var instance = invokeInfos.Factory.DynamicInvoke(_serviceProvider)!;
-
-
-            return await InvokeStreamMethodInfoAsync(instance, invokeInfos.MethodInfo, clientMessage.Arguments,
-                cancellationToken);
-
-        }
-
-        public async Task<IAsyncEnumerable<object>> InvokeStreamMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, CancellationToken cancellationToken) {
-
-            var taskType = methodInfo.ReturnType;
-            if (taskType.IsGenericTypeOf(typeof(Task<>))) {
-                taskType = methodInfo.ReturnType.GenericTypeArguments[0];
-            }
-
-            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, cancellationToken, cancellationToken).ConfigureAwait(false);
-            SetInvokingInstanceProperties(instance);
-
-            if (taskType.IsGenericTypeOf(typeof(ChannelReader<>))) {
-                return await InvokeStreamingMethodAsync(instance, methodInfo, parameters).ConfigureAwait(false);
-            }
-
-            if (taskType.IsGenericTypeOf(typeof(IAsyncEnumerable<>))) {
-                return await InvokeStreamingMethodAsync(instance, methodInfo, parameters).ConfigureAwait(false);
-            }
-
-            if (taskType.IsGenericTypeOf(typeof(IObservable<>))) {
-                return await InvokeIObservableMethodAsync(instance, methodInfo, cancellationToken, parameters).ConfigureAwait(false);
-            }
-
-
-            throw new NotSupportedException();
-
-        }
-
-
 
         /// <param name="parameterCancellation">
         /// The token bound to the invoked method's <see cref="CancellationToken"/> parameters. The
@@ -140,312 +39,60 @@ namespace Cocoar.SignalARRR.Server {
         /// <c>ApplicationStopping</c>, because a fire-and-forget caller asked for the *work*, and
         /// "write to the DB" must not stop just because the connection dropped afterwards.
         /// </param>
-        public async Task<object> InvokeAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation) {
-
-            if (clientMessage.Method.Contains("|")) {
-                return await InvokeInterfaceAsync(clientMessage, parameterCancellation);
-            }
-
-            return await InvokeMethodAsync(clientMessage, parameterCancellation);
-
-
-        }
-
-        public async Task<object> InvokeMethodAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation) {
-
-            var methodInformations = MethodsCollection.GetMethodInformations(clientMessage.Method, clientMessage.Arguments.Length);
-
-            var authentication = new SignalARRRAuthentication(_serviceProvider);
-            var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, methodInformations.MethodInfo);
-
-            if (!result.Succeeded) {
-                throw new UnauthorizedException();
-            }
-
-            object instance;
-            if (methodInformations.MethodInfo.DeclaringType == HARRR.GetType()) {
-                instance = HARRR;
-            } else {
-                instance = _serviceProvider.GetRequiredService(methodInformations.MethodInfo.ReflectedType!);
-            }
-
-            return await InvokeMethodInfoAsync(instance, methodInformations.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments, parameterCancellation);
-
-        }
-
-        public async Task<object> InvokeInterfaceAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation) {
-
-            var invokeInfos = InterfaceCollection.GetInvokeInformation(clientMessage.Method, clientMessage.Arguments.Length);
-
-            var authentication = new SignalARRRAuthentication(_serviceProvider);
-            var result = await authentication.Authorize(ClientContext, clientMessage.Authorization, invokeInfos.MethodInfo);
-
-            if (!result.Succeeded) {
-                throw new UnauthorizedException();
-            }
-
-            object instance;
-            if (invokeInfos.MethodInfo.DeclaringType == HARRR.GetType()) {
-                instance = HARRR;
-            } else {
-                instance = invokeInfos.Factory.DynamicInvoke(_serviceProvider)!;
-            }
-
-
-
-
-            return await InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, clientMessage.Arguments, clientMessage.GenericArguments, parameterCancellation);
-
-        }
-
-        /// <summary>
-        /// Closes an open generic method over the type arguments named by the caller.
-        /// </summary>
-        /// <remarks>
-        /// The names come off the wire, so they are validated rather than trusted. Previously they
-        /// went straight into <see cref="MethodInfo.MakeGenericMethod"/>: an unresolvable name became
-        /// a <c>null</c> element and surfaced as an opaque reflection error, a wrong arity produced
-        /// another, and every distinct value-type instantiation permanently JITs native code that is
-        /// never reclaimed — so the caller both chose which type a generic method ran on and could
-        /// grow the process without bound.
-        /// </remarks>
-        private static MethodInfo MakeGenericMethodChecked(MethodInfo methodInfo, IEnumerable<string> genericArguments) {
-
-            if (!methodInfo.IsGenericMethodDefinition) {
-                throw new HARRRException(new ArgumentException(
-                    $"Method '{methodInfo.Name}' is not generic, but {genericArguments.Count()} type argument(s) were supplied."));
-            }
-
-            var expected = methodInfo.GetGenericArguments().Length;
-            var names = genericArguments.ToList();
-
-            if (names.Count != expected) {
-                throw new HARRRException(new ArgumentException(
-                    $"Method '{methodInfo.Name}' expects {expected} type argument(s), but {names.Count} were supplied."));
-            }
-
-            var resolved = new Type[names.Count];
-            for (var i = 0; i < names.Count; i++) {
-                resolved[i] = TypeHelper.FindType(names[i])
-                    ?? throw new HARRRException(new ArgumentException(
-                        $"Type argument '{names[i]}' for method '{methodInfo.Name}' could not be resolved."));
-            }
-
-            try {
-                // Enforces the generic constraints declared on the method; without this any resolvable
-                // type was accepted and the violation only showed up as an obscure failure later.
-                return methodInfo.MakeGenericMethod(resolved);
-            } catch (ArgumentException ex) {
-                throw new HARRRException(new ArgumentException(
-                    $"Type arguments for method '{methodInfo.Name}' do not satisfy its constraints.", ex));
-            }
-        }
-
-        public async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, CancellationToken parameterCancellation) {
-
+        public Task<object?> InvokeAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation) =>
             // The upload wait keeps ConnectionAborted regardless of what the method's own token is
             // bound to (V-2): waiting for an upload from a client that already disconnected parked
-            // a thread-pool thread permanently — the wait must die with the connection even when
-            // the invoked method deliberately keeps running (the send path).
-            // Closed before binding: the parameters of a generic method are typed by its type
-            // arguments, so binding against the open definition tried to deserialize into 'T'.
-            if (genericArguments?.Any() == true) {
-                methodInfo = MakeGenericMethodChecked(methodInfo, genericArguments);
+            // a thread-pool thread permanently.
+            InvokeCoreAsync(clientMessage, parameterCancellation, _hub.Context.ConnectionAborted);
+
+        private async Task<object?> InvokeCoreAsync(ClientRequestMessage clientMessage, CancellationToken parameterCancellation, CancellationToken uploadCancellation) {
+
+            var method = _methods.Resolve(clientMessage.Method, clientMessage.Arguments.Length);
+
+            var authentication = new SignalARRRAuthentication(_serviceProvider);
+            var result = await authentication.Authorize(_clientContext, clientMessage.Authorization, method.Authorization).ConfigureAwait(false);
+            if (!result.Succeeded) {
+                throw new UnauthorizedException();
             }
 
-            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, parameterCancellation, HARRR.Context.ConnectionAborted).ConfigureAwait(false);
+            var invoke = SelectInvoker(method, clientMessage.GenericArguments);
+            var call = new ServerCall(_hub, _clientContext, _serviceProvider, method, parameterCancellation, uploadCancellation);
+            var options = _serviceProvider.GetRequiredService<ServerPayloadOptions>().Options;
+            var arguments = new JsonArgumentReader(clientMessage.Arguments, options, call);
 
-            SetInvokingInstanceProperties(instance);
-
-            if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
-                await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
-                return null!;
-            } else {
-                return await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters) ?? null!;
-            }
-
-
-        }
-
-
-
-        private object SetInvokingInstanceProperties(object instance) {
-
-            // The hub already has all of these -- SignalR populated Context/Clients/Groups, and the
-            // ctor wired ClientContext and Logger. Re-setting them would replace the hub's own logger.
-            if (ReferenceEquals(instance, HARRR)) {
-                return instance;
-            }
-
-            if (instance is ServerMethods serverMethods) {
-                serverMethods.ClientContext = ClientContext;
-                serverMethods.Context = HARRR.Context;
-                serverMethods.Clients = HARRR.Clients;
-                serverMethods.Groups = HARRR.Groups;
-                serverMethods.Logger = LoggerCache.For(_serviceProvider, instance.GetType());
-                return instance;
-            }
-
-            // Interface-dispatch instances are arbitrary user classes; whether each property exists
-            // is only known at runtime, so this path stays reflective.
-            var reflectInstance = instance.Reflect();
-            reflectInstance.SetPropertyValue("ClientContext", ClientContext);
-            reflectInstance.SetPropertyValue("Context", HARRR.Context);
-            reflectInstance.SetPropertyValue("Clients", HARRR.Clients);
-            reflectInstance.SetPropertyValue("Groups", HARRR.Groups);
-            reflectInstance.SetPropertyValue("Logger", LoggerCache.For(_serviceProvider, instance.GetType()));
-
-            return instance;
-        }
-
-        private async Task<StreamingResult> InvokeStreamingMethodAsync(object instance, MethodInfo methodInfo, params object[] parameters) {
-
-            var ch = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters).ConfigureAwait(false);
-
-            Type taskType = methodInfo.ReturnType;
-            if (taskType.GetGenericTypeDefinition() == typeof(Task<>)) {
-                taskType = methodInfo.ReturnType.GenericTypeArguments[0];
-            }
-
-
-            var convType = typeof(StreamingResult<>).MakeGenericType(taskType.GenericTypeArguments[0]);
-
-            var conv = (StreamingResult)Activator.CreateInstance(convType, ch, ClientContext, methodInfo)!;
-
-            return conv;
-        }
-
-        private async Task<StreamingResult> InvokeIObservableMethodAsync(object instance, MethodInfo methodInfo, CancellationToken cancellationToken, params object[] parameters) {
-
-            var ch = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters).ConfigureAwait(false);
-
-            Type taskType = methodInfo.ReturnType;
-            if (taskType.GetGenericTypeDefinition() == typeof(Task<>)) {
-                taskType = methodInfo.ReturnType.GenericTypeArguments[0];
-            }
-
-            var obsGenType = taskType.GenericTypeArguments[0];
-            // ReSharper disable once PossibleNullReferenceException
-            var convMethod = typeof(SignalARRRObservableExtensions).GetMethod("AsChannelReaderInternal", BindingFlags.Static | BindingFlags.NonPublic)!.MakeGenericMethod(obsGenType);
-            var channelReader = convMethod.Invoke(null, new[] { ch, cancellationToken });
-
-            var convType = typeof(StreamingResult<>).MakeGenericType(taskType.GenericTypeArguments[0]);
-            var conv = (StreamingResult)Activator.CreateInstance(convType, channelReader, ClientContext, methodInfo)!;
-
-            return conv;
-        }
-
-
-        /// <summary>
-        /// Binds the incoming arguments to the method's parameters.
-        /// </summary>
-        /// <remarks>
-        /// Asynchronous because a <see cref="Stream"/> parameter waits for the client to upload it.
-        /// That wait used to be bridged with a blocking <c>RunSync</c>, and on the non-streaming
-        /// invoke path it was handed <see cref="CancellationToken.None"/> with no timeout — so a
-        /// client that requested an upload slot and never uploaded parked a thread pool thread
-        /// permanently. Repeated, that is a remote denial of service against the whole server.
-        /// </remarks>
-        private async Task<object[]> BuildExecuteMethodParametersAsync(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken parameterCancellation, CancellationToken uploadCancellation) {
-
-            var @params = parameters as IList<object> ?? parameters.ToList();
-            var plan = MethodParameterPlan.For(methodInfo).Entries;
-            var bound = new object[plan.Length];
-
-            var paramsPosition = 0;
-            Common.Serialization.IProtocolSerializer? serializer = null;
-
-            for (var i = 0; i < plan.Length; i++) {
-                var kind = plan[i].Kind;
-                var p = plan[i].Parameter;
-
-                if (kind == MethodParameterPlan.ParameterKind.CancellationToken) {
-                    bound[i] = parameterCancellation;
-                    continue;
-                }
-
-                if (kind == MethodParameterPlan.ParameterKind.FromServices) {
-                    bound[i] = _serviceProvider.GetRequiredService(p.ParameterType);
-                    continue;
-                }
-
-                if (paramsPosition >= @params.Count) {
-                    // Resolution matched the message's argument count against the method's accepted
-                    // range, so running out of arguments here means this parameter has a default the
-                    // caller chose to use. The value comes from the *bound* method's metadata — the
-                    // same declaration the registration computed the range from.
-                    if (p.HasDefaultValue) {
-                        bound[i] = ResolveDefaultParameterValue(p)!;
-                        continue;
-                    }
-
-                    throw new ArgumentException(
-                        $"Parameter '{p.Name}' (position {paramsPosition}): " +
-                        $"not enough arguments provided. Expected at least {paramsPosition + 1}, got {@params.Count}.");
-                }
-
-                var par = @params[paramsPosition];
-                // Resolved once per message rather than once per parameter.
-                serializer ??= _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>();
-
-                // If the parameter type is Stream, resolve StreamReference via HTTP upload
-                if (kind == MethodParameterPlan.ParameterKind.Stream && par != null) {
-                    var streamRef = serializer.TryConvertTo<StreamReference>(par);
-                    if (streamRef != null && !string.IsNullOrEmpty(streamRef.Uri)) {
-                        var streamManager = _serviceProvider.GetRequiredService<ServerPushStreamManager>();
-                        var timeout = _serviceProvider.GetService<SignalARRRServerOptions>()?.StreamUploadTimeout
-                            ?? TimeSpan.FromMinutes(2);
-
-                        // ClientContext.Id, not just the URL: the slot belongs to the connection that
-                        // requested it, so naming someone else's is a miss rather than a free read.
-                        par = await streamManager
-                            .WaitForUpload(streamRef.Uri, ClientContext.Id, timeout, uploadCancellation)
-                            .ConfigureAwait(false);
-                    }
-                } else if (par != null && p.ParameterType != par.GetType()) {
-                    try {
-                        par = serializer.ConvertTo(par, p.ParameterType)!;
-                    } catch (Exception ex) {
-                        // The received value is deliberately not echoed: a credential that fails to
-                        // deserialize would otherwise land in the server log in clear text.
-                        throw new ArgumentException(
-                            $"Parameter '{p.Name}' (position {paramsPosition}): " +
-                            $"failed to deserialize {par.GetType().Name} to {p.ParameterType.Name}.", ex);
-                    }
-                }
-
-                bound[i] = par!;
-                paramsPosition++;
-            }
-
-            return bound;
+            return await invoke(call, arguments).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Materializes a parameter's default value for direct invocation.
+        /// The call to run: the method itself, or the instantiation of a generic method that the
+        /// caller's type arguments name.
         /// </summary>
         /// <remarks>
-        /// <see cref="ParameterInfo.DefaultValue"/> is the raw metadata constant: for
-        /// <c>= default</c> on a struct it is <c>null</c>, and for enums some runtimes surface the
-        /// underlying integral value. Both would make <see cref="MethodBase.Invoke(object, object[])"/>
-        /// throw, so they are normalized here.
+        /// The names come off the wire, so they are matched against the instantiations the method
+        /// declared with <c>[GenericArguments]</c> rather than resolved. Resolving them used to let
+        /// the caller pick any loaded type, and every distinct value-type instantiation permanently
+        /// generated native code.
         /// </remarks>
-        private static object? ResolveDefaultParameterValue(ParameterInfo parameter) {
-            var value = parameter.DefaultValue;
+        private static ServerMethodInvoker SelectInvoker(ServerMethodDescriptor method, string[]? genericArguments) {
+            var supplied = genericArguments?.Length ?? 0;
 
-            if (value == null) {
-                return parameter.ParameterType.IsValueType
-                    ? Activator.CreateInstance(parameter.ParameterType)
-                    : null;
+            if (method.GenericArity == 0) {
+                if (supplied > 0) {
+                    throw new HARRRException(new ArgumentException(
+                        $"Method '{method.Name}' is not generic, but {supplied} type argument(s) were supplied."));
+                }
+
+                return method.Invoke!;
             }
 
-            if (parameter.ParameterType.IsEnum && !parameter.ParameterType.IsInstanceOfType(value)) {
-                return Enum.ToObject(parameter.ParameterType, value);
+            if (supplied != method.GenericArity) {
+                throw new HARRRException(new ArgumentException(
+                    $"Method '{method.Name}' expects {method.GenericArity} type argument(s), but {supplied} were supplied."));
             }
 
-            return value;
+            return method.ResolveGeneric!(genericArguments!)
+                   ?? throw new HARRRException(new ArgumentException(
+                       $"Type argument(s) '{string.Join(", ", genericArguments!)}' for method '{method.Name}' are not among those declared with [GenericArguments]."));
         }
-
-
     }
 }

@@ -79,18 +79,15 @@ namespace Cocoar.SignalARRR.Tests {
 
         [Fact]
         public async Task Registration_resolves_exactly_what_the_generated_proxy_emits() {
-            // The one that matters. Both halves are derived independently — the emitting half by the
-            // generator from Roslyn symbols at compile time, the resolving half by WireName from
-            // reflection at startup — so this is the only check that they met in the middle.
-            var collection = new SignalARRRInterfaceCollection();
-            collection.RegisterInterface(typeof(IRenamedWireContract), typeof(RenamedWireContract));
+            // The one that matters: the proxy and the server table are generated separately, in
+            // different assemblies, so this is the check that they met in the middle.
+            var table = ServerTables.For<WireNameProbeHub>();
 
             var helper = new CapturingHelper();
             var proxy = ProxyCreator.CreateInstanceFromInterface<IRenamedWireContract>(helper);
             await proxy.SayHello("world");
 
-            var (_, methodInfo) = collection.GetInvokeInformation(helper.LastMethodName!, 1);
-            Assert.Equal(nameof(IRenamedWireContract.SayHello), methodInfo.Name);
+            Assert.Contains(nameof(IRenamedWireContract.SayHello), table.Resolve(helper.LastMethodName!, 1).Declaration);
         }
 
         private sealed class ValueReader : ArgumentReader {
@@ -132,5 +129,14 @@ namespace Cocoar.SignalARRR.Tests {
                 "renamed.contract|Untouched",
                 WireName.For(typeof(IRenamedWireContract), typeof(IRenamedWireContract).GetMethod(nameof(IRenamedWireContract.Untouched))!));
         }
+    }
+
+    public class WireNameProbeHub : Cocoar.SignalARRR.Server.HARRR {
+        public WireNameProbeHub(IServiceProvider serviceProvider) : base(serviceProvider) { }
+    }
+
+    public class RenamedWireServerMethods : Cocoar.SignalARRR.Server.ServerMethods<WireNameProbeHub>, IRenamedWireContract {
+        public Task<string> SayHello(string name) => Task.FromResult(name);
+        public Task Untouched() => Task.CompletedTask;
     }
 }

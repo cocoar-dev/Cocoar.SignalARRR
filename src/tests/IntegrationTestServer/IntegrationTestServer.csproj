@@ -12,6 +12,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
+    <!-- Hubs and ServerMethods classes need the source generator, which produces their dispatch
+         tables. It flows to package consumers through NuGet; a project reference needs it explicitly. -->
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server.Backplane.Redis\Cocoar.SignalARRR.Server.Backplane.Redis.csproj" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server.Backplane.Postgres\Cocoar.SignalARRR.Server.Backplane.Postgres.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Tests.SharedModels\Cocoar.SignalARRR.Tests.SharedModels.csproj" />

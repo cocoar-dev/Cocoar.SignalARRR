@@ -40,10 +40,8 @@ public class StreamingResultTests {
         (ClientContext)RuntimeHelpers.GetUninitializedObject(typeof(ClientContext));
 
     /// <summary>A method with no <c>[Authorize]</c> data, so the check short-circuits.</summary>
-    private static MethodInfo UnrestrictedMethod() =>
-        typeof(StreamingResultTests).GetMethod(nameof(Unrestricted), BindingFlags.NonPublic | BindingFlags.Static)!;
-
-    private static void Unrestricted() { }
+    private static Cocoar.SignalARRR.Server.ExtensionMethods.SignalARRRAuthorizationPlan UnrestrictedMethod() =>
+        new(false, System.Array.Empty<Microsoft.AspNetCore.Authorization.IAuthorizeData>());
 
     private static async IAsyncEnumerable<int> Forever([EnumeratorCancellation] CancellationToken cancellationToken = default) {
         var i = 0;

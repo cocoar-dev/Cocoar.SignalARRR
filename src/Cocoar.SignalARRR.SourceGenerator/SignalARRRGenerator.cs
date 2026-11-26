@@ -63,6 +63,17 @@ public class SignalARRRGenerator : IIncrementalGenerator {
             }
         });
 
+        // The server's method tables: hubs and ServerMethods classes of this compilation.
+        context.RegisterSourceOutput(context.CompilationProvider, static (spc, compilation) => {
+            var (source, diagnostics) = Server.ServerTableBuilder.Build(compilation);
+            foreach (var diagnostic in diagnostics) {
+                spc.ReportDiagnostic(diagnostic);
+            }
+            if (source != null) {
+                spc.AddSource("SignalARRRServerDispatch.g.cs", source);
+            }
+        });
+
         // Referenced assembly discovery — separate pipeline
         context.RegisterSourceOutput(
             context.CompilationProvider.Combine(collected),

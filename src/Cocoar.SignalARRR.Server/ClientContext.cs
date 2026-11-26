@@ -2,11 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Reflection;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions;
 using Cocoar.SignalARRR.ProxyGenerator;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Microsoft.AspNetCore.Authentication;
@@ -193,12 +191,12 @@ namespace Cocoar.SignalARRR.Server {
                 ?? principal?.Identity?.Name;
         }
 
-        public async Task<PolicyAuthorizationResult> TryAuthenticate(MethodInfo methodInfo) {
+        public async Task<PolicyAuthorizationResult> TryAuthenticate(SignalARRRAuthorizationPlan authorization) {
 
             // Runs per streamed element (P-7): both checks must stay allocation-free. The plan is
-            // cached per MethodInfo, and RequiresAuthorization folds [AllowAnonymous] in, so an
+            // generated once per method, and RequiresAuthorization folds [AllowAnonymous] in, so an
             // anonymous-permitted method exits here instead of after a full policy evaluation.
-            if (!methodInfo.GetAuthorizationPlan().RequiresAuthorization)
+            if (!authorization.RequiresAuthorization)
                 return PolicyAuthorizationResult.Success();
 
             if (UserValidUntil >= DateTime.UtcNow)
@@ -206,7 +204,7 @@ namespace Cocoar.SignalARRR.Server {
 
             // Transport-level auth: re-validate server-side without challenging the client
             if (AuthMode == AuthenticationMode.TransportLevel) {
-                return await RevalidateTransportAuth(methodInfo);
+                return await RevalidateTransportAuth(authorization);
             }
 
             // Message-level or undetermined: challenge the client for a fresh token — unless it has
@@ -225,8 +223,7 @@ namespace Cocoar.SignalARRR.Server {
             // wasteful, not the checking.
             var res = string.Empty;
             if (!_clientHasNoCredentialToGive) {
-                var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(HARRRType);
-                var harrrContext = (IClientContextDispatcher)ServiceProvider.GetRequiredService(hubContextType);
+                var harrrContext = ServerDispatchRegistry.Hub(HARRRType).Dispatcher(ServiceProvider);
                 res = await harrrContext.Challenge(Id);
 
                 // Cleared again as soon as any message arrives carrying a credential, so a client
@@ -246,7 +243,7 @@ namespace Cocoar.SignalARRR.Server {
             if (string.IsNullOrWhiteSpace(res) && AuthMode == AuthenticationMode.None) {
                 if (HasTransportLevelCredentials()) {
                     AuthMode = AuthenticationMode.TransportLevel;
-                    return await RevalidateTransportAuth(methodInfo);
+                    return await RevalidateTransportAuth(authorization);
                 }
             }
 
@@ -256,10 +253,10 @@ namespace Cocoar.SignalARRR.Server {
 
             using var scope = ScopeFactory.CreateScope();
             var authentication = new SignalARRRAuthentication(scope.ServiceProvider);
-            return await authentication.Authorize(this, res, methodInfo);
+            return await authentication.Authorize(this, res, authorization);
         }
 
-        private async Task<PolicyAuthorizationResult> RevalidateTransportAuth(MethodInfo methodInfo) {
+        private async Task<PolicyAuthorizationResult> RevalidateTransportAuth(SignalARRRAuthorizationPlan authorization) {
             using var scope = ScopeFactory.CreateScope();
             var revalidationService = scope.ServiceProvider.GetService<ITransportAuthRevalidationService>()
                 ?? new DefaultTransportAuthRevalidationService(scope.ServiceProvider);
@@ -271,7 +268,7 @@ namespace Cocoar.SignalARRR.Server {
 
                 // Run policy evaluation with the existing principal
                 var authentication = new SignalARRRAuthentication(scope.ServiceProvider);
-                return await authentication.AuthorizeWithPrincipal(this, methodInfo);
+                return await authentication.AuthorizeWithPrincipal(this, authorization);
             }
 
             if (result.Outcome == RevalidationOutcome.Abort) {

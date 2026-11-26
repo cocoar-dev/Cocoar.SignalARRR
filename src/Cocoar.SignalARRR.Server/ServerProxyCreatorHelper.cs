@@ -40,8 +40,7 @@ namespace Cocoar.SignalARRR.Server {
 
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
-            var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
-            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = ServerDispatchRegistry.Hub(_clientContext.HARRRType).Dispatcher(serviceProviderScope.ServiceProvider);
 
             // If the return type is Stream, the client sends a StreamReference instead.
             // We need to invoke as StreamReference and then resolve the upload.
@@ -74,8 +73,7 @@ namespace Cocoar.SignalARRR.Server {
             registrations.Add(RegisterCallCancellation(msg, arguments, cancellationToken));
             using var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
 
-            var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
-            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = ServerDispatchRegistry.Hub(_clientContext.HARRRType).Dispatcher(serviceProviderScope.ServiceProvider);
             await dispatcher.SendClientAsync(_clientContext.Id, msg, cancellationToken);
             if (_httpContext != null) {
                 _httpContext.Response.StatusCode = StatusCodes.Status200OK;
@@ -104,8 +102,7 @@ namespace Cocoar.SignalARRR.Server {
 
             // Send in background — scope must outlive the send
             var serviceProviderScope = _clientContext.ServiceProvider.CreateScope();
-            var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(_clientContext.HARRRType);
-            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = ServerDispatchRegistry.Hub(_clientContext.HARRRType).Dispatcher(serviceProviderScope.ServiceProvider);
 
             _ = dispatcher.SendClientAsync(_clientContext.Id, msg, cancellationToken)
                 .ContinueWith(_ => serviceProviderScope.Dispose());

@@ -126,12 +126,8 @@ public class TransportAuthOnMessagePathTests {
 
     private static SignalARRRAuthentication Authentication() => new(Services());
 
-    private static MethodInfo ProtectedMethod() => typeof(Guarded).GetMethod(nameof(Guarded.Method))!;
-
-    private class Guarded {
-        [Authorize]
-        public void Method() { }
-    }
+    private static Cocoar.SignalARRR.Server.ExtensionMethods.SignalARRRAuthorizationPlan ProtectedMethod() =>
+        new(false, new IAuthorizeData[] { new AuthorizeAttribute() });
 
     // ---- connection-bound credentials survive cache expiry ----------------------------------
 

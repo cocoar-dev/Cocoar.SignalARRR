@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
-using Cocoar.SignalARRR.Common.Interfaces;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -27,8 +26,7 @@ namespace Cocoar.SignalARRR.Server {
     public abstract class HARRR : Hub {
 
         private IHARRRClientManager ClientManager { get; }
-        private ISignalARRRMethodsCollection MethodsCollection { get; }
-        private ISignalARRRInterfaceCollection InterfaceCollection { get; }
+        private ServerMethodTable Methods { get; }
 
         /// <summary>
         /// Gets the service provider for dependency injection.
@@ -92,12 +90,8 @@ namespace Cocoar.SignalARRR.Server {
             // An IP address is personal data; it only appears in logs when the consumer opted in.
             _logClientIpAddresses = serviceProvider.GetService<SignalARRRServerOptions>()?.LogClientIpAddresses ?? false;
 
-            // Get hub-specific method collections registered via AddSignalARRR
-            MethodsCollection = serviceProvider.GetKeyedService<ISignalARRRMethodsCollection>(GetType().FullName)
-                ?? new SignalARRRMethodsCollection(ServerWireSlots.Policy);
-
-            InterfaceCollection = serviceProvider.GetKeyedService<ISignalARRRInterfaceCollection>(GetType().FullName)
-                ?? new SignalARRRInterfaceCollection(ServerWireSlots.Policy);
+            // The table AddSignalARRR built from the generated dispatch for this hub.
+            Methods = serviceProvider.GetService<ServerMethodTables>()?.For(GetType()) ?? ServerMethodTable.Empty;
         }
 
         /// <summary>
@@ -253,7 +247,7 @@ namespace Cocoar.SignalARRR.Server {
                         Context.ConnectionId);
                 }
 
-                var messageHandler = new MessageHandler(this, ClientContext, MethodsCollection, ServiceProvider, InterfaceCollection);
+                var messageHandler = new MessageHandler(this, ClientContext, Methods, ServiceProvider);
                 await messageHandler.InvokeAsync(clientMessage, Context.ConnectionAborted).ConfigureAwait(false);
 
             } catch (Exception ex) {
@@ -275,7 +269,7 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         /// <param name="clientMessage">The client request message containing method name and arguments.</param>
         /// <returns>The result of the method invocation.</returns>
-        public async Task<object> InvokeMessageResult(ClientRequestMessage clientMessage) {
+        public async Task<object?> InvokeMessageResult(ClientRequestMessage clientMessage) {
             using var invocation = SignalARRRServerTelemetry.StartInvocation(GetType().Name, clientMessage, Context.ConnectionId);
             using var logScope = BeginInvocationLogScope(clientMessage);
             try {
@@ -286,7 +280,7 @@ namespace Cocoar.SignalARRR.Server {
                         Context.ConnectionId);
                 }
 
-                var messageHandler = new MessageHandler(this, ClientContext, MethodsCollection, ServiceProvider, InterfaceCollection);
+                var messageHandler = new MessageHandler(this, ClientContext, Methods, ServiceProvider);
                 return await messageHandler.InvokeAsync(clientMessage, Context.ConnectionAborted).ConfigureAwait(false);
 
             } catch (Exception ex) {
@@ -319,7 +313,7 @@ namespace Cocoar.SignalARRR.Server {
                         Context.ConnectionId);
                 }
 
-                var messageHandler = new MessageHandler(this, ClientContext, MethodsCollection, ServiceProvider, InterfaceCollection);
+                var messageHandler = new MessageHandler(this, ClientContext, Methods, ServiceProvider);
 
                 // Await within the hub invocation so the Hub instance (and its Context/Clients/Groups,
                 // which MessageHandler injects into the server method) stays alive for the duration of
@@ -373,7 +367,7 @@ namespace Cocoar.SignalARRR.Server {
                         Context.ConnectionId);
                 }
 
-                var messageHandler = new MessageHandler(this, ClientContext, MethodsCollection, ServiceProvider, InterfaceCollection);
+                var messageHandler = new MessageHandler(this, ClientContext, Methods, ServiceProvider);
                 return await messageHandler.InvokeStreamAsync(clientMessage, cancellationToken).ConfigureAwait(false);
 
             } catch (Exception ex) {

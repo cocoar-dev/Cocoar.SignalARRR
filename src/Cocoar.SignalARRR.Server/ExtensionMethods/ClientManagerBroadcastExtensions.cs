@@ -54,13 +54,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
             var serviceProvider = clientList[0].ServiceProvider;
             var hubType = clientList[0].HARRRType;
 
-            var hubContextType = typeof(IHubContext<>).MakeGenericType(hubType);
-            var hubContext = serviceProvider.GetRequiredService(hubContextType);
-
-            var clientsProperty = hubContext.GetType().GetProperty("Clients")!;
-            var hubClients = clientsProperty.GetValue(hubContext)!;
-            var clientsMethod = hubClients.GetType().GetMethod("Clients", new[] { typeof(IReadOnlyList<string>) })!;
-            var clientProxy = (IClientProxy)clientsMethod.Invoke(hubClients, new object[] { connectionIds })!;
+            var clientProxy = ServerDispatchRegistry.Hub(hubType).Clients(serviceProvider).Clients(connectionIds);
 
             var logger = LoggerCache.For(serviceProvider, "SignalARRR.Broadcast");
             var helper = new BroadcastProxyCreatorHelper(clientProxy, logger);

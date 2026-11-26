@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Channels;
 using Cocoar.SignalARRR.Common.Exceptions;
@@ -25,19 +24,19 @@ namespace Cocoar.SignalARRR.Server {
     /// cancellable.
     /// </remarks>
     internal class StreamingResult<T> : StreamingResult {
-        private readonly MethodInfo _methodInfo;
+        private readonly ExtensionMethods.SignalARRRAuthorizationPlan _authorization;
 
         private readonly IAsyncEnumerable<T>? _enumerable;
         private readonly ChannelReader<T>? _channelReader;
 
         public ClientContext ClientContext { get; }
 
-        private StreamingResult(ClientContext clientContext, MethodInfo methodInfo) {
-            _methodInfo = methodInfo;
+        private StreamingResult(ClientContext clientContext, ExtensionMethods.SignalARRRAuthorizationPlan authorization) {
+            _authorization = authorization;
             ClientContext = clientContext;
         }
 
-        public StreamingResult(IAsyncEnumerable<T> enumerable, ClientContext clientContext, MethodInfo methodInfo) : this(clientContext, methodInfo) {
+        public StreamingResult(IAsyncEnumerable<T> enumerable, ClientContext clientContext, ExtensionMethods.SignalARRRAuthorizationPlan authorization) : this(clientContext, authorization) {
             _enumerable = enumerable;
         }
 
@@ -45,7 +44,7 @@ namespace Cocoar.SignalARRR.Server {
         /// Kept as a reader rather than converted here: <c>ReadAllAsync</c> takes the token, and at
         /// construction time there is none to give it.
         /// </summary>
-        public StreamingResult(ChannelReader<T> channelReader, ClientContext clientContext, MethodInfo methodInfo) : this(clientContext, methodInfo) {
+        public StreamingResult(ChannelReader<T> channelReader, ClientContext clientContext, ExtensionMethods.SignalARRRAuthorizationPlan authorization) : this(clientContext, authorization) {
             _channelReader = channelReader;
         }
 
@@ -55,7 +54,7 @@ namespace Cocoar.SignalARRR.Server {
             var enumerator = source.GetAsyncEnumerator(cancellationToken);
             try {
                 while (await enumerator.MoveNextAsync()) {
-                    var authResult = await ClientContext.TryAuthenticate(_methodInfo);
+                    var authResult = await ClientContext.TryAuthenticate(_authorization);
                     if (!authResult.Succeeded) {
                         throw new UnauthorizedException();
                     }

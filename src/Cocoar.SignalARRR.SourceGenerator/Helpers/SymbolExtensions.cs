@@ -46,7 +46,7 @@ internal static class SymbolExtensions {
             isStream: isStream);
     }
 
-    private static string FormatDefaultValue(IParameterSymbol parameter) {
+    internal static string FormatDefaultValue(IParameterSymbol parameter) {
         if (!parameter.HasExplicitDefaultValue)
             return "default";
 

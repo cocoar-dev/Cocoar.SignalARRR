@@ -6,3 +6,6 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 SARRR001 | SignalARRR | Error | Diagnostics
+SARRR002 | SignalARRR | Error | Diagnostics
+SARRR003 | SignalARRR | Error | Diagnostics
+SARRR004 | SignalARRR | Error | Diagnostics
