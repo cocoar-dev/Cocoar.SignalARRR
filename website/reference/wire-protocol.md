@@ -48,7 +48,9 @@ Sent from client to server with every RPC call.
 | `Method` | string | Yes | `ClassName.MethodName` or `InterfaceName\|MethodName` |
 | `Arguments` | array | Yes | Serialized method arguments |
 | `Authorization` | string | No | Bearer token for authenticated methods |
-| `GenericArguments` | string[] | No | Type names for generic methods |
+| `GenericArguments` | string[] | No | .NET type names of the type arguments of a generic server method |
+
+The server accepts only the instantiations the method declares with [`[GenericArguments]`](/guide/server/server-methods#generic-methods). A name matches a declared type by its `FullName` — what the .NET proxy sends, `typeof(T).FullName` — or, for a name without a dot, as `System.<Name>` ignoring case, so `"Int32"` and `"string"` match `System.Int32` and `System.String`. Any other name is refused with an error naming `[GenericArguments]`.
 
 ### ServerRequestMessage
 
@@ -69,7 +71,7 @@ Sent from server to client for bidirectional RPC.
 | `Id` | GUID | Yes | Correlation ID — used internally by SignalR's native client results |
 | `Method` | string | Yes | Method name to invoke on client |
 | `Arguments` | array | No | Method arguments |
-| `GenericArguments` | string[] | No | Generic type arguments |
+| `GenericArguments` | string[] | No | Not sent since 6.0: the server refuses generic client methods, and a 6.0 .NET client answers a call that carries them with `method_not_found` |
 | `CancellationGuid` | GUID | No | Links to `CancelTokenFromServer` for remote cancellation |
 | `StreamId` | GUID | No | Stream correlation for client-to-server streams |
 

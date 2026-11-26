@@ -1,7 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
-using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Server;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Microsoft.AspNetCore.Authorization;
@@ -10,27 +8,22 @@ using Xunit;
 namespace Cocoar.SignalARRR.Tests;
 
 /// <summary>
-/// Covers which <c>[Authorize]</c> metadata the dispatcher sees for a given method.
+/// Covers the authorization plan the source generator resolves for each server method. The rules
+/// are the ones the reflection registry applied at startup: [AllowAnonymous] anywhere wins; otherwise
+/// the most specific level with data decides — the method with its interface declarations, then the
+/// class chain, then the hub.
 /// </summary>
-/// <remarks>
-/// Every case here previously resolved to an empty result, and an empty result means "allow" —
-/// so each one was a way to reach a method that its author had marked as protected.
-/// </remarks>
 public class AuthorizationResolutionTests {
 
-    private static MethodInfo MethodOn<T>(string name) =>
-        typeof(T).GetMethod(name, BindingFlags.Public | BindingFlags.Instance)
-        ?? throw new InvalidOperationException($"'{name}' not found on {typeof(T).Name}.");
+    private static SignalARRRAuthorizationPlan Plan<THub>(string name) where THub : HARRR =>
+        ServerTables.For<THub>().Resolve(name, 0).Authorization;
 
-    // ---- S-2: resolution via ReflectedType, not DeclaringType -------------------------------
+    // ---- S-2: resolution via the registered class, not the declaring one --------------------
 
     [Fact]
     public void Method_inherited_from_undecorated_base_is_protected_by_the_derived_class() {
-        // Delete is declared on the undecorated base; it is registered from the [Authorize]d
-        // derived class, so DeclaringType pointed at the base and found nothing.
-        var method = MethodOn<AuthDerivedMethods>(nameof(AuthDerivedMethods.Delete));
-
-        var plan = method.GetAuthorizationPlan();
+        // Delete is declared on the undecorated base and registered from the [Authorize]d derived class.
+        var plan = Plan<AuthProbeHub>("AuthDerivedMethods.Delete");
 
         Assert.True(plan.RequiresAuthorization);
         Assert.Contains(plan.AuthorizeData, d => d.Policy == "admin");
@@ -38,9 +31,7 @@ public class AuthorizationResolutionTests {
 
     [Fact]
     public void Method_level_attribute_still_wins_over_the_class() {
-        var method = MethodOn<AuthDerivedMethods>(nameof(AuthDerivedMethods.Escalate));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProbeHub>("AuthDerivedMethods.Escalate");
 
         Assert.Contains(plan.AuthorizeData, d => d.Policy == "superuser");
         Assert.DoesNotContain(plan.AuthorizeData, d => d.Policy == "admin");
@@ -50,9 +41,7 @@ public class AuthorizationResolutionTests {
 
     [Fact]
     public void Attribute_on_the_implementation_is_honoured() {
-        var method = MethodOn<AuthImplementation>(nameof(AuthImplementation.ProtectedByImplementation));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProbeHub>("AuthImplementation.ProtectedByImplementation");
 
         Assert.True(plan.RequiresAuthorization);
         Assert.Contains(plan.AuthorizeData, d => d.Policy == "impl");
@@ -60,46 +49,44 @@ public class AuthorizationResolutionTests {
 
     [Fact]
     public void Attribute_on_the_contract_is_still_honoured() {
-        var method = MethodOn<AuthImplementation>(nameof(AuthImplementation.ProtectedByContract));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProbeHub>("AuthImplementation.ProtectedByContract");
 
         Assert.True(plan.RequiresAuthorization);
         Assert.Contains(plan.AuthorizeData, d => d.Policy == "contract");
     }
 
     [Fact]
-    public void Interface_dispatch_resolves_to_the_implementation_method() {
-        // The cache used to store the interface declaration, so the implementation's attributes
-        // were invisible to authorization even though the implementation is what runs.
-        var collection = new SignalARRRInterfaceCollection();
-        collection.RegisterInterface(typeof(IAuthContract), typeof(AuthImplementation));
+    public void Interface_dispatch_carries_the_implementations_plan() {
+        var plan = Plan<AuthProbeHub>($"{typeof(IAuthContract).FullName}|{nameof(IAuthContract.ProtectedByImplementation)}");
 
-        var (_, methodInfo) = collection.GetInvokeInformation($"{typeof(IAuthContract).FullName}|{nameof(IAuthContract.ProtectedByImplementation)}", 0);
-
-        Assert.Equal(typeof(AuthImplementation), methodInfo.DeclaringType);
-        Assert.Contains(methodInfo.GetAuthorizationPlan().AuthorizeData, d => d.Policy == "impl");
+        Assert.Contains(plan.AuthorizeData, d => d.Policy == "impl");
     }
 
     // ---- S-4: IAuthorizeData, not just AuthorizeAttribute -----------------------------------
 
     [Fact]
     public void Custom_IAuthorizeData_attribute_is_collected() {
-        var method = MethodOn<AuthCustomAttributeMethods>(nameof(AuthCustomAttributeMethods.Protected));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProbeHub>("AuthCustomAttributeMethods.Protected");
 
         Assert.True(plan.RequiresAuthorization);
         Assert.Contains(plan.AuthorizeData, d => d.Policy == "custom");
+    }
+
+    [Fact]
+    public void Attribute_arguments_are_reproduced() {
+        var data = Assert.Single(Plan<AuthProbeHub>("AuthCustomAttributeMethods.WithArguments").AuthorizeData);
+
+        Assert.IsType<AuthorizeAttribute>(data);
+        Assert.Equal("named", data.Policy);
+        Assert.Equal("a,b", data.Roles);
+        Assert.Equal("Bearer", data.AuthenticationSchemes);
     }
 
     // ---- AllowAnonymous --------------------------------------------------------------------
 
     [Fact]
     public void Class_level_AllowAnonymous_is_honoured() {
-        var method = MethodOn<AuthAnonymousMethods>(nameof(AuthAnonymousMethods.Open));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProbeHub>("AuthAnonymousMethods.Open");
 
         Assert.True(plan.AllowAnonymous);
         Assert.False(plan.RequiresAuthorization);
@@ -107,9 +94,7 @@ public class AuthorizationResolutionTests {
 
     [Fact]
     public void Method_level_AllowAnonymous_overrides_a_protected_class() {
-        var method = MethodOn<AuthDerivedMethods>(nameof(AuthDerivedMethods.Open));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProbeHub>("AuthDerivedMethods.Open");
 
         Assert.True(plan.AllowAnonymous);
         Assert.False(plan.RequiresAuthorization);
@@ -119,9 +104,7 @@ public class AuthorizationResolutionTests {
 
     [Fact]
     public void Undecorated_method_on_undecorated_class_requires_nothing() {
-        var method = MethodOn<AuthOpenMethods>(nameof(AuthOpenMethods.Ping));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProbeHub>("AuthOpenMethods.Ping");
 
         Assert.False(plan.RequiresAuthorization);
         Assert.Empty(plan.AuthorizeData);
@@ -129,11 +112,16 @@ public class AuthorizationResolutionTests {
 
     [Fact]
     public void Hub_level_attribute_applies_to_its_ServerMethods() {
-        var method = MethodOn<AuthHubScopedMethods>(nameof(AuthHubScopedMethods.Ping));
-
-        var plan = method.GetAuthorizationPlan();
+        var plan = Plan<AuthProtectedHub>("AuthHubScopedMethods.Ping");
 
         Assert.True(plan.RequiresAuthorization);
+        Assert.Contains(plan.AuthorizeData, d => d.Policy == "hub");
+    }
+
+    [Fact]
+    public void Hub_level_attribute_applies_to_the_hubs_own_methods() {
+        var plan = Plan<AuthProtectedHub>(nameof(AuthProtectedHub.HubPing));
+
         Assert.Contains(plan.AuthorizeData, d => d.Policy == "hub");
     }
 }
@@ -147,6 +135,8 @@ public class AuthProbeHub : HARRR {
 [Authorize(Policy = "hub")]
 public class AuthProtectedHub : HARRR {
     public AuthProtectedHub(IServiceProvider sp) : base(sp) { }
+
+    public string HubPing() => "pong";
 }
 
 public class AuthBaseMethods : ServerMethods<AuthProbeHub> {
@@ -176,7 +166,6 @@ public class AuthImplementation : ServerMethods<AuthProbeHub>, IAuthContract {
     public string ProtectedByContract() => "contract";
 }
 
-/// <summary>A custom attribute implementing the actual ASP.NET Core contract.</summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
 public sealed class TenantAuthorizeAttribute : Attribute, IAuthorizeData {
     public string? Policy { get; set; } = "custom";
@@ -187,6 +176,9 @@ public sealed class TenantAuthorizeAttribute : Attribute, IAuthorizeData {
 public class AuthCustomAttributeMethods : ServerMethods<AuthProbeHub> {
     [TenantAuthorize]
     public string Protected() => "protected";
+
+    [Authorize("named", Roles = "a,b", AuthenticationSchemes = "Bearer")]
+    public string WithArguments() => "protected";
 }
 
 [AllowAnonymous]

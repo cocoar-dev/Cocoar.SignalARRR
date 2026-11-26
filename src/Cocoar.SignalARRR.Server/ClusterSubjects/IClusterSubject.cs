@@ -54,8 +54,9 @@ namespace Cocoar.SignalARRR.Server {
     public sealed class ClusterSubjectOptions {
         /// <summary>
         /// How events are serialized for the other nodes. Defaults to
-        /// <see cref="JsonSerializerDefaults.Web"/>. Set it to enable polymorphism, custom
-        /// converters, or a source-generated context.
+        /// <see cref="JsonSerializerDefaults.Web"/> with the resolvers of the hub protocol's JSON
+        /// options, so under NativeAOT the event type goes into the same <c>JsonSerializerContext</c>
+        /// as the hub's argument types. Set it to enable polymorphism or custom converters.
         /// </summary>
         public JsonSerializerOptions? SerializerOptions { get; set; }
     }

@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.ProxyGenerator;
 
@@ -21,7 +20,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override T Invoke<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            return SimpleAsyncHelper.RunSync(() => InvokeAsync<T>(methodName, arguments, genericArguments, cancellationToken));
+            return SyncOverAsync.Run(() => InvokeAsync<T>(methodName, arguments, genericArguments, cancellationToken));
         }
 
         public override async Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
@@ -33,7 +32,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override void Send(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            SimpleAsyncHelper.RunSync(() => SendAsync(methodName, arguments, genericArguments, cancellationToken));
+            SyncOverAsync.Run(() => SendAsync(methodName, arguments, genericArguments, cancellationToken));
         }
 
         public override Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
@@ -52,9 +51,8 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private static ServerRequestMessage CreateMessage(string methodName, IEnumerable<object> arguments, string[] genericArguments) {
-            var message = new ServerRequestMessage(methodName, arguments.ToList()).WithTraceContext();
-            message.GenericArguments = genericArguments;
-            return message;
+            ServerToClientGenericArguments.Reject(methodName, genericArguments);
+            return new ServerRequestMessage(methodName, arguments.ToList()).WithTraceContext();
         }
 
         private static void ValidateSupported(string methodName, IEnumerable<object> arguments, Type? resultType) {

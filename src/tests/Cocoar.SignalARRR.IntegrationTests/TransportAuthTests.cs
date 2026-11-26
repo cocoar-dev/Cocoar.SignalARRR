@@ -170,11 +170,7 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         }
 
         private static X509Certificate2 LoadFromPfxBytes(byte[] pfxBytes) {
-#if NET9_0_OR_GREATER
             return X509CertificateLoader.LoadPkcs12(pfxBytes, null);
-#else
-            return new X509Certificate2(pfxBytes);
-#endif
         }
     }
 

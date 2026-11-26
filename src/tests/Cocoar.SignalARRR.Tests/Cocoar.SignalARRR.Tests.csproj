@@ -1,16 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <AssemblyName>Cocoar.SignalARRR.Tests</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <NoWarn>xUnit1051</NoWarn>
+    <!-- The generator assembly brings Roslyn's own System.Collections.Immutable; see Cocoar.SignalARRR.Server.csproj. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -25,9 +28,15 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Client\Cocoar.SignalARRR.Client.csproj" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
+    <!-- Hubs and ServerMethods classes need the source generator, which produces their dispatch
+         tables. It flows to package consumers through NuGet; a project reference needs it explicitly.
+         Referenced as an assembly too: GeneratorHarness runs it on snippets that must not compile
+         here, such as two overloads the wire cannot tell apart. -->
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="true" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server.Backplane.Postgres\Cocoar.SignalARRR.Server.Backplane.Postgres.csproj" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Server.Backplane.Redis\Cocoar.SignalARRR.Server.Backplane.Redis.csproj" />
-    <ProjectReference Include="..\..\Cocoar.SignalARRR.DynamicProxy\Cocoar.SignalARRR.DynamicProxy.csproj" />
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Common\Cocoar.SignalARRR.Common.csproj" />
     <ProjectReference Include="..\TestShared\TestShared.csproj" />
     <ProjectReference Include="..\Cocoar.SignalARRR.Tests.SharedModels\Cocoar.SignalARRR.Tests.SharedModels.csproj" />

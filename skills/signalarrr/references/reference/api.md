@@ -81,7 +81,7 @@ app.MapSignalARRRHub<THub>(path, configureOptions);
 | Method | Description |
 |--------|-------------|
 | `GetTypedMethods<T>()` | Get typed proxy to call this client |
-| `TryAuthenticate(MethodInfo)` | Validate token, challenge if expired |
+| `TryAuthenticate(SignalARRRAuthorizationPlan)` | Validate token, challenge if expired |
 
 ### ClientManager
 
@@ -183,7 +183,8 @@ Registered with `AddSignalARRRClusterSubject<T>(name, configure?)`; resolved by 
 | `InvokeCoreAsync<T>(message, ct)` | Call server, await typed result |
 | `SendCoreAsync(message, ct)` | Fire-and-forget |
 | `StreamAsyncCore<T>(message, ct)` | Server-to-client stream |
-| `RegisterInterface<TInterface, TClass>(...)` | Register a server-to-client contract handler (instance, factory or type) |
+| `RegisterInterface<TInterface>(instance)` / `(factory)` | Register a server-to-client contract handler |
+| `RegisterInterface<TInterface, TClass>()` / `(instance)` / `(factory)` | The same, with the implementing type — without arguments resolved from DI, else created with `ActivatorUtilities` |
 | `StartAsync(ct)` | Connect |
 | `StopAsync(ct)` | Disconnect |
 | `DisposeAsync()` | Dispose |
@@ -252,7 +253,7 @@ export type { CancellationTokenReference } from './models/cancellation-token-ref
 | `Method` | `string` | Method name (`ClassName.MethodName`) |
 | `Arguments` | `object[]` | Method arguments |
 | `Authorization` | `string?` | Bearer token |
-| `GenericArguments` | `string[]` | Generic type arguments |
+| `GenericArguments` | `string[]` | Generic type arguments of a generic server method — only the types it declares with `[GenericArguments]` are accepted, see [Wire Protocol](./wire-protocol.md#clientrequestmessage) |
 
 ### ServerRequestMessage
 
@@ -261,7 +262,7 @@ export type { CancellationTokenReference } from './models/cancellation-token-ref
 | `Id` | `Guid` | Correlation ID for reply |
 | `Method` | `string` | Method name |
 | `Arguments` | `object[]` | Method arguments |
-| `GenericArguments` | `string[]` | Generic type arguments |
+| `GenericArguments` | `string[]` | Always empty since 6.0 — the server refuses generic client methods |
 | `CancellationGuid` | `Guid?` | Cancellation correlation ID |
 | `StreamId` | `Guid?` | Stream correlation ID |
 
@@ -271,6 +272,7 @@ export type { CancellationTokenReference } from './models/cancellation-token-ref
 |-----------|-------------|
 | `[SignalARRRContract]` | Marks an interface for proxy generation |
 | `[MessageName(string)]` | Override the default method name |
+| `[GenericArguments(params Type[])]` | Declare the type arguments a generic server method may be called with; one attribute per instantiation for several type parameters — see [Server Methods](../guide/server/server-methods.md#generic-methods) |
 
 ## Next steps
 

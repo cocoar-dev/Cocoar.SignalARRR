@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common;
@@ -12,10 +11,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Cocoar.SignalARRR.Server {
     internal sealed class LocalSignalARRRBackplaneDispatcher {
-        private static readonly MethodInfo InvokeCoreAsyncMethod = typeof(ISingleClientProxy)
-            .GetMethods()
-            .Single(m => m.Name == nameof(ISingleClientProxy.InvokeCoreAsync) && m.IsGenericMethodDefinition);
-
         private readonly IServiceProvider _serviceProvider;
         private readonly IHARRRClientManager _clientManager;
         private readonly ILogger<LocalSignalARRRBackplaneDispatcher> _logger;
@@ -34,6 +29,9 @@ namespace Cocoar.SignalARRR.Server {
         /// distributed registry.
         /// </remarks>
         public IEnumerable<ClientContext> GetLocalConnections() => _clientManager.GetClients();
+
+        /// <summary>The hub protocol's JSON options, whose resolvers know the app's types.</summary>
+        internal System.Text.Json.JsonSerializerOptions PayloadOptions => _serviceProvider.GetRequiredService<ServerPayloadOptions>().Options;
 
         public bool HasLocalConnection(string connectionId, Type? hubType) {
             var client = _clientManager.GetClient(connectionId);
@@ -75,7 +73,7 @@ namespace Cocoar.SignalARRR.Server {
             Type? hubType,
             string connectionId,
             ServerRequestMessage message,
-            Type resultType,
+            Type? resultType,
             CancellationToken cancellationToken = default) {
             var client = _clientManager.GetClient(connectionId);
             if (client == null || (hubType != null && client.HARRRType != hubType)) {
@@ -88,20 +86,48 @@ namespace Cocoar.SignalARRR.Server {
                 return (false, null);
             }
 
-            var task = (Task)InvokeCoreAsyncMethod
-                .MakeGenericMethod(resultType)
-                .Invoke(singleClientProxy, new object[] { MethodNames.InvokeServerRequest, new object[] { message }, cancellationToken })!;
-
-            await task.ConfigureAwait(false);
-
-            return (true, task.GetType().GetProperty("Result")?.GetValue(task));
+            var raw = await InvokeRawAsync(singleClientProxy, message, cancellationToken).ConfigureAwait(false);
+            return (true, ConvertResult(raw, resultType));
         }
+
+        /// <summary>
+        /// Invokes a client and returns its answer as the hub protocol delivered it (a
+        /// <c>JsonElement</c> for JSON clients), for a node that forwards it without knowing its type.
+        /// </summary>
+        public async Task<(bool handled, object? result)> InvokeConnectionRawAsync(
+            Type? hubType,
+            string connectionId,
+            ServerRequestMessage message,
+            CancellationToken cancellationToken = default) {
+            var client = _clientManager.GetClient(connectionId);
+            if (client == null || (hubType != null && client.HARRRType != hubType)) {
+                return (false, null);
+            }
+
+            var singleClientProxy = GetSingleClientProxy(client.HARRRType, connectionId);
+            if (singleClientProxy == null) {
+                return (false, null);
+            }
+
+            return (true, await InvokeRawAsync(singleClientProxy, message, cancellationToken).ConfigureAwait(false));
+        }
+
+        /// <summary>
+        /// Asks for the answer as <see cref="object"/> rather than closing <c>InvokeCoreAsync&lt;T&gt;</c>
+        /// over the result type at runtime, which NativeAOT cannot do; the conversion happens after.
+        /// </summary>
+        private static Task<object?> InvokeRawAsync(ISingleClientProxy proxy, ServerRequestMessage message, CancellationToken cancellationToken) =>
+            proxy.InvokeCoreAsync<object?>(MethodNames.InvokeServerRequest, new object[] { message }, cancellationToken);
+
+        /// <summary>The answer as <paramref name="resultType"/>, or as delivered when that is <c>null</c> (a node forwarding it).</summary>
+        private object? ConvertResult(object? raw, Type? resultType) =>
+            resultType == null ? raw : _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>().ConvertTo(raw, resultType);
 
         public async Task<IReadOnlyList<SignalARRRBackplaneInvokeResult>> InvokeAsync(
             Type hubType,
             SignalARRRBackplaneTargetKind targetKind,
             ServerRequestMessage message,
-            Type resultType,
+            Type? resultType,
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,
@@ -138,7 +164,7 @@ namespace Cocoar.SignalARRR.Server {
             Type hubType,
             SignalARRRBackplaneTargetKind targetKind,
             ServerRequestMessage message,
-            Type resultType,
+            Type? resultType,
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,
@@ -197,66 +223,23 @@ namespace Cocoar.SignalARRR.Server {
             IReadOnlyList<string>? connectionIds,
             string? groupName,
             string? userId) {
-            var hubClients = GetHubClients(hubType);
+            var hubClients = ServerDispatchRegistry.Hub(hubType).Clients(_serviceProvider);
 
             return targetKind switch {
-                SignalARRRBackplaneTargetKind.All => hubClients.GetType().GetProperty("All")?.GetValue(hubClients) as IClientProxy,
-                SignalARRRBackplaneTargetKind.Group => string.IsNullOrWhiteSpace(groupName)
-                    ? null
-                    : GetGroupClientProxy(hubClients, groupName),
-                SignalARRRBackplaneTargetKind.User => string.IsNullOrWhiteSpace(userId)
-                    ? null
-                    : GetUserClientProxy(hubClients, userId),
+                SignalARRRBackplaneTargetKind.All => hubClients.All,
+                SignalARRRBackplaneTargetKind.Group => string.IsNullOrWhiteSpace(groupName) ? null : hubClients.Group(groupName),
+                SignalARRRBackplaneTargetKind.User => string.IsNullOrWhiteSpace(userId) ? null : hubClients.User(userId),
                 SignalARRRBackplaneTargetKind.Connections => connectionIds == null || connectionIds.Count == 0
                     ? null
-                    : GetConnectionTargetProxy(hubType, connectionIds),
+                    : connectionIds.Count == 1 ? hubClients.Client(connectionIds[0]) : hubClients.Clients(connectionIds),
                 _ => null
             };
         }
 
-        private ISingleClientProxy? GetSingleClientProxy(Type hubType, string connectionId) {
-            var hubClients = GetHubClients(hubType);
-            return hubClients.GetType()
-                .GetMethod("Client", new[] { typeof(string) })?
-                .Invoke(hubClients, new object[] { connectionId }) as ISingleClientProxy;
-        }
+        private ISingleClientProxy GetSingleClientProxy(Type hubType, string connectionId) =>
+            ServerDispatchRegistry.Hub(hubType).Clients(_serviceProvider).Client(connectionId);
 
-        private IClientProxy? GetGroupClientProxy(object hubClients, string groupName) {
-            return hubClients.GetType()
-                .GetMethod("Group", new[] { typeof(string) })?
-                .Invoke(hubClients, new object[] { groupName }) as IClientProxy;
-        }
-
-        private IClientProxy? GetUserClientProxy(object hubClients, string userId) {
-            return hubClients.GetType()
-                .GetMethod("User", new[] { typeof(string) })?
-                .Invoke(hubClients, new object[] { userId }) as IClientProxy;
-        }
-
-        private IClientProxy? GetConnectionTargetProxy(Type hubType, IReadOnlyList<string> connectionIds) {
-            if (connectionIds.Count == 1) {
-                return GetSingleClientProxy(hubType, connectionIds[0]);
-            }
-
-            var hubClients = GetHubClients(hubType);
-            var clientsMethod = hubClients.GetType()
-                .GetMethods()
-                .FirstOrDefault(m => m.Name == "Clients" && m.GetParameters().Length == 1);
-
-            return clientsMethod?.Invoke(hubClients, new object[] { connectionIds }) as IClientProxy;
-        }
-
-        private object GetHubClients(Type hubType) {
-            var hubContextType = typeof(IHubContext<>).MakeGenericType(hubType);
-            var hubContext = _serviceProvider.GetRequiredService(hubContextType);
-            return hubContextType.GetProperty("Clients")!.GetValue(hubContext)!;
-        }
-
-        private IGroupManager GetGroupManager(Type hubType) {
-            var hubContextType = typeof(IHubContext<>).MakeGenericType(hubType);
-            var hubContext = _serviceProvider.GetRequiredService(hubContextType);
-            return (IGroupManager)hubContextType.GetProperty("Groups")!.GetValue(hubContext)!;
-        }
+        private IGroupManager GetGroupManager(Type hubType) => ServerDispatchRegistry.Hub(hubType).Groups(_serviceProvider);
 
         private Type? ResolveHubType(Type? explicitHubType, IReadOnlyList<string>? connectionIds) {
             if (explicitHubType != null) {

@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions;
 using Cocoar.SignalARRR.Client.ExtensionMethods;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
@@ -229,8 +228,9 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public static HARRRConnection Create(Action<HubConnectionBuilder> builder, Action<HARRRConnectionOptionsBuilder>? optionsBuilder = null) {
-            var intermediateBuilder = builder.InvokeAction();
-            HARRRConnectionOptions options = optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder();
+            var intermediateBuilder = new HubConnectionBuilder();
+            builder(intermediateBuilder);
+            var options = BuildOptions(optionsBuilder);
             var connectionCredential = options.ConnectionCredential;
             if (connectionCredential != null) {
                 // Registered after the caller's WithUrl, so it runs after the options WithUrl set.
@@ -247,7 +247,7 @@ namespace Cocoar.SignalARRR.Client {
         }
 
         public static HARRRConnection Create(HubConnection hubConnection, Action<HARRRConnectionOptionsBuilder>? optionsBuilder = null) {
-            HARRRConnectionOptions options = optionsBuilder?.InvokeAction() ?? new HARRRConnectionOptionsBuilder();
+            var options = BuildOptions(optionsBuilder);
             if (options.ConnectionCredential != null) {
                 throw new ArgumentException(
                     "A connection credential cannot be applied to a HubConnection that is already built: SignalR fixed its AccessTokenProvider when it was built. " +
@@ -256,6 +256,12 @@ namespace Cocoar.SignalARRR.Client {
             }
             var connectionContext = new ClientConnectionContext(hubConnection.GetServiceProvider(), options);
             return new HARRRConnection(connectionContext);
+        }
+
+        private static HARRRConnectionOptions BuildOptions(Action<HARRRConnectionOptionsBuilder>? optionsBuilder) {
+            var options = new HARRRConnectionOptionsBuilder();
+            optionsBuilder?.Invoke(options);
+            return options;
         }
 
         #region HubConnectionDecorator
@@ -294,7 +300,15 @@ namespace Cocoar.SignalARRR.Client {
 
         public HubConnectionState State => HubConnection.State;
 
-        public Task StartAsync(CancellationToken cancellation = default) => HubConnection.StartAsync(cancellation);
+        /// <summary>
+        /// Starts the connection. Where reflection-based JSON is off (NativeAOT), it first checks
+        /// that every type the registered contracts send or receive can be serialized, and fails
+        /// naming all that cannot.
+        /// </summary>
+        public Task StartAsync(CancellationToken cancellation = default) {
+            _connectionContext.MessageHandler.EnsureWireTypesSerializable();
+            return HubConnection.StartAsync(cancellation);
+        }
         public Task StopAsync(CancellationToken cancellation = default) => HubConnection.StopAsync(cancellation);
 
         public ValueTask DisposeAsync() {

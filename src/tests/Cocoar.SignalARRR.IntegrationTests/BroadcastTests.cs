@@ -258,7 +258,6 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             public bool WaitObservedCancellation { get; private set; }
 
             public void Nix() => _onNix();
-            public T Invoke<T>(string command, Dictionary<string, object>? variables = null) => default!;
             public List<string> GetContent(int count) => new();
             public string GetById(string id) => $"result-{id}";
             public string GetByGenericId(Guid id) => $"guid-{id}";

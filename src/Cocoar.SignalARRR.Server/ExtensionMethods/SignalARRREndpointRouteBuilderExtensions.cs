@@ -1,10 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using System;
 using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions;
 using Cocoar.SignalARRR.Server;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -16,7 +16,11 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Microsoft.AspNetCore.Builder {
     public static class SignalARRREndpointRouteBuilderExtensions {
 
-        public static IHubEndpointConventionBuilder MapSignalARRRHub<THub>(
+        /// <summary>What SignalR's MapHub keeps of a hub type for trimming: its constructors and public (hub) methods.</summary>
+        private const DynamicallyAccessedMemberTypes HubAccessibility =
+            DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicMethods;
+
+        public static IHubEndpointConventionBuilder MapSignalARRRHub<[DynamicallyAccessedMembers(HubAccessibility)] THub>(
             this IEndpointRouteBuilder endpoints, string pattern) where THub : HARRR {
 
             var hub = endpoints.MapHub<THub>(pattern);
@@ -25,11 +29,9 @@ namespace Microsoft.AspNetCore.Builder {
 
         }
 
-        public static IHubEndpointConventionBuilder MapSignalARRRHub<THub>(
+        public static IHubEndpointConventionBuilder MapSignalARRRHub<[DynamicallyAccessedMembers(HubAccessibility)] THub>(
             this IEndpointRouteBuilder endpoints, string pattern,
             Action<HttpConnectionDispatcherOptions> configureOptions) where THub : HARRR {
-
-            var opts = configureOptions.InvokeAction();
 
             var hub = endpoints.MapHub<THub>(pattern, configureOptions);
 

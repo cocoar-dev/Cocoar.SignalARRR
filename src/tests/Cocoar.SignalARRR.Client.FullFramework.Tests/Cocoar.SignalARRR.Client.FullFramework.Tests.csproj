@@ -28,6 +28,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Cocoar.SignalARRR.Client.FullFramework\Cocoar.SignalARRR.Client.FullFramework.csproj" />
+    <!-- The generator flows to package consumers through NuGet; a project reference needs it explicitly. -->
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.SourceGenerator\Cocoar.SignalARRR.SourceGenerator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

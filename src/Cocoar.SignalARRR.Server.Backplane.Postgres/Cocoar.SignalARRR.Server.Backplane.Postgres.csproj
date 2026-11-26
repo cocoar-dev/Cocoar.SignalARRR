@@ -1,11 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <AssemblyName>Cocoar.SignalARRR.Server.Backplane.Postgres</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Trim and AOT analyzers on every target (warnings are errors): the server runs under
+         NativeAOT, and anything new that would break that fails the build here. -->
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,7 +38,7 @@
          and the application picks the version that fits the rest of its stack. The central
          version follows the target framework (10.0.3 on net10.0), which made the package demand
          Npgsql 10 there and blocked applications held on Npgsql 9 by Marten. The integration
-         tests still run on the per-framework versions, so 8, 9 and 10 are all exercised. -->
+         tests run on the per-framework versions, so 10 and 11 are exercised. -->
     <PackageReference Include="Npgsql" VersionOverride="8.0.6" />
   </ItemGroup>
 

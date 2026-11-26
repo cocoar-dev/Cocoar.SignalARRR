@@ -11,13 +11,11 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions.ExtensionMethods;
-using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Constants;
 using Cocoar.SignalARRR.Common.Exceptions;
-using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Common.RemoteReferenceTypes;
+using Cocoar.SignalARRR.ProxyGenerator;
 using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -36,11 +34,16 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
     public class HARRRConnection {
         private readonly HubConnection _hubConnection;
         private readonly Func<Task<string>> _accessTokenProvider;
-        private readonly Common.Serialization.IProtocolSerializer _serializer;
+        private readonly JsonSerializerOptions _payloadOptions;
         private readonly ILogger _logger;
 
-        private readonly ISignalARRRInterfaceCollection _interfaceCollection = new SignalARRRInterfaceCollection();
-        private readonly ISignalARRRMethodsCollection _methodsCollection = new SignalARRRMethodsCollection();
+        /// <summary>
+        /// The registered contracts by the names that may appear on the wire: the allow-list for
+        /// calls from the server. Each entry pairs the contract's generated dispatcher with where its
+        /// implementation comes from.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, (ContractDispatcher Dispatcher, Func<IServiceProvider, object> Factory)> _registrations =
+            new ConcurrentDictionary<string, (ContractDispatcher Dispatcher, Func<IServiceProvider, object> Factory)>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _cancellationTokenSources = new ConcurrentDictionary<Guid, CancellationTokenSource>();
 
         // Fires when the underlying connection closes; every token bound into a client method
@@ -73,12 +76,10 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             _hubConnection = hubConnection;
             _accessTokenProvider = options?.MessageCredential ?? (() => Task.FromResult<string>(null));
 
-            // Auto-detect protocol: use MessagePackProtocolSerializer if MessagePack is configured
             var serviceProvider = _hubConnection.GetServiceProvider();
-            var hubProtocol = serviceProvider?.GetService<IHubProtocol>();
-            _serializer = hubProtocol?.Name == "messagepack"
-                ? (Common.Serialization.IProtocolSerializer)new Common.Serialization.MessagePackProtocolSerializer()
-                : new Common.Serialization.JsonProtocolSerializer();
+            // Arguments are read with the hub protocol's JSON options. With the MessagePack protocol
+            // they arrive as plain .NET objects and take a JSON round-trip through the same options.
+            _payloadOptions = JsonPayloadOptions(serviceProvider);
             _logger = serviceProvider?.GetService<ILoggerFactory>()?.CreateLogger<HARRRConnection>() ?? (ILogger)NullLogger.Instance;
 
             // Native client results — return values are sent back to the server automatically by SignalR
@@ -111,8 +112,9 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         #region Typed Proxies
 
+        /// <summary>A proxy for the <c>[SignalARRRContract]</c> interface <typeparamref name="T"/>, generated at compile time.</summary>
         public T GetTypedMethods<T>() where T : class {
-            return SignalARRRDispatchProxy.Create<T>(new ClientProxyCreatorHelper(this));
+            return ProxyCreator.CreateInstanceFromInterface<T>(new ClientProxyCreatorHelper(this));
         }
 
         #endregion
@@ -176,25 +178,69 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             return _hubConnection.On(methodName, parameterTypes, handler, state);
         }
 
-        public void RegisterInterface<TInterface, TClass>() where TClass : class, TInterface {
-            _interfaceCollection.RegisterInterface<TInterface, TClass>();
+        // Every overload ends in the generated dispatcher of TInterface, so the contract has to be a
+        // [SignalARRRContract] interface; registering anything else fails at once with a message
+        // saying so, rather than at the first call from the server.
+
+        /// <summary>Receives the server's calls on <typeparamref name="TInterface"/> with <paramref name="instance"/>.</summary>
+        public void RegisterInterface<TInterface>(TInterface instance) where TInterface : class {
+            if (instance == null) throw new ArgumentNullException(nameof(instance));
+            RegisterInterface<TInterface>(_ => instance);
         }
 
-        public void RegisterInterface<TInterface, TClass>(TClass instance) where TClass : class, TInterface {
-            _interfaceCollection.RegisterInterface<TInterface, TClass>(instance);
+        /// <summary>Receives the server's calls on <typeparamref name="TInterface"/> with an instance <paramref name="factory"/> creates per call.</summary>
+        public void RegisterInterface<TInterface>(Func<IServiceProvider, TInterface> factory) where TInterface : class {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+
+            var dispatcher = DispatcherRegistry.Find<TInterface>()
+                ?? throw new InvalidOperationException(
+                    $"'{typeof(TInterface).FullName}' has no generated dispatcher, so the client cannot receive calls on it. " +
+                    "Mark the interface with [SignalARRRContract] and make sure the project that declares or uses it references Cocoar.SignalARRR.Client.FullFramework (or the source generator).");
+
+            if (dispatcher.UnsupportedReason != null) {
+                throw new InvalidOperationException(dispatcher.UnsupportedReason);
+            }
+
+            var registration = (dispatcher, (Func<IServiceProvider, object>)(sp => factory(sp)));
+            foreach (var wireName in GetWireNames(dispatcher)) {
+                if (_registrations.TryGetValue(wireName, out var existing) && existing.Dispatcher.ContractType != dispatcher.ContractType) {
+                    throw new InvalidOperationException(
+                        $"Cannot register interface '{dispatcher.ContractType.AssemblyQualifiedName}': " +
+                        $"'{existing.Dispatcher.ContractType.AssemblyQualifiedName}' is already registered under the wire name '{wireName}'.");
+                }
+
+                _registrations[wireName] = registration;
+            }
         }
 
-        public void RegisterInterface<TInterface, TClass>(Func<IServiceProvider, TClass> factory)
-            where TClass : class, TInterface {
-            _interfaceCollection.RegisterInterface<TInterface, TClass>(factory);
+        /// <summary>
+        /// Receives the server's calls on <typeparamref name="TInterface"/> with a
+        /// <typeparamref name="TClass"/> from the connection's service provider, or created with its
+        /// dependencies from there, per call.
+        /// </summary>
+        public void RegisterInterface<TInterface, TClass>() where TInterface : class where TClass : class, TInterface {
+            RegisterInterface<TInterface>(sp => sp.GetService<TClass>() ?? ActivatorUtilities.CreateInstance<TClass>(sp));
         }
 
-        public void RegisterInterface(Type interfaceType, Type instanceType) {
-            _interfaceCollection.RegisterInterface(interfaceType, instanceType);
+        /// <summary>Receives the server's calls on <typeparamref name="TInterface"/> with <paramref name="instance"/>.</summary>
+        public void RegisterInterface<TInterface, TClass>(TClass instance) where TInterface : class where TClass : class, TInterface {
+            RegisterInterface<TInterface>(instance);
         }
 
-        public void RegisterInterface(Type interfaceType, object instance) {
-            _interfaceCollection.RegisterInterface(interfaceType, instance);
+        /// <summary>Receives the server's calls on <typeparamref name="TInterface"/> with an instance <paramref name="factory"/> creates per call.</summary>
+        public void RegisterInterface<TInterface, TClass>(Func<IServiceProvider, TClass> factory) where TInterface : class where TClass : class, TInterface {
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            RegisterInterface<TInterface>(sp => factory(sp));
+        }
+
+        private static IEnumerable<string> GetWireNames(ContractDispatcher dispatcher) {
+            yield return dispatcher.WireName;
+
+            // A declared [MessageName] replaces the type's identity on the wire. Without one, the
+            // assembly-qualified name is accepted as well, as it always was.
+            if (dispatcher.WireName == dispatcher.ContractType.FullName && dispatcher.ContractType.AssemblyQualifiedName != null) {
+                yield return dispatcher.ContractType.AssemblyQualifiedName;
+            }
         }
 
         #endregion
@@ -202,7 +248,6 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         #region Server→Client Message Handling
 
         private async Task<object> InvokeServerRequest(ServerRequestMessage message) {
-            message = PrepareServerRequestMessage(message);
             var result = await InvokeAsync(message);
 
             if (result is Stream stream) {
@@ -240,7 +285,6 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
 
         private async Task InvokeServerMessage(ServerRequestMessage message) {
             try {
-                message = PrepareServerRequestMessage(message);
                 if (message.StreamId.HasValue) {
                     await InvokeAndStreamBackAsync(message);
                 } else {
@@ -267,51 +311,37 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         private async Task StreamResultToServer(Guid streamId, object result) {
             if (result == null) return;
 
-            var enumerateMethod = typeof(HARRRConnection)
-                .GetMethod(nameof(EnumerateAsyncEnumerable), BindingFlags.NonPublic | BindingFlags.Static);
-
-            var asyncEnumInterface = result.GetType().GetInterfaces()
-                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
-
-            if (asyncEnumInterface == null && result.GetType().IsGenericType && result.GetType().GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>)) {
-                asyncEnumInterface = result.GetType();
-            }
-
-            if (asyncEnumInterface != null) {
-                var elementType = asyncEnumInterface.GetGenericArguments()[0];
-                var genericMethod = enumerateMethod.MakeGenericMethod(elementType);
-                await (Task)genericMethod.Invoke(null, new object[] { _hubConnection, streamId, result });
+            if (result is IStreamingResult streaming) {
+                // The generated dispatcher knows the element type; no reflection to find it.
+                await streaming.ForEachAsync(
+                    item => _hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, item }),
+                    CancellationToken.None);
             } else {
                 await _hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, result });
             }
         }
 
-        private static async Task EnumerateAsyncEnumerable<T>(HubConnection hubConnection, Guid streamId, IAsyncEnumerable<T> source) {
-            await foreach (var item in source) {
-                await hubConnection.SendCoreAsync(MethodNames.StreamItemToServer, new object[] { streamId, item });
+        private async Task<object> InvokeAsync(ServerRequestMessage message) {
+            var separator = message.Method.IndexOf(WireName.Separator);
+            if (separator < 0) {
+                throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound, $"Method '{message.Method}' not found!");
             }
-        }
 
-        private async Task<object> InvokeAsync(ServerRequestMessage serverRequestMessage) {
-            if (serverRequestMessage.Method.Contains("|")) {
-                return await InvokeInterfaceMethodAsync(serverRequestMessage);
+            var interfaceName = message.Method.Substring(0, separator);
+            var methodName = message.Method.Substring(separator + 1);
+
+            if (!_registrations.TryGetValue(interfaceName, out var registration)) {
+                throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound, $"Interface '{interfaceName}' is not registered.");
             }
-            return await InvokeMethodAsync(serverRequestMessage);
-        }
 
-        private async Task<object> InvokeMethodAsync(ServerRequestMessage serverRequestMessage) {
-            var methodCallInfo = _methodsCollection.GetMethodInformations(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
-            var instance = methodCallInfo.Factory.DynamicInvoke(_hubConnection.GetServiceProvider());
-            return await InvokeMethodInfoAsync(instance, methodCallInfo.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
-        }
+            if (message.GenericArguments != null && message.GenericArguments.Length > 0) {
+                // Older servers can still send these; resolving a type argument by name needs reflection.
+                throw new MethodResolutionException(HARRRErrorCodes.MethodNotFound,
+                    $"Method '{methodName}' was called with generic arguments, which a client does not support.");
+            }
 
-        private async Task<object> InvokeInterfaceMethodAsync(ServerRequestMessage serverRequestMessage) {
-            var invokeInfos = _interfaceCollection.GetInvokeInformation(serverRequestMessage.Method, serverRequestMessage.Arguments.Length);
-            var instance = invokeInfos.Factory.DynamicInvoke(_hubConnection.GetServiceProvider());
-            return await InvokeMethodInfoAsync(instance, invokeInfos.MethodInfo, serverRequestMessage.Arguments, serverRequestMessage.GenericArguments, serverRequestMessage.CancellationGuid);
-        }
+            var instance = registration.Factory(_hubConnection.GetServiceProvider());
 
-        private async Task<object> InvokeMethodInfoAsync(object instance, MethodInfo methodInfo, IEnumerable<object> arguments, IEnumerable<string> genericArguments, Guid? cancellationTokenGuid) {
             // Every linked source this invocation creates — the call-level one and one per
             // CancellationToken parameter — so the finally can let go of all of them.
             var ownedTokenIds = new List<Guid>(1);
@@ -320,32 +350,24 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             try {
                 // Connection lifetime rather than None — see _connectionLifetime.
                 CancellationToken cancellationToken = _connectionLifetime.Token;
-                if (cancellationTokenGuid.HasValue) {
+                if (message.CancellationGuid.HasValue) {
                     var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
-                    _cancellationTokenSources.TryAdd(cancellationTokenGuid.Value, cts);
-                    ownedTokenIds.Add(cancellationTokenGuid.Value);
+                    _cancellationTokenSources.TryAdd(message.CancellationGuid.Value, cts);
+                    ownedTokenIds.Add(message.CancellationGuid.Value);
                     cancellationToken = cts.Token;
                 }
 
-                var parameters = await BuildExecuteMethodParameters(methodInfo, arguments, cancellationToken, ownedTokenIds);
+                var arguments = new JsonArgumentReader(message.Arguments, _payloadOptions, new FullFrameworkCallContext(this, cancellationToken, ownedTokenIds));
 
-                if (genericArguments?.Any() == true) {
-                    var arrType = genericArguments.Select(Common.Helper.TypeHelper.FindType).ToList();
-                    methodInfo = methodInfo.MakeGenericMethod(arrType.ToArray());
+                object result;
+                try {
+                    result = await registration.Dispatcher.InvokeUntypedAsync(instance, methodName, arguments);
+                } catch (DispatchException dispatchException) {
+                    throw new MethodResolutionException(dispatchException.Code, dispatchException.Message);
                 }
 
-                object result = null;
-                if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
-                    await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);
-                } else if (IsAsyncEnumerableType(methodInfo.ReturnType)) {
-                    result = methodInfo.Invoke(instance, parameters);
-
-                    // Consumed after this method returns, so the token has to outlive us.
-                    ownershipTransferred = true;
-                } else {
-                    result = await InvokeHelper.InvokeMethodAsync<object>(instance, methodInfo, parameters);
-                }
-
+                // A stream is consumed after this method returns, so its token has to outlive us.
+                ownershipTransferred = result is IStreamingResult;
                 return result;
             }
             finally {
@@ -363,90 +385,60 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             }
         }
 
-        private async Task<object[]> BuildExecuteMethodParameters(MethodInfo methodInfo, IEnumerable<object> parameters, CancellationToken cancellation = default, ICollection<Guid> ownedTokenIds = null) {
-            int paramsPosition = 0;
-            var paramsList = parameters.ToList();
-            var argumentList = new List<object>();
+        /// <summary>
+        /// Resolves the slots of one call that the connection, not JSON, has to fill: tokens the
+        /// server can cancel, and streams that travel through file transfer. Mirrors the .NET client.
+        /// </summary>
+        private sealed class FullFrameworkCallContext : CallContext {
+            private readonly HARRRConnection _connection;
+            private readonly ICollection<Guid> _ownedTokenIds;
 
-            foreach (var parameterInfo in methodInfo.GetParameters()) {
-                if (paramsList.Count <= paramsPosition) {
-                    throw new IndexOutOfRangeException();
-                }
-                var par = paramsList[paramsPosition];
-                paramsPosition++;
-
-                if (parameterInfo.ParameterType == typeof(CancellationToken)) {
-                    var tokenFromRef = TryGetCancellationTokenFromReference(par, ownedTokenIds);
-                    if (tokenFromRef.HasValue) {
-                        argumentList.Add(tokenFromRef.Value);
-                        continue;
-                    }
-                    argumentList.Add(cancellation);
-                    continue;
-                }
-
-                par = await PrepareArgumentForType(parameterInfo.ParameterType, par);
-
-                if (par == null) {
-                    argumentList.Add(null);
-                    continue;
-                }
-
-                if (parameterInfo.ParameterType != par.GetType()) {
-                    if (par.Reflect().TryTo(parameterInfo.ParameterType, out var pt)) {
-                        par = pt;
-                    } else {
-                        par = _serializer.ConvertTo(par, parameterInfo.ParameterType);
-                    }
-                }
-
-                argumentList.Add(par);
+            public FullFrameworkCallContext(HARRRConnection connection, CancellationToken callCancellation, ICollection<Guid> ownedTokenIds) {
+                _connection = connection;
+                CallCancellation = callCancellation;
+                _ownedTokenIds = ownedTokenIds;
             }
 
-            return argumentList.ToArray();
-        }
+            public override CancellationToken CallCancellation { get; }
 
-        private async Task<object> PrepareArgumentForType(Type type, object argument) {
-            if (argument == null) {
-                if (!type.IsValueType || type.IsNullableType()) {
-                    // Reference types (string, classes, etc.) and Nullable<T> accept null
+            public override CancellationToken ResolveCancellationToken(ArgumentReader reader, int index) {
+                var reference = index < reader.Count ? TryRead<CancellationTokenReference>(reader, index) : null;
+                if (reference == null || reference.Id == Guid.Empty) {
+                    return CallCancellation;
+                }
+
+                // Linked to the connection lifetime: a cancellation the server can no longer deliver
+                // (the connection is gone) must still fire.
+                var cts = CancellationTokenSource.CreateLinkedTokenSource(_connection._connectionLifetime.Token);
+                _connection._cancellationTokenSources.TryAdd(reference.Id, cts);
+                _ownedTokenIds.Add(reference.Id);
+                return cts.Token;
+            }
+
+            public override async Task<Stream> ResolveStreamAsync(ArgumentReader reader, int index) {
+                if (index >= reader.Count) return null;
+                if (reader.GetRaw(index) is Stream stream) return stream;
+
+                var reference = TryRead<StreamReference>(reader, index);
+                if (reference == null || string.IsNullOrEmpty(reference.Uri)) return null;
+
+                var httpClient = new HttpClient();
+                using (var request = await FileTransferHttp.AuthorizeAsync(
+                    new HttpRequestMessage(HttpMethod.Get, new Uri(reference.Uri)), _connection._accessTokenProvider)) {
+                    var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadAsStreamAsync();
+                }
+            }
+
+            private static T TryRead<T>(ArgumentReader reader, int index) where T : class {
+                try {
+                    return reader.Read<T>(index);
+                } catch (Exception ex) when (ex is JsonException || ex is InvalidOperationException || ex is NotSupportedException) {
+                    // Not a reference: an ordinary value in a slot the contract declares as token or stream.
                     return null;
                 }
-                // Non-nullable value types (int, Guid, etc.) get their default value
-                return Activator.CreateInstance(type);
             }
-
-            if (type == typeof(Stream)) {
-                var streamReference = _serializer.TryConvertTo<StreamReference>(argument);
-                if (streamReference != null && !string.IsNullOrEmpty(streamReference.Uri)) {
-                    var httpClient = new HttpClient();
-                    using (var request = await FileTransferHttp.AuthorizeAsync(
-                        new HttpRequestMessage(HttpMethod.Get, new Uri(streamReference.Uri)), _accessTokenProvider)) {
-                        var res = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-                        res.EnsureSuccessStatusCode();
-                        return await res.Content.ReadAsStreamAsync();
-                    }
-                }
-            }
-
-            return argument;
-        }
-
-        private ServerRequestMessage PrepareServerRequestMessage(ServerRequestMessage message) {
-            var converted = _serializer.TryConvertTo<ServerRequestMessage>(message);
-            return converted ?? message;
-        }
-
-        private CancellationToken? TryGetCancellationTokenFromReference(object argument, ICollection<Guid> ownedTokenIds = null) {
-            if (argument == null) return null;
-            var reference = _serializer.TryConvertTo<CancellationTokenReference>(argument);
-            if (reference == null || reference.Id == Guid.Empty) return null;
-            // Linked to the connection lifetime: a cancellation the server can no longer deliver
-            // (the connection is gone) must still fire.
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(_connectionLifetime.Token);
-            _cancellationTokenSources.TryAdd(reference.Id, cts);
-            ownedTokenIds?.Add(reference.Id);
-            return cts.Token;
         }
 
         private void CancelTokenFromServer(ServerRequestMessage requestMessage) {
@@ -465,12 +457,6 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         }
 
         #endregion
-
-        private static bool IsAsyncEnumerableType(Type type) {
-            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>))
-                return true;
-            return type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IAsyncEnumerable<>));
-        }
 
         #region Stream Upload
 
@@ -631,6 +617,17 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         public async Task DisposeAsync() => await _hubConnection.DisposeAsync();
 
         #endregion
+
+        /// <summary>
+        /// The hub protocol's JSON options with SignalARRR's contracts appended — the options the
+        /// arguments were written with, so conversions agree with them.
+        /// </summary>
+        private static System.Text.Json.JsonSerializerOptions JsonPayloadOptions(IServiceProvider serviceProvider) {
+            var options = serviceProvider?.GetService<Microsoft.Extensions.Options.IOptions<JsonHubProtocolOptions>>()?.Value.PayloadSerializerOptions
+                ?? new System.Text.Json.JsonSerializerOptions();
+            Common.Serialization.SignalARRRJson.AddTo(options);
+            return options;
+        }
     }
 
     public class ServerRequestEventArgs : EventArgs {
@@ -639,5 +636,6 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         public ServerRequestEventArgs(ServerRequestMessage serverRequestMessage) {
             ServerRequestMessage = serverRequestMessage;
         }
+
     }
 }

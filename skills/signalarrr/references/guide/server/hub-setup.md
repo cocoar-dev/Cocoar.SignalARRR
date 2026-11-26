@@ -39,9 +39,9 @@ builder.Services.AddSignalR()
     .AddMessagePackProtocol();  // clients can choose JSON or MessagePack
 ```
 
-Both protocols run simultaneously — JSON clients and MessagePack clients connect to the same hub.
+Both protocols run simultaneously — JSON clients and MessagePack clients connect to the same hub. MessagePack needs the JIT; a [NativeAOT](../advanced/proxy-generation.md#nativeaot) server uses JSON only.
 
-`AddServerMethodsFrom()` scans the assembly for all `ServerMethods<T>` classes and registers them in DI.
+`AddServerMethodsFrom()` selects an assembly whose hubs and `ServerMethods<T>` classes the source generator found at compile time, and registers those classes in DI.
 
 `MapSignalARRRHub<T>()` maps the hub at the specified path and also registers a download endpoint at `{path}/download/{id}` for file stream references.
 

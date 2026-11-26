@@ -27,6 +27,8 @@ var hubConnection = new HubConnectionBuilder()
 var connection = HARRRConnection.Create(hubConnection);
 ```
 
+In a NativeAOT app, add your own `JsonSerializerContext` to the JSON protocol here — see [NativeAOT](/guide/advanced/proxy-generation#nativeaot).
+
 ## Connection with authentication
 
 ### Token-based (Bearer, JWT)

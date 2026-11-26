@@ -39,7 +39,7 @@ namespace TestServer.Controllers {
             var dict = new Dictionary<string, object>();
             dict["test"] = "TestValue";
 
-            HttpContext.ProxyFromHARRRClient<ITestClientMethods>(cl, methods => methods.Invoke<DateTime>("comm", dict));
+            HttpContext.ProxyFromHARRRClient<ITestClientMethods>(cl, methods => methods.CreateObject("comm", dict));
 
         }
 

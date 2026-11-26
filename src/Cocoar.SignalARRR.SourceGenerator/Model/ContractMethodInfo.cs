@@ -12,6 +12,10 @@ internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo> {
     public string? ElementTypeFullName { get; }
     public EquatableArray<ContractParameterInfo> Parameters { get; }
     public EquatableArray<string> TypeParameterNames { get; }
+    /// <summary>Declared by an interface the contract inherits rather than by the contract itself.</summary>
+    public bool IsInherited { get; }
+    /// <summary>The interface that declares the method, fully qualified.</summary>
+    public string DeclaringInterface { get; }
 
     public ContractMethodInfo(
         string name,
@@ -20,7 +24,9 @@ internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo> {
         string returnTypeFullName,
         string? elementTypeFullName,
         EquatableArray<ContractParameterInfo> parameters,
-        EquatableArray<string> typeParameterNames) {
+        EquatableArray<string> typeParameterNames,
+        bool isInherited,
+        string declaringInterface) {
         Name = name;
         WireName = wireName;
         ReturnCategory = returnCategory;
@@ -28,6 +34,8 @@ internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo> {
         ElementTypeFullName = elementTypeFullName;
         Parameters = parameters;
         TypeParameterNames = typeParameterNames;
+        IsInherited = isInherited;
+        DeclaringInterface = declaringInterface;
     }
 
     public bool Equals(ContractMethodInfo other) =>
@@ -37,7 +45,9 @@ internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo> {
         ReturnTypeFullName == other.ReturnTypeFullName &&
         ElementTypeFullName == other.ElementTypeFullName &&
         Parameters.Equals(other.Parameters) &&
-        TypeParameterNames.Equals(other.TypeParameterNames);
+        TypeParameterNames.Equals(other.TypeParameterNames) &&
+        IsInherited == other.IsInherited &&
+        DeclaringInterface == other.DeclaringInterface;
 
     public override bool Equals(object? obj) => obj is ContractMethodInfo other && Equals(other);
 
@@ -49,6 +59,8 @@ internal readonly struct ContractMethodInfo : IEquatable<ContractMethodInfo> {
         hash = HashCombine.Combine(hash, HashCombine.Of(ElementTypeFullName));
         hash = HashCombine.Combine(hash, Parameters.GetHashCode());
         hash = HashCombine.Combine(hash, TypeParameterNames.GetHashCode());
+        hash = HashCombine.Combine(hash, IsInherited ? 1 : 0);
+        hash = HashCombine.Combine(hash, HashCombine.Of(DeclaringInterface));
         return hash;
     }
 }

@@ -31,7 +31,8 @@ namespace Microsoft.Extensions.DependencyInjection {
                 options,
                 sp.GetRequiredService<ISignalARRRBackplane>(),
                 sp.GetRequiredService<ClusterSubjectRegistry>(),
-                sp.GetRequiredService<ILogger<ClusterSubject<T>>>()));
+                sp.GetRequiredService<ILogger<ClusterSubject<T>>>(),
+                sp.GetService<ServerPayloadOptions>()?.Options));
 
             // Constructed at startup, not on first use: a subject nobody has resolved yet is not
             // in the registry, and events from other nodes for it would be dropped until then.

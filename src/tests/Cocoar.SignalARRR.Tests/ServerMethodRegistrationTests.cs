@@ -1,5 +1,4 @@
 using System;
-using Cocoar.SignalARRR.Common.Interfaces;
 using Cocoar.SignalARRR.Server;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -18,23 +17,9 @@ namespace Cocoar.SignalARRR.Tests;
 /// </remarks>
 public class ServerMethodRegistrationTests {
 
-    private static ISignalARRRMethodsCollection GetMethodsFor<THub>() where THub : HARRR {
-        var services = new ServiceCollection();
-        services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(ServerMethodRegistrationTests).Assembly));
+    private static ServerMethodTable GetMethodsFor<THub>() where THub : HARRR => ServerTables.For<THub>();
 
-        using var provider = services.BuildServiceProvider();
-        return provider.GetRequiredKeyedService<ISignalARRRMethodsCollection>(typeof(THub).FullName);
-    }
-
-    private static bool IsRegistered(ISignalARRRMethodsCollection methods, string name, int argumentCount = 0) {
-        try {
-            methods.GetMethodInformations(name, argumentCount);
-            return true;
-        }
-        catch (Exception) {
-            return false;
-        }
-    }
+    private static bool IsRegistered(ServerMethodTable methods, string name, int argumentCount = 0) => methods.IsRegistered(name, argumentCount);
 
     [Theory]
     // The declared methods are the whole point — these must stay reachable.
@@ -99,13 +84,7 @@ public class ServerMethodRegistrationTests {
     // last. The shape this breaks is the one the server-methods guide recommends: split a hub
     // across domain classes, each with its own contract.
 
-    private static ISignalARRRInterfaceCollection GetContractsFor<THub>() where THub : HARRR {
-        var services = new ServiceCollection();
-        services.AddSignalARRR(b => b.AddServerMethodsFrom(typeof(ServerMethodRegistrationTests).Assembly));
-
-        using var provider = services.BuildServiceProvider();
-        return provider.GetRequiredKeyedService<ISignalARRRInterfaceCollection>(typeof(THub).FullName);
-    }
+    private static ServerMethodTable GetContractsFor<THub>() where THub : HARRR => ServerTables.For<THub>();
 
     private static string WireName<TContract>(string method) => $"{typeof(TContract).FullName}|{method}";
 
@@ -113,15 +92,15 @@ public class ServerMethodRegistrationTests {
     public void Every_ServerMethods_class_on_one_hub_keeps_its_contract() {
         var contracts = GetContractsFor<ContractProbeHub>();
 
-        var alpha = contracts.GetInvokeInformation(
+        var alpha = contracts.Resolve(
             WireName<IContractAlpha>(nameof(IContractAlpha.FromAlpha)), 0);
-        var beta = contracts.GetInvokeInformation(
+        var beta = contracts.Resolve(
             WireName<IContractBeta>(nameof(IContractBeta.FromBeta)), 0);
 
         // Whichever of the two registered last used to be the only one left; the other answered
         // "Interface '…' is not registered."
-        Assert.Equal(nameof(IContractAlpha.FromAlpha), alpha.MethodInfo.Name);
-        Assert.Equal(nameof(IContractBeta.FromBeta), beta.MethodInfo.Name);
+        Assert.Contains(nameof(IContractAlpha.FromAlpha), alpha.Declaration);
+        Assert.Contains(nameof(IContractBeta.FromBeta), beta.Declaration);
     }
 
     [Fact]
@@ -129,10 +108,10 @@ public class ServerMethodRegistrationTests {
         var contracts = GetContractsFor<ContractProbeHub>();
 
         // The hub registers first, so its entry was the one every ServerMethods class overwrote.
-        var fromHub = contracts.GetInvokeInformation(
+        var fromHub = contracts.Resolve(
             WireName<IContractOnTheHub>(nameof(IContractOnTheHub.FromHub)), 0);
 
-        Assert.Equal(nameof(IContractOnTheHub.FromHub), fromHub.MethodInfo.Name);
+        Assert.Contains(nameof(IContractOnTheHub.FromHub), fromHub.Declaration);
     }
 
     [Fact]
@@ -142,7 +121,7 @@ public class ServerMethodRegistrationTests {
         // Guards the two assertions above: they would pass just as well against a registry that
         // resolved everything, which is the other way to get this wrong.
         Assert.Throws<Cocoar.SignalARRR.Common.Exceptions.MethodResolutionException>(
-            () => contracts.GetInvokeInformation("Nowhere.INotRegistered|Whatever", 0));
+            () => contracts.Resolve("Nowhere.INotRegistered|Whatever", 0));
     }
 }
 

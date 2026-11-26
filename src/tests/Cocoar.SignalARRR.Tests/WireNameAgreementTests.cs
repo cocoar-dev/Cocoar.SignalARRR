@@ -10,10 +10,10 @@ using Xunit;
 namespace Cocoar.SignalARRR.Tests {
 
     /// <summary>
-    /// A contract name is formed in four independent places: the source generator, the two
-    /// reflection <c>DispatchProxy</c> flavours, and the registration that builds the receiving
-    /// index. Three of them emit, one of them resolves. They agree or calls disappear — the
-    /// receiving side answers "method not found", or worse, silently drops a fire-and-forget.
+    /// A contract name is formed in independent places: the source generator (proxies emit it,
+    /// dispatchers resolve it on the clients) and the server's reflection registration, which
+    /// resolves it through <see cref="WireName"/>. They agree or calls disappear — the receiving
+    /// side answers "method not found", or worse, silently drops a fire-and-forget.
     /// These tests hold the emitting side against the resolving side for the same contract.
     /// </summary>
     public class WireNameAgreementTests {
@@ -79,23 +79,47 @@ namespace Cocoar.SignalARRR.Tests {
 
         [Fact]
         public async Task Registration_resolves_exactly_what_the_generated_proxy_emits() {
-            // The one that matters. Both halves are derived independently — the emitting half by the
-            // generator from Roslyn symbols at compile time, the resolving half by WireName from
-            // reflection at startup — so this is the only check that they met in the middle.
-            var collection = new SignalARRRInterfaceCollection();
-            collection.RegisterInterface(typeof(IRenamedWireContract), typeof(RenamedWireContract));
+            // The one that matters: the proxy and the server table are generated separately, in
+            // different assemblies, so this is the check that they met in the middle.
+            var table = ServerTables.For<WireNameProbeHub>();
 
             var helper = new CapturingHelper();
             var proxy = ProxyCreator.CreateInstanceFromInterface<IRenamedWireContract>(helper);
             await proxy.SayHello("world");
 
-            var (_, methodInfo) = collection.GetInvokeInformation(helper.LastMethodName!, 1);
-            Assert.Equal(nameof(IRenamedWireContract.SayHello), methodInfo.Name);
+            Assert.Contains(nameof(IRenamedWireContract.SayHello), table.Resolve(helper.LastMethodName!, 1).Declaration);
+        }
+
+        private sealed class ValueReader : ArgumentReader {
+            public ValueReader(params object?[] values) : base(values, new NoContext()) { }
+            public override T Read<T>(int index) => (T)GetRaw(index)!;
+        }
+
+        private sealed class NoContext : CallContext {
+            public override CancellationToken CallCancellation => CancellationToken.None;
+            public override CancellationToken ResolveCancellationToken(ArgumentReader reader, int index) => CancellationToken.None;
+            public override Task<System.IO.Stream?> ResolveStreamAsync(ArgumentReader reader, int index) => Task.FromResult<System.IO.Stream?>(null);
+        }
+
+        [Fact]
+        public async Task The_generated_dispatcher_resolves_exactly_what_the_generated_proxy_emits() {
+            // The client-side receiver: the same generator emits both halves, from the same symbols.
+            var helper = new CapturingHelper();
+            var proxy = ProxyCreator.CreateInstanceFromInterface<IRenamedWireContract>(helper);
+            await proxy.SayHello("world");
+
+            System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(IRenamedWireContract).Module.ModuleHandle);
+            var dispatcher = DispatcherRegistry.Find<IRenamedWireContract>()!;
+            var name = helper.LastMethodName!;
+            var separator = name.IndexOf(WireName.Separator);
+
+            Assert.Equal(dispatcher.WireName, name.Substring(0, separator));
+            Assert.Equal("world", await dispatcher.InvokeAsync(new RenamedWireContract(), name.Substring(separator + 1), new ValueReader("world")));
         }
 
         [Fact]
         public void The_reflection_helper_agrees_with_the_generator() {
-            // WireName is what the two DispatchProxy flavours and the registration use; the generator
+            // WireName is what the server's registration uses; the generator
             // re-implements the rule against symbols. Compare the two derivations directly.
             Assert.Equal(
                 "renamed.contract|greet",
@@ -105,5 +129,14 @@ namespace Cocoar.SignalARRR.Tests {
                 "renamed.contract|Untouched",
                 WireName.For(typeof(IRenamedWireContract), typeof(IRenamedWireContract).GetMethod(nameof(IRenamedWireContract.Untouched))!));
         }
+    }
+
+    public class WireNameProbeHub : Cocoar.SignalARRR.Server.HARRR {
+        public WireNameProbeHub(IServiceProvider serviceProvider) : base(serviceProvider) { }
+    }
+
+    public class RenamedWireServerMethods : Cocoar.SignalARRR.Server.ServerMethods<WireNameProbeHub>, IRenamedWireContract {
+        public Task<string> SayHello(string name) => Task.FromResult(name);
+        public Task Untouched() => Task.CompletedTask;
     }
 }

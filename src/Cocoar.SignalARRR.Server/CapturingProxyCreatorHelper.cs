@@ -13,12 +13,12 @@ namespace Cocoar.SignalARRR.Server {
 
         public string? CapturedMethodName { get; private set; }
         public object[]? CapturedArguments { get; private set; }
-        public string[]? CapturedGenericArguments { get; private set; }
 
         private void Capture(string methodName, IEnumerable<object> arguments, string[] genericArguments) {
+            // The captured call is sent to clients afterwards.
+            ServerToClientGenericArguments.Reject(methodName, genericArguments);
             CapturedMethodName = methodName;
             CapturedArguments = arguments.ToArray();
-            CapturedGenericArguments = genericArguments;
         }
 
         public override void Send(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {

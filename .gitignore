@@ -357,6 +357,9 @@ website/.vitepress/dist-dev/
 # Test server state
 .test-server/
 
+# NativeAOT smoke test output (scripts/run-aot-smoke.sh)
+.aot-smoke/
+
 # Claude Code
 .claude/
 

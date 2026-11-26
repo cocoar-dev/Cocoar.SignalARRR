@@ -1,13 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <AssemblyName>Cocoar.SignalARRR.Server</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Trim and AOT analyzers on every target (warnings are errors): the server runs under
+         NativeAOT, and anything new that would break that fails the build here. -->
+    <IsAotCompatible>true</IsAotCompatible>
     <!-- The netstandard2.0 source generator is referenced as an assembly (see the ProjectReference
-         below) and brings Roslyn's System.Collections.Immutable, which conflicts with net8.0's own.
+         below) and brings Roslyn's System.Collections.Immutable, which conflicts with the framework's own.
          The generator is never loaded at runtime, so the conflict is irrelevant. Consumers do not see
          it: they receive the generator as an analyzer, which assembly resolution never touches. -->
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
@@ -45,8 +48,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cocoar.Reflectensions" />
-    <PackageReference Include="Cocoar.Reflectensions.Invoke" />
     <PackageReference Include="MessagePack" />
     <PackageReference Include="System.Reactive.Linq" />
   </ItemGroup>

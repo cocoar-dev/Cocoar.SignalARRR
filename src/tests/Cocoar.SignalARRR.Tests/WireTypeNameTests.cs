@@ -6,14 +6,15 @@ using Xunit;
 namespace Cocoar.SignalARRR.Tests {
 
     /// <summary>
-    /// Covers the type names the backplane puts on the wire and reads back (F-10).
+    /// Covers the type names the backplane puts on the wire and how a node finds its hub by one (F-10).
     /// </summary>
     /// <remarks>
     /// A genuine version skew needs two builds of the same assembly loaded at once, which no test
     /// here can stage. What can be pinned down exactly is the property that makes the skew
-    /// survivable: the name must not carry build identity, and resolution must not depend on it.
-    /// The skew itself is then simulated by rewriting the version in a name — which is precisely
-    /// what the other node would have sent.
+    /// survivable: the name must not carry build identity, and finding the hub must not depend on
+    /// it. The skew itself is then simulated by rewriting the version in a name — which is
+    /// precisely what the other node would have sent. Since 6.0 no other type is resolved by name:
+    /// a node forwards client results as JSON, and only the node that asked deserializes them.
     /// </remarks>
     public class WireTypeNameTests {
 
@@ -47,10 +48,23 @@ namespace Cocoar.SignalARRR.Tests {
             Assert.DoesNotContain("PublicKeyToken=", name, StringComparison.OrdinalIgnoreCase);
         }
 
-        [Theory]
-        [MemberData(nameof(Types))]
-        public void A_wire_name_resolves_back_to_the_same_type(Type type) {
-            Assert.Same(type, WireTypeName.Resolve(WireTypeName.From(type)));
+        private static Type RegisteredHub() {
+            System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(OverloadProbeHub).Module.ModuleHandle);
+            return typeof(OverloadProbeHub);
+        }
+
+        [Fact]
+        public void A_hub_is_found_by_its_wire_name() {
+            var hub = RegisteredHub();
+
+            Assert.Same(hub, Cocoar.SignalARRR.Server.ServerDispatchRegistry.HubByName(WireTypeName.From(hub)));
+        }
+
+        [Fact]
+        public void An_unknown_or_unregistered_name_finds_no_hub() {
+            Assert.Null(Cocoar.SignalARRR.Server.ServerDispatchRegistry.HubByName("Nope.NotHere, NoSuchAssembly"));
+            Assert.Null(Cocoar.SignalARRR.Server.ServerDispatchRegistry.HubByName(WireTypeName.From(typeof(string))));
+            Assert.Null(Cocoar.SignalARRR.Server.ServerDispatchRegistry.HubByName(""));
         }
 
         /// <summary>
@@ -65,21 +79,20 @@ namespace Cocoar.SignalARRR.Tests {
         }
 
         /// <summary>
-        /// This is F-10 itself: a name from a node running a different build must still resolve.
+        /// This is F-10 itself: a hub named by a node running a different build is still found.
         /// </summary>
         /// <remarks>
-        /// Stands in for the rolling deployment. Previously the backplane called
+        /// Stands in for the rolling deployment. The backplane once called
         /// <c>Type.GetType(assemblyQualifiedName)</c>, which binds on the full assembly identity, so
-        /// a peer one version ahead or behind resolved to <c>null</c> — silently, and on both the
-        /// hub type and the result type.
+        /// a peer one version ahead or behind resolved to <c>null</c> — silently.
         /// </remarks>
-        [Theory]
-        [MemberData(nameof(Types))]
-        public void A_name_from_a_differently_versioned_peer_still_resolves(Type type) {
-            var fromOtherBuild = type.AssemblyQualifiedName!
-                .Replace("Version=" + type.Assembly.GetName().Version, "Version=47.11.0.0");
+        [Fact]
+        public void A_hub_named_by_a_differently_versioned_peer_is_still_found() {
+            var hub = RegisteredHub();
+            var fromOtherBuild = hub.AssemblyQualifiedName!
+                .Replace("Version=" + hub.Assembly.GetName().Version, "Version=47.11.0.0");
 
-            Assert.Same(type, WireTypeName.Resolve(fromOtherBuild));
+            Assert.Same(hub, Cocoar.SignalARRR.Server.ServerDispatchRegistry.HubByName(fromOtherBuild));
         }
 
         /// <summary>
@@ -91,20 +104,14 @@ namespace Cocoar.SignalARRR.Tests {
         /// disjoint keyspaces and filter each other's registrations out — a cluster that has quietly
         /// split in two, with no resolution failure to point at.
         /// </remarks>
-        [Fact]
-        public void Two_builds_of_the_same_type_agree_on_the_name() {
-            var here = WireTypeName.From(typeof(Probe));
-            var there = new System.Text.RegularExpressions.Regex(@",\s*Version=[^,\]]+")
-                .Replace(typeof(Probe).AssemblyQualifiedName!, "");
+        [Theory]
+        [MemberData(nameof(Types))]
+        public void Two_builds_of_the_same_type_agree_on_the_name(Type type) {
+            // What the other build writes: the same name, rendered from an identity with another version.
+            var there = type.AssemblyQualifiedName!.Replace("Version=" + type.Assembly.GetName().Version, "Version=47.11.0.0");
+            var renderedThere = System.Text.RegularExpressions.Regex.Replace(there, @",\s*(Version|Culture|PublicKeyToken)=[^,\]]+", "");
 
-            Assert.Equal(here, WireTypeName.From(WireTypeName.Resolve(there)!));
-        }
-
-        [Fact]
-        public void An_unknown_name_resolves_to_null() {
-            Assert.Null(WireTypeName.Resolve("Nope.NotHere, NoSuchAssembly"));
-            Assert.Null(WireTypeName.Resolve(null));
-            Assert.Null(WireTypeName.Resolve("   "));
+            Assert.Equal(WireTypeName.From(type), renderedThere);
         }
     }
 }

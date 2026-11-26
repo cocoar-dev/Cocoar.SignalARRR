@@ -4,6 +4,8 @@
 
 SignalARRR integrates with ASP.NET Core's authorization system. Apply `[Authorize]` at the method, class, or hub level.
 
+The source generator resolves which attributes apply to each method at compile time and stores that plan in the server's [method table](../advanced/proxy-generation.md#server-method-table): `[AllowAnonymous]` anywhere wins; otherwise the most specific level that carries authorization data applies — the method together with its interface declarations, then the class and its base classes, then the hub. Custom `IAuthorizeData` attributes are reproduced from the constructor arguments they are declared with.
+
 SignalARRR supports two authentication modes:
 
 - **Message-Level** (Bearer, Basic, API Key) — token sent per message, automatic challenge/refresh on expiry

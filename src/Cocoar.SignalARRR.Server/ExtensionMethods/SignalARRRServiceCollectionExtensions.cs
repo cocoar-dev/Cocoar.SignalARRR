@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using Cocoar.Reflectensions;
-using Cocoar.Reflectensions.ExtensionMethods;
-using Cocoar.SignalARRR.Common;
-using Cocoar.SignalARRR.Common.Attributes;
-using Cocoar.SignalARRR.Common.Interfaces;
+using System.Runtime.CompilerServices;
 using Cocoar.SignalARRR.Common.Serialization;
 using Cocoar.SignalARRR.Server;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -15,7 +12,9 @@ namespace Microsoft.Extensions.DependencyInjection {
     public static class SignalARRRServiceCollectionExtensions {
         public static IServiceCollection AddSignalARRR(this IServiceCollection serviceCollection, Action<SignalARRRServerOptionsBuilder>? options = null) {
 
-            SignalARRRServerOptions serverOptions = options?.InvokeAction() ?? new SignalARRRServerOptionsBuilder();
+            var optionsBuilder = new SignalARRRServerOptionsBuilder();
+            options?.Invoke(optionsBuilder);
+            SignalARRRServerOptions serverOptions = optionsBuilder;
 
             AddSignalARRRMethods(serviceCollection, serverOptions);
             serviceCollection.AddSingleton(serverOptions);
@@ -23,7 +22,12 @@ namespace Microsoft.Extensions.DependencyInjection {
             // JsonProtocolSerializer handles JsonElement natively, and its JSON round-trip
             // fallback works for MessagePack-deserialized values (plain .NET objects) too.
             // SignalR supports both protocols simultaneously — different clients can use different protocols.
-            serviceCollection.AddSingleton<IProtocolSerializer, JsonProtocolSerializer>();
+            // It converts with the hub protocol's JSON options, the ones the arguments were written with.
+            serviceCollection.PostConfigure<Microsoft.AspNetCore.SignalR.JsonHubProtocolOptions>(o => SignalARRRJson.AddTo(o.PayloadSerializerOptions));
+            serviceCollection.Configure<Microsoft.AspNetCore.SignalR.HubOptions>(o => Microsoft.AspNetCore.SignalR.HubOptionsExtensions.AddFilter(o, new SignalARRRHubFilter()));
+            serviceCollection.AddSingleton<ServerPayloadOptions>();
+            serviceCollection.AddHostedService<ServerWireTypeCheck>();
+            serviceCollection.AddSingleton<IProtocolSerializer>(sp => new JsonProtocolSerializer(sp.GetRequiredService<ServerPayloadOptions>().Options));
             serviceCollection.AddSingleton(sp => new ServerPushStreamManager(
                 sp.GetRequiredService<SignalARRRServerOptions>().UploadSlotExpiration));
             serviceCollection.AddSingleton(sp => new ServerStreamManager(
@@ -41,7 +45,6 @@ namespace Microsoft.Extensions.DependencyInjection {
             serviceCollection.TryAddSingleton<ISignalARRRBackplane, DisabledSignalARRRBackplane>();
             serviceCollection.TryAddSingleton<ISignalARRRConnectionRegistry, DisabledSignalARRRConnectionRegistry>();
             serviceCollection.AddSingleton<ClientManager>(sp => new ClientManager(sp.GetRequiredService<IHARRRClientManager>(), sp));
-            serviceCollection.AddTransient(typeof(ClientContextDispatcher<>));
 
             // This one *is* an extension point, which is why the interface is public: register your
             // own before this call and it stays.
@@ -52,44 +55,8 @@ namespace Microsoft.Extensions.DependencyInjection {
 
 
         /// <summary>
-        /// Returns the methods of a <see cref="ServerMethods{T}"/> class that may be invoked over RPC.
-        /// </summary>
-        /// <remarks>
-        /// Only members the user actually declared are invokable. Property accessors
-        /// (<see cref="MethodBase.IsSpecialName"/>) and everything inherited from
-        /// <see cref="ServerMethods"/> or <see cref="object"/> are infrastructure: none of them carry
-        /// <c>[Authorize]</c>, so registering them would expose e.g. <c>get_ClientContext</c> —
-        /// which returns the caller's principal, claims, client certificate and remote IP — as an
-        /// anonymously callable endpoint. Inherited members are otherwise kept, so a user-defined
-        /// intermediate base class still contributes its methods.
-        /// </remarks>
-        /// <summary>
-        /// Resolves the hub type a <see cref="ServerMethods{T}"/> class belongs to, by walking the
-        /// inheritance chain until the closed <c>ServerMethods&lt;THub&gt;</c> base is found.
-        /// </summary>
-        /// <remarks>
-        /// Walking is required: the class need not derive from <c>ServerMethods&lt;THub&gt;</c>
-        /// directly. With a user-defined intermediate base class, <c>BaseType</c> is that class and
-        /// its <c>GenericTypeArguments</c> is empty, so indexing it blindly threw
-        /// <see cref="IndexOutOfRangeException"/> out of <c>AddSignalARRR</c> at startup.
-        /// </remarks>
-        private static Type? GetHubTypeForServerMethods(Type type) {
-            for (var current = type.BaseType; current != null; current = current.BaseType) {
-                if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(ServerMethods<>))
-                    return current.GenericTypeArguments[0];
-            }
-
-            return null;
-        }
-
-        private static IEnumerable<MethodInfo> GetInvokableServerMethods(Type type) =>
-            type.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                .Where(m => !m.IsSpecialName
-                            && m.DeclaringType != typeof(object)
-                            && m.DeclaringType != typeof(ServerMethods));
-
-        /// <summary>
-        /// Builds the allow-list of what clients may call: the hub's own methods, each
+        /// Builds the allow-list of what clients may call from the tables the source generator
+        /// produced for the configured assemblies: the hubs' own methods, each
         /// <see cref="ServerMethods{T}"/> class's methods, and every interface either declares.
         /// </summary>
         /// <remarks>
@@ -97,119 +64,68 @@ namespace Microsoft.Extensions.DependencyInjection {
         /// <strong>Every declared interface becomes wire-reachable.</strong> There is no filter on
         /// intent — an interface a class implements for dependency injection or testing is
         /// registered exactly like one written as a contract, and each of its members is callable
-        /// by any client that can reach the hub. <c>[SignalARRRContract]</c> does not gate this and
-        /// is not checked here: it marks an interface for the source generator, and gating on it
-        /// would break the DynamicProxy, .NET Framework, TypeScript and Swift clients, which
-        /// legitimately use contracts that carry no attribute. Gating would also fail silently —
-        /// an unregistered interface only shows up as "not registered" at call time.
+        /// by any client that can reach the hub. <c>[SignalARRRContract]</c> does not gate this: it
+        /// marks an interface for proxy generation, and gating on it would break the TypeScript,
+        /// Swift and Kotlin clients, which legitimately call contracts that carry no attribute.
         /// </para>
         /// <para>
-        /// Authorization is unaffected: the plan resolved for each member still walks the
+        /// Authorization is unaffected: the plan generated for each member still walks the
         /// implementing class and the owning hub. The exposure is surface, not a bypass. Keep
         /// interfaces that are not meant for clients off the class and on a collaborator it holds.
+        /// </para>
+        /// <para>
+        /// The tables come from module initializers; each configured assembly's runs here, before
+        /// the registry is read. An assembly added with <c>AddServerMethodsFrom</c> that has no table
+        /// was built without the generator, and its methods would silently be missing, so that fails.
         /// </para>
         /// </remarks>
         private static void AddSignalARRRMethods(IServiceCollection serviceCollection, SignalARRRServerOptions serverOptions) {
 
-
-
-            Dictionary<Type, ISignalARRRMethodsCollection> hubMethodsDictionary = new();
-            Dictionary<Type, ISignalARRRInterfaceCollection> interfaceDictionary = new();
-
-
-
-            var harrTypes = serverOptions.AssembliesContainingServerMethods.SelectMany(ass =>
-                ass.GetTypes().WhichInheritFromClass(typeof(HARRR)));
-
-            foreach (var harrType in harrTypes) {
-                var methodsCollection = new SignalARRRMethodsCollection(ServerWireSlots.Policy);
-                // DeclaredOnly keeps the HARRR/Hub infrastructure out; IsSpecialName additionally keeps
-                // the accessors of any property declared on the user's own hub from becoming endpoints.
-                var messageMethodsWithName = harrType.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                    .Where(m => !m.IsSpecialName)
-                    .Select(m => (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
-
-                foreach (var (methodInfo, methodNameAttribute) in messageMethodsWithName) {
-                    var methodName = methodNameAttribute?.Name ?? methodInfo.Name;
-                    methodsCollection.AddMethod(methodName, methodInfo);
-                }
-
-                hubMethodsDictionary[harrType] = methodsCollection;
-
-                var directInterfaces = harrType.GetDirectInterfaces().ToList();
-                if (directInterfaces.Any()) {
-                    var interfaceCollection = new SignalARRRInterfaceCollection(ServerWireSlots.Policy);
-                    foreach (var @interface in directInterfaces) {
-                        interfaceCollection.RegisterInterface(@interface, harrType);
-                    }
-
-                    interfaceDictionary[harrType] = interfaceCollection;
-                }
-
+            var assemblies = serverOptions.AssembliesContainingServerMethods.Where(a => a != null).Distinct().ToList();
+            foreach (var assembly in assemblies) {
+                RunModuleInitializer(assembly);
             }
 
+            var registrations = ServerDispatchRegistry.Snapshot()
+                .Where(r => assemblies.Contains(r.DeclaringType.Assembly))
+                .ToList();
 
-            var serverMethodsFromAllAssemblies = serverOptions.AssembliesContainingServerMethods
-                 .SelectMany(ass => ass.GetTypes().WhichInheritFromClass(typeof(ServerMethods<>)))
-                 // Abstract classes are shared bases, not endpoints. They cannot be constructed, so
-                 // registering them as transient services would only fail at resolution time.
-                 .Where(t => !t.IsAbstract)
-                 .ToList();
-            var grouped = serverMethodsFromAllAssemblies.GroupBy(GetHubTypeForServerMethods).ToList();
-
-            foreach (var grouping in grouped) {
-
-                if (grouping.Key == null || !hubMethodsDictionary.TryGetValue(grouping.Key, out var coll))
-                    continue;
-
-
-                foreach (var type in grouping) {
-
-                    serviceCollection.AddTransient(type);
-
-                    var rootName = type.GetCustomAttribute<MessageNameAttribute>()?.Name ?? type.Name;
-                    var methodsWithName = GetInvokableServerMethods(type).Select(m => (MethodInfo: m, Attribute: m.GetCustomAttribute<MessageNameAttribute>()));
-                    foreach (var (methodInfo, methodNameAttribute) in methodsWithName) {
-                        var methodName = methodNameAttribute?.Name ?? methodInfo.Name;
-                        var concatNames = $"{rootName}.{methodName}";
-                        coll.AddMethod(concatNames, methodInfo);
-                    }
-
-                    var directInterfaces = type.GetDirectInterfaces().ToList();
-                    if (directInterfaces.Any()) {
-
-                        // Keyed by the hub, like everything else in this dictionary — and like
-                        // hubMethodsDictionary above, whose lookup was already correct. Looking up
-                        // by `type` (the ServerMethods class) could never hit, because nothing is
-                        // ever stored under that key: each class built a fresh collection and
-                        // overwrote the hub's entry, so the hub's own contract and every earlier
-                        // class's contracts vanished, leaving only the last class registered.
-                        // Everything for one hub now accumulates in one collection, which is also
-                        // what lets RegisterInterface see a wire-name collision between two
-                        // ServerMethods classes instead of the loser silently disappearing.
-                        if (!interfaceDictionary.TryGetValue(grouping.Key, out var interfaceCollection)) {
-                            interfaceCollection = new SignalARRRInterfaceCollection(ServerWireSlots.Policy);
-                            interfaceDictionary[grouping.Key] = interfaceCollection;
-                        }
-
-                        foreach (var @interface in directInterfaces) {
-                            interfaceCollection.RegisterInterface(@interface, type);
-                        }
-                    }
-
+            var entryAssembly = Assembly.GetEntryAssembly();
+            foreach (var assembly in assemblies) {
+                if (assembly != entryAssembly && registrations.All(r => r.DeclaringType.Assembly != assembly)) {
+                    throw new InvalidOperationException(
+                        $"AddServerMethodsFrom: '{assembly.GetName().Name}' has no generated SignalARRR dispatch table. " +
+                        "Hubs and ServerMethods classes are found by the source generator at compile time; the project that declares them " +
+                        "must reference Cocoar.SignalARRR.Server and be rebuilt.");
                 }
             }
 
-            foreach (var (key, value) in hubMethodsDictionary) {
-                var n = key.FullName;
-                serviceCollection.AddKeyedSingleton<ISignalARRRMethodsCollection>(n, (_, _) => value);
+            var tables = new Dictionary<Type, ServerMethodTable>();
+            foreach (var hub in registrations.Where(r => r.IsHub)) {
+                var table = new ServerMethodTable();
+                foreach (var method in hub.Methods) table.Add(method);
+                tables[hub.HubType] = table;
             }
 
-            foreach (var (key, value) in interfaceDictionary) {
-                var n = key.FullName;
-                serviceCollection.AddKeyedSingleton<ISignalARRRInterfaceCollection>(n, (_, _) => value);
+            foreach (var serverMethods in registrations.Where(r => !r.IsHub)) {
+                // A ServerMethods class of a hub that is not among the configured assemblies has
+                // nowhere to be called from, exactly as before.
+                if (!tables.TryGetValue(serverMethods.HubType, out var table)) continue;
+
+                foreach (var method in serverMethods.Methods) table.Add(method);
+                serverMethods.RegisterServices!(serviceCollection);
             }
 
+            serviceCollection.AddSingleton(new ServerMethodTables(tables));
+        }
+
+        [UnconditionalSuppressMessage("AOT", "IL2026", Justification = "Runs the module initializer of an assembly that is already loaded; NativeAOT runs them all at startup anyway.")]
+        private static void RunModuleInitializer(Assembly assembly) {
+            try {
+                RuntimeHelpers.RunModuleConstructor(assembly.ManifestModule.ModuleHandle);
+            } catch (PlatformNotSupportedException) {
+                // NativeAOT runs every module initializer at startup.
+            }
         }
     }
 }

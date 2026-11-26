@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Server.ExtensionMethods;
 using Microsoft.AspNetCore.Authentication;
@@ -19,9 +18,8 @@ namespace Cocoar.SignalARRR.Server {
             _serviceProvider = serviceProvider;
         }
 
-        public async Task<PolicyAuthorizationResult> Authorize(ClientContext clientContext, string authorization, MethodInfo methodInfo) {
+        public async Task<PolicyAuthorizationResult> Authorize(ClientContext clientContext, string authorization, SignalARRRAuthorizationPlan plan) {
 
-            var plan = methodInfo.GetAuthorizationPlan();
 
             // [AllowAnonymous] anywhere on the method, its contract, its type chain or the hub.
             if (plan.AllowAnonymous) {
@@ -84,7 +82,7 @@ namespace Cocoar.SignalARRR.Server {
                         // which trusts the revalidated principal. Same credential, same connection,
                         // two answers.
                         clientContext.ExtendAuthCache(revalidation.ValidFor);
-                        return await AuthorizeWithPrincipal(clientContext, methodInfo);
+                        return await AuthorizeWithPrincipal(clientContext, plan);
                     } else {
                         // No credential to check and none coming: the client authenticated its
                         // connection and sends nothing per message.
@@ -111,7 +109,7 @@ namespace Cocoar.SignalARRR.Server {
                             return PolicyAuthorizationResult.Forbid();
                         }
 
-                        return await AuthorizeWithPrincipal(clientContext, methodInfo);
+                        return await AuthorizeWithPrincipal(clientContext, plan);
                     }
                 } else {
                     if (!authorization.Contains(" ")) {
@@ -158,9 +156,8 @@ namespace Cocoar.SignalARRR.Server {
         /// (client certificates, cookies, Negotiate) where the identity was established
         /// at connection time.
         /// </summary>
-        public async Task<PolicyAuthorizationResult> AuthorizeWithPrincipal(ClientContext clientContext, MethodInfo methodInfo) {
+        public async Task<PolicyAuthorizationResult> AuthorizeWithPrincipal(ClientContext clientContext, SignalARRRAuthorizationPlan plan) {
 
-            var plan = methodInfo.GetAuthorizationPlan();
 
             if (plan.AllowAnonymous) {
                 return PolicyAuthorizationResult.Success();

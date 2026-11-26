@@ -1,11 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <AssemblyName>Cocoar.SignalARRR.Server.Backplane.Redis</AssemblyName>
     <RootNamespace>Cocoar.SignalARRR.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Trim and AOT analyzers on every target (warnings are errors): the server runs under
+         NativeAOT, and anything new that would break that fails the build here. -->
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <PropertyGroup>

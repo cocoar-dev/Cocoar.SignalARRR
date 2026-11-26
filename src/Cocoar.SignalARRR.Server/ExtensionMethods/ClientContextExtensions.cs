@@ -17,8 +17,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             using var serviceProviderScope = clientContext.ServiceProvider.CreateScope();
 
-            var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(clientContext.HARRRType);
-            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = ServerDispatchRegistry.Hub(clientContext.HARRRType).Dispatcher(serviceProviderScope.ServiceProvider);
 
             var msg = new ServerRequestMessage(method, arguments);
             var res = await dispatcher.InvokeClientAsync<TResult>(clientContext.Id, msg, cancellationToken);
@@ -30,8 +29,7 @@ namespace Cocoar.SignalARRR.Server.ExtensionMethods {
 
             using var serviceProviderScope = clientContext.ServiceProvider.CreateScope();
 
-            var hubContextType = typeof(ClientContextDispatcher<>).MakeGenericType(clientContext.HARRRType);
-            var dispatcher = (IClientContextDispatcher)serviceProviderScope.ServiceProvider.GetRequiredService(hubContextType);
+            var dispatcher = ServerDispatchRegistry.Hub(clientContext.HARRRType).Dispatcher(serviceProviderScope.ServiceProvider);
 
             var msg = new ServerRequestMessage(MethodNames.CancelTokenFromServer, tokenReference);
 

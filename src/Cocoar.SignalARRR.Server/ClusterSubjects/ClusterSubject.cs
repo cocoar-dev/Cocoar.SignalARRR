@@ -33,11 +33,16 @@ namespace Cocoar.SignalARRR.Server {
             ClusterSubjectOptions options,
             ISignalARRRBackplane backplane,
             ClusterSubjectRegistry registry,
-            ILogger<ClusterSubject<T>> logger) {
+            ILogger<ClusterSubject<T>> logger,
+            JsonSerializerOptions? payloadOptions = null) {
             Name = name;
             _backplane = backplane;
             _registry = registry;
-            _serializerOptions = options.SerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web);
+            // Without options of its own, the subject knows the event type from the app's resolvers
+            // on the hub protocol — under NativeAOT the only place it can be declared once.
+            _serializerOptions = options.SerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web) {
+                TypeInfoResolver = payloadOptions?.TypeInfoResolver,
+            };
             _logger = logger;
 
             _registry.Register(this);
@@ -45,6 +50,9 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public string Name { get; }
+
+        private System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> TypeInfo =>
+            (System.Text.Json.Serialization.Metadata.JsonTypeInfo<T>)_serializerOptions.GetTypeInfo(typeof(T));
 
         public Type EventType => typeof(T);
 
@@ -78,7 +86,7 @@ namespace Cocoar.SignalARRR.Server {
         void IClusterSubjectSink.Accept(string payloadJson) {
             T? value;
             try {
-                value = JsonSerializer.Deserialize<T>(payloadJson, _serializerOptions);
+                value = JsonSerializer.Deserialize(payloadJson, TypeInfo);
             } catch (JsonException ex) {
                 // A peer on another build may send a shape this one cannot read. Drop it and say
                 // so; the alternative — materializing whatever the wire names — is what the fixed
@@ -103,7 +111,7 @@ namespace Cocoar.SignalARRR.Server {
         private async Task RunRelayAsync() {
             await foreach (var outgoing in _outbox.Reader.ReadAllAsync().ConfigureAwait(false)) {
                 try {
-                    var payloadJson = JsonSerializer.Serialize(outgoing.Value, _serializerOptions);
+                    var payloadJson = JsonSerializer.Serialize(outgoing.Value, TypeInfo);
                     await _backplane.PublishClusterEventAsync(Name, payloadJson).ConfigureAwait(false);
                     outgoing.Completion?.TrySetResult(true);
                 } catch (Exception ex) {

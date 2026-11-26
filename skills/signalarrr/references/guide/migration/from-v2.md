@@ -35,7 +35,7 @@ public interface IChatHub { ... }
 public interface IChatHub { ... }
 ```
 
-4. If you need runtime proxy generation (plugin scenarios), add `Cocoar.SignalARRR.DynamicProxy`
+4. v4 and v5 offered runtime proxy generation for plugin scenarios through `Cocoar.SignalARRR.DynamicProxy`; 6.0 removed it, so every contract needs the attribute — see [Migration from v5.x](./from-v5.md)
 
 ## Authentication
 
@@ -92,7 +92,7 @@ The `UseHttpResponse()` option and all related code has been removed. For large 
 | Package | Purpose |
 |---------|---------|
 | `Cocoar.SignalARRR.Contracts` | `[SignalARRRContract]` + source generator — add to shared projects |
-| `Cocoar.SignalARRR.DynamicProxy` | Optional runtime proxy fallback |
+| `Cocoar.SignalARRR.DynamicProxy` | Optional runtime proxy fallback (removed in 6.0) |
 
 ## New features
 

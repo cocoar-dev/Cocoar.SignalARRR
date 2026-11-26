@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        dotnet: ['8.0.x', '9.0.x', '10.0.x']
+        dotnet: ['10.0.x', '11.0.x']
     permissions:
       contents: read
 
@@ -33,9 +33,8 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
-            8.0.x
-            9.0.x
             10.0.x
+            11.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -66,9 +65,8 @@ jobs:
         shell: bash
         run: |
           case "${{ matrix.dotnet }}" in
-            8.0.x)  echo "framework=net8.0" >> "$GITHUB_OUTPUT" ;;
-            9.0.x)  echo "framework=net9.0" >> "$GITHUB_OUTPUT" ;;
             10.0.x) echo "framework=net10.0" >> "$GITHUB_OUTPUT" ;;
+            11.0.x) echo "framework=net11.0" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Restore dependencies
@@ -163,9 +161,8 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
-            8.0.x
-            9.0.x
             10.0.x
+            11.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -191,17 +188,36 @@ jobs:
           DOTNET_TEST_FILTER: "(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)"
         run: chmod +x scripts/run-integration-tests.sh && scripts/run-integration-tests.sh
 
-      - name: Integration tests (.NET 9)
+      - name: Integration tests (.NET 11)
         env:
-          DOTNET_TARGET_FRAMEWORK: net9.0
+          DOTNET_TARGET_FRAMEWORK: net11.0
           DOTNET_TEST_FILTER: "(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)"
         run: scripts/run-integration-tests.sh
 
-      - name: Integration tests (.NET 8)
-        env:
-          DOTNET_TARGET_FRAMEWORK: net8.0
-          DOTNET_TEST_FILTER: "(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)"
-        run: scripts/run-integration-tests.sh
+  aot-smoke:
+    name: NativeAOT smoke test (.NET client)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            11.0.x
+
+      # Publishes the client with PublishAot and runs it against the IntegrationTestServer. Fails
+      # on a failed step and on any ILC warning raised in a Cocoar.SignalARRR assembly.
+      - name: NativeAOT smoke test
+        run: chmod +x scripts/run-aot-smoke.sh scripts/test-server.sh && scripts/run-aot-smoke.sh
 
   test-fullframework:
     name: Test .NET Framework 4.8 Client
@@ -219,7 +235,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Build and test FullFramework client
         run: dotnet test src/tests/Cocoar.SignalARRR.Client.FullFramework.Tests/Cocoar.SignalARRR.Client.FullFramework.Tests.csproj --verbosity normal

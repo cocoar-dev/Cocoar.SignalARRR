@@ -30,9 +30,6 @@ namespace Cocoar.SignalARRR.IntegrationTests {
             LastWaitSeconds = null;
             WaitObservedCancellation = false;
         }
-        public T Invoke<T>(string command, Dictionary<string, object>? variables = null) {
-            throw new NotImplementedException();
-        }
 
         public void Nix() {
             // no-op

@@ -228,7 +228,6 @@ namespace Cocoar.SignalARRR.IntegrationTests {
         /// </summary>
         private sealed class ResilienceProbeClient : TestShared.ITestClientMethods {
             public void Nix() { }
-            public T Invoke<T>(string command, System.Collections.Generic.Dictionary<string, object>? variables = null) => default!;
             public System.Collections.Generic.List<string> GetContent(int count) => new System.Collections.Generic.List<string>();
             public string GetById(string id) => id;
             public string GetByGenericId(Guid id) => id.ToString();

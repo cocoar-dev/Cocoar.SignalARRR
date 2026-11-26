@@ -1,10 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions.Helper;
 using Cocoar.SignalARRR.Common;
+using Cocoar.SignalARRR.ProxyGenerator;
 
 namespace Cocoar.SignalARRR.Client.FullFramework {
     internal class ClientProxyCreatorHelper : ProxyCreatorHelper {
@@ -17,7 +18,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         public override T Invoke<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
             var msg = new ClientRequestMessage(methodName, WithoutCancellationTokens(arguments));
             msg.GenericArguments = genericArguments.ToArray();
-            return SimpleAsyncHelper.RunSync(() => _harrrConnection.InvokeCoreAsync<T>(msg, cancellationToken));
+            return RunSync(() => _harrrConnection.InvokeCoreAsync<T>(msg, cancellationToken));
         }
 
         public override Task<T> InvokeAsync<T>(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
@@ -29,7 +30,7 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
         public override void Send(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
             var msg = new ClientRequestMessage(methodName, WithoutCancellationTokens(arguments));
             msg.GenericArguments = genericArguments.ToArray();
-            SimpleAsyncHelper.RunSync(() => _harrrConnection.SendCoreAsync(msg, cancellationToken));
+            RunSync(() => _harrrConnection.SendCoreAsync(msg, cancellationToken));
         }
 
         public override Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
@@ -43,6 +44,15 @@ namespace Cocoar.SignalARRR.Client.FullFramework {
             msg.GenericArguments = genericArguments.ToArray();
             return _harrrConnection.StreamAsyncCore<TResult>(msg, cancellationToken);
         }
+
+        /// <summary>
+        /// Blocks on an asynchronous call for the synchronous proxy methods. Run on the thread pool
+        /// so a caller on a synchronization context (a UI thread) cannot deadlock against the
+        /// continuation it is blocking.
+        /// </summary>
+        private static T RunSync<T>(Func<Task<T>> call) => Task.Run(call).GetAwaiter().GetResult();
+
+        private static void RunSync(Func<Task> call) => Task.Run(call).GetAwaiter().GetResult();
 
         /// <summary>
         /// Drops <see cref="CancellationToken"/> arguments before the message goes to the server.

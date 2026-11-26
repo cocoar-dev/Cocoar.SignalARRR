@@ -49,7 +49,7 @@ const SECTIONS = [
   { title: 'Kotlin client', pages: ['guide/kotlin-client/setup.md', 'guide/kotlin-client/typed-proxies.md'] },
   { title: 'Item streaming', pages: ['guide/streaming/server-to-client.md', 'guide/streaming/client-to-server.md'] },
   { title: 'Advanced', pages: ['guide/advanced/http-streams.md', 'guide/advanced/proxy-generation.md', 'guide/advanced/cancellation.md'] },
-  { title: 'Migration', pages: ['guide/migration/from-v4.md', 'guide/migration/from-v2.md'] },
+  { title: 'Migration', pages: ['guide/migration/from-v5.md', 'guide/migration/from-v4.md', 'guide/migration/from-v2.md'] },
   {
     title: 'Reference',
     pages: ['reference/packages.md', 'reference/client-comparison.md', 'reference/api.md', 'reference/wire-protocol.md'],
