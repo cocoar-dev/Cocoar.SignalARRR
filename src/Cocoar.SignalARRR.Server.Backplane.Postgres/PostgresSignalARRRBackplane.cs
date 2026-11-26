@@ -201,7 +201,7 @@ namespace Cocoar.SignalARRR.Server {
 
         private async Task PublishAsync(string channel, SignalARRRBackplaneEnvelope envelope) {
             var dataSource = _dataSource ?? throw new InvalidOperationException("SignalARRR Postgres backplane has not been started.");
-            var payload = JsonSerializer.Serialize(envelope, SerializerOptions);
+            var payload = Serialize(envelope);
 
             if (!_options.CatchUp && Encoding.UTF8.GetByteCount(payload) <= MaxInlinePayloadBytes) {
                 await using var command = dataSource.CreateCommand(_sql.NotifyInline);
@@ -548,7 +548,7 @@ namespace Cocoar.SignalARRR.Server {
             command.Parameters.Add(Text(registration.UserId));
             command.Parameters.Add(TextArray(registration.Groups));
             command.Parameters.Add(TextArray(registration.Attributes.Select(a => NormalizeAttributeKey(a.Key)).Distinct(StringComparer.Ordinal).ToArray()));
-            command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Jsonb, Value = JsonSerializer.Serialize(registration.Attributes, SerializerOptions) });
+            command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Jsonb, Value = Serialize(registration.Attributes) });
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -653,7 +653,7 @@ namespace Cocoar.SignalARRR.Server {
                 HubType = reader.GetString(2),
                 UserId = reader.IsDBNull(3) ? null : reader.GetString(3),
                 Groups = reader.GetFieldValue<string[]>(4),
-                Attributes = JsonSerializer.Deserialize<SignalARRRConnectionAttribute[]>(attributesJson, SerializerOptions) ?? Array.Empty<SignalARRRConnectionAttribute>()
+                Attributes = Deserialize<SignalARRRConnectionAttribute[]>(attributesJson) ?? Array.Empty<SignalARRRConnectionAttribute>()
             };
         }
 

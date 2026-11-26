@@ -25,7 +25,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public static string Format(long id, string originNodeId, string? targetNodeId) {
-            return JsonSerializer.Serialize(new object?[] { id, originNodeId, targetNodeId });
+            return JsonSerializer.Serialize(new object[] { id, originNodeId, targetNodeId! }, Common.Serialization.SignalARRRJsonContext.Default.ObjectArray);
         }
 
         public static PostgresMessageReference? TryParse(string payload) {

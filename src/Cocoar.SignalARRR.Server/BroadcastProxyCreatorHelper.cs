@@ -27,7 +27,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         public override void Send(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {
-            Cocoar.Reflectensions.Helper.SimpleAsyncHelper.RunSync(() => SendAsync(methodName, arguments, genericArguments, cancellationToken));
+            SyncOverAsync.Run(() => SendAsync(methodName, arguments, genericArguments, cancellationToken));
         }
 
         public override Task SendAsync(string methodName, IEnumerable<object> arguments, string[] genericArguments, CancellationToken cancellationToken = default) {

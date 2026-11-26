@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace Cocoar.SignalARRR.Common.Helper {
 
     /// <summary>
-    /// Renders and resolves the type names that travel between nodes.
+    /// Renders the type names that travel between nodes.
     /// </summary>
     /// <remarks>
     /// A name on the wire outlives the process that wrote it, so it must not pin the exact build it
@@ -22,8 +22,9 @@ namespace Cocoar.SignalARRR.Common.Helper {
     /// <para>
     /// So the name is the assembly-qualified one with the version-bearing parts removed at every
     /// nesting level, leaving <c>Namespace.Type, AssemblyName</c>. The assembly stays — it is what
-    /// disambiguates two identically named types — while the build identity goes. Resolution then
-    /// binds by partial assembly name, which is version-agnostic by design.
+    /// disambiguates two identically named types — while the build identity goes. A node finds its
+    /// hub by the part before the first comma (<c>ServerDispatchRegistry.HubByName</c>); no other
+    /// type is resolved by name, so nothing here depends on runtime type lookup.
     /// </para>
     /// </remarks>
     public static class WireTypeName {
@@ -53,32 +54,6 @@ namespace Cocoar.SignalARRR.Common.Helper {
             return qualified == null
                 ? type.FullName ?? type.Name
                 : BuildIdentity.Replace(qualified, string.Empty);
-        }
-
-        /// <summary>
-        /// Resolves a name produced by <see cref="From"/>, or <c>null</c> when it is not known here.
-        /// </summary>
-        /// <remarks>
-        /// Also accepts a name that still carries build identity, so a node does not go blind when it
-        /// is talking to one that has not been updated yet — the parts are stripped before binding.
-        /// </remarks>
-        public static Type? Resolve(string? name) {
-            if (string.IsNullOrWhiteSpace(name)) {
-                return null;
-            }
-
-            var stripped = BuildIdentity.Replace(name, string.Empty);
-
-            // Partial assembly names bind without regard to version, which is the whole point.
-            var resolved = Type.GetType(stripped, throwOnError: false);
-            if (resolved != null) {
-                return resolved;
-            }
-
-            // Last resort for a name whose assembly cannot be located by name but whose type is
-            // already loaded — the tolerant scan TypeHelper does for method generic arguments.
-            var separator = stripped.IndexOf(',');
-            return separator < 0 ? null : TypeHelper.FindType(stripped.Substring(0, separator).Trim());
         }
     }
 }

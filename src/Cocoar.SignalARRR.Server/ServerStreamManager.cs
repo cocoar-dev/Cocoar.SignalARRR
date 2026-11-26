@@ -7,7 +7,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions.ExtensionMethods;
 using Cocoar.SignalARRR.Common.Serialization;
 
 namespace Cocoar.SignalARRR.Server {
@@ -183,7 +182,8 @@ namespace Cocoar.SignalARRR.Server {
                     } else if (serializer != null) {
                         yield return (TResult)serializer.ConvertTo(item, typeof(TResult))!;
                     } else {
-                        yield return item.Reflect().To<TResult>()!;
+                        // Without a serializer only what already has the type can be handed out.
+                        yield return (TResult)item!;
                     }
                 }
             } finally {

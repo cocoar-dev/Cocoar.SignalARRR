@@ -58,6 +58,13 @@ namespace Cocoar.SignalARRR.Server {
         /// </summary>
         public string? AlternateName { get; init; }
 
+        /// <summary>
+        /// The types of the method's arguments and results as they cross the wire. Checked at startup
+        /// when reflection-based JSON is off, so a type missing from the app's JSON context fails then
+        /// rather than at the first call that needs it.
+        /// </summary>
+        public IReadOnlyList<Type> WireTypes { get; init; } = Array.Empty<Type>();
+
         /// <summary>The C# declaration, for error messages.</summary>
         public string Declaration { get; }
 

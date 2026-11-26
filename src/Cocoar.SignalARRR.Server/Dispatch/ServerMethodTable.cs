@@ -16,6 +16,8 @@ namespace Cocoar.SignalARRR.Server {
         private readonly Dictionary<string, List<ServerMethodDescriptor>> _byName = new Dictionary<string, List<ServerMethodDescriptor>>(StringComparer.Ordinal);
         private readonly HashSet<string> _interfaces = new HashSet<string>(StringComparer.Ordinal);
 
+        public IEnumerable<ServerMethodDescriptor> Methods => _byName.Values.SelectMany(c => c).Distinct();
+
         public void Add(ServerMethodDescriptor descriptor) {
             Add(descriptor.Name, descriptor);
             if (descriptor.AlternateName != null) {
@@ -82,5 +84,7 @@ namespace Cocoar.SignalARRR.Server {
         public ServerMethodTables(Dictionary<Type, ServerMethodTable> tables) => _tables = tables;
 
         public ServerMethodTable For(Type hubType) => _tables.TryGetValue(hubType, out var table) ? table : ServerMethodTable.Empty;
+
+        public IEnumerable<ServerMethodDescriptor> AllMethods => _tables.Values.SelectMany(t => t.Methods).Distinct();
     }
 }

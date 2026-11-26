@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Cocoar.Reflectensions;
 using Microsoft.Extensions.Primitives;
 
 namespace Cocoar.SignalARRR.Server {
@@ -52,7 +51,7 @@ namespace Cocoar.SignalARRR.Server {
         public bool Has(string key) => _values.ContainsKey(key);
 
         public bool Has(string key, string value) =>
-            _values.TryGetValue(key, out var stored) && stored.Any(v => v != null && v.Match(value));
+            _values.TryGetValue(key, out var stored) && stored.Any(v => v != null && WildcardPattern.IsMatch(v, value));
 
         internal void Set(string key, StringValues value) => _values[key] = value;
 

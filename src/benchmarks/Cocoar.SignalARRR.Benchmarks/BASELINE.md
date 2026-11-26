@@ -69,7 +69,11 @@ Reading the delta:
 - Per-benchmark processes each start their own server and connection, so the six rows are
   independent measurements.
 
-## P-5 (compiled invokers) — measured, then deliberately not taken
+## P-5 (compiled invokers) — measured, not taken, then superseded in 6.0
+
+Superseded: since 6.0 the source generator emits a direct, statically typed call per server
+method (for NativeAOT), which is the "Direct call" row below. `InvokerBenchmarks`, which
+measured the reflection paths, went with them. The measurement stays here as history.
 
 The report ordered P-5 last, "only with numbers". `InvokerBenchmarks` isolates exactly the
 slice P-5 would change — one method invocation, no server, no transport (2026-08-07, same
@@ -97,10 +101,8 @@ What the numbers say:
   `MethodInfo.Invoke` plus an own Task-unwrap captures ~96 % of the win without any
   compiled-invoker machinery.
 
-**Decision: not taken.** Per the report's own rule ("only with numbers"), the numbers do not
-justify a rewrite of the dispatch core today. Revisit if a profile ever shows invocation
-overhead or the per-call ~1 KB mattering at real load — the micro-benchmark stays in the
-suite as the measuring stick.
+**Decision then: not taken.** Per the report's own rule ("only with numbers"), the numbers did
+not justify a rewrite of the dispatch core on performance grounds alone.
 
 ## Observed once, not reproducible
 

@@ -30,6 +30,9 @@ namespace Cocoar.SignalARRR.Server {
         /// </remarks>
         public IEnumerable<ClientContext> GetLocalConnections() => _clientManager.GetClients();
 
+        /// <summary>The hub protocol's JSON options, whose resolvers know the app's types.</summary>
+        internal System.Text.Json.JsonSerializerOptions PayloadOptions => _serviceProvider.GetRequiredService<ServerPayloadOptions>().Options;
+
         public bool HasLocalConnection(string connectionId, Type? hubType) {
             var client = _clientManager.GetClient(connectionId);
             return client != null && (hubType == null || client.HARRRType == hubType);
@@ -70,7 +73,7 @@ namespace Cocoar.SignalARRR.Server {
             Type? hubType,
             string connectionId,
             ServerRequestMessage message,
-            Type resultType,
+            Type? resultType,
             CancellationToken cancellationToken = default) {
             var client = _clientManager.GetClient(connectionId);
             if (client == null || (hubType != null && client.HARRRType != hubType)) {
@@ -116,14 +119,15 @@ namespace Cocoar.SignalARRR.Server {
         private static Task<object?> InvokeRawAsync(ISingleClientProxy proxy, ServerRequestMessage message, CancellationToken cancellationToken) =>
             proxy.InvokeCoreAsync<object?>(MethodNames.InvokeServerRequest, new object[] { message }, cancellationToken);
 
-        private object? ConvertResult(object? raw, Type resultType) =>
-            _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>().ConvertTo(raw, resultType);
+        /// <summary>The answer as <paramref name="resultType"/>, or as delivered when that is <c>null</c> (a node forwarding it).</summary>
+        private object? ConvertResult(object? raw, Type? resultType) =>
+            resultType == null ? raw : _serviceProvider.GetRequiredService<Common.Serialization.IProtocolSerializer>().ConvertTo(raw, resultType);
 
         public async Task<IReadOnlyList<SignalARRRBackplaneInvokeResult>> InvokeAsync(
             Type hubType,
             SignalARRRBackplaneTargetKind targetKind,
             ServerRequestMessage message,
-            Type resultType,
+            Type? resultType,
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,
@@ -160,7 +164,7 @@ namespace Cocoar.SignalARRR.Server {
             Type hubType,
             SignalARRRBackplaneTargetKind targetKind,
             ServerRequestMessage message,
-            Type resultType,
+            Type? resultType,
             IReadOnlyList<string>? connectionIds = null,
             string? groupName = null,
             string? userId = null,

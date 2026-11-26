@@ -53,7 +53,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private HARRRException((HARRRError Error, string? CorrelationId) built)
-            : base(JsonSerializer.Serialize(built.Error)) {
+            : base(JsonSerializer.Serialize(built.Error, Common.Serialization.SignalARRRJsonContext.Default.HARRRError)) {
             Error = built.Error;
             CorrelationId = built.CorrelationId;
         }

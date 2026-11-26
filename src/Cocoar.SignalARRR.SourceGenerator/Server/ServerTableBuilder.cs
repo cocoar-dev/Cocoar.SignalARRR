@@ -330,15 +330,25 @@ internal sealed class ServerTableBuilder {
     private string? EmitDescriptor(Entry entry) {
         var plan = PlanField(entry);
         var head = $"            new global::Cocoar.SignalARRR.Server.ServerMethodDescriptor({Literal(entry.Name)}, {Literal(entry.Declaration)}, {entry.Min}, {entry.Max}, {plan}";
-        var tail = entry.AlternateNameExpression == null ? ")" : $") {{ AlternateName = {entry.AlternateNameExpression} }}";
         var method = entry.Method;
 
-        if (method.TypeParameters.Length == 0) {
-            return $"{head}, {Invoker(entry, method, typeArguments: null)}{tail}";
+        List<List<ITypeSymbol>>? instantiations = null;
+        if (method.TypeParameters.Length > 0) {
+            instantiations = Instantiations(method, entry.Location);
+            if (instantiations == null) return null;
         }
 
-        var instantiations = Instantiations(method, entry.Location);
-        if (instantiations == null) return null;
+        var wireTypes = instantiations == null
+            ? WireTypes(method)
+            : instantiations.SelectMany(types => WireTypes(method.Construct(types.ToArray()))).Distinct().ToList();
+        var initializers = new List<string>();
+        if (entry.AlternateNameExpression != null) initializers.Add($"AlternateName = {entry.AlternateNameExpression}");
+        if (wireTypes.Count > 0) initializers.Add($"WireTypes = new global::System.Type[] {{ {string.Join(", ", wireTypes.Select(t => $"typeof({t})"))} }}");
+        var tail = initializers.Count == 0 ? ")" : $") {{ {string.Join(", ", initializers)} }}";
+
+        if (instantiations == null) {
+            return $"{head}, {Invoker(entry, method, typeArguments: null)}{tail}";
+        }
 
         var sb = new StringBuilder();
         sb.AppendLine($"{head}, {method.TypeParameters.Length}, static names =>");
@@ -385,6 +395,29 @@ internal sealed class ServerTableBuilder {
         }
 
         return result;
+    }
+
+    /// <summary>The types that cross the wire for a method: its value parameters and its result or stream items.</summary>
+    private List<string> WireTypes(IMethodSymbol method) {
+        var types = new List<ITypeSymbol>();
+        foreach (var parameter in method.Parameters) {
+            if (KindOf(parameter) == ParameterKind.Value) types.Add(parameter.Type);
+        }
+
+        var returnType = method.ReturnType;
+        if (returnType.SpecialType != SpecialType.System_Void) {
+            var (awaited, inner) = UnwrapTask(returnType);
+            var value = awaited ? inner : returnType;
+            if (value != null) {
+                types.Add(IsStream(value) ? ((INamedTypeSymbol)value).TypeArguments[0] : value);
+            }
+        }
+
+        return types
+            .Where(t => t.TypeKind != TypeKind.TypeParameter && t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) != "global::System.IO.Stream")
+            .Select(t => t.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+            .Distinct()
+            .ToList();
     }
 
     private enum ParameterKind { Value, CancellationToken, FromServices, Stream }

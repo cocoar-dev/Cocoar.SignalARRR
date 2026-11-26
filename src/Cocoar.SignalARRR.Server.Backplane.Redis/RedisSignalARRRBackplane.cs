@@ -78,7 +78,7 @@ namespace Cocoar.SignalARRR.Server {
                 throw new InvalidOperationException("SignalARRR Redis backplane has not been started.");
             }
 
-            var payload = JsonSerializer.Serialize(envelope, SerializerOptions);
+            var payload = Serialize(envelope);
             await _subscriber.PublishAsync(RedisChannel.Literal(channel), payload).ConfigureAwait(false);
         }
 
@@ -135,7 +135,7 @@ namespace Cocoar.SignalARRR.Server {
                 return null;
             }
 
-            return JsonSerializer.Deserialize<SignalARRRConnectionRegistration>((string)payload!, SerializerOptions);
+            return Deserialize<SignalARRRConnectionRegistration>((string)payload!);
         }
 
         public override async Task<IReadOnlyList<SignalARRRConnectionRegistration>> FindConnectionsAsync(
@@ -263,7 +263,7 @@ namespace Cocoar.SignalARRR.Server {
                 foreach (var connectionId in connectionIds.Select(v => (string?)v).Where(v => !string.IsNullOrWhiteSpace(v))) {
                     var payload = await _database.StringGetAsync(GetConnectionKey(connectionId!)).ConfigureAwait(false);
                     if (!payload.IsNullOrEmpty) {
-                        var registration = JsonSerializer.Deserialize<SignalARRRConnectionRegistration>((string)payload!, SerializerOptions);
+                        var registration = Deserialize<SignalARRRConnectionRegistration>((string)payload!);
                         if (registration != null) {
                             await RemoveConnectionRegistrationAsync(registration).ConfigureAwait(false);
                             continue;
@@ -310,7 +310,7 @@ namespace Cocoar.SignalARRR.Server {
 
             var existingPayload = await _database.StringGetAsync(GetConnectionKey(registration.ConnectionId)).ConfigureAwait(false);
             if (!existingPayload.IsNullOrEmpty) {
-                var existingRegistration = JsonSerializer.Deserialize<SignalARRRConnectionRegistration>((string)existingPayload!, SerializerOptions);
+                var existingRegistration = Deserialize<SignalARRRConnectionRegistration>((string)existingPayload!);
                 if (existingRegistration != null) {
                     await RemoveConnectionIndexesAsync(existingRegistration).ConfigureAwait(false);
                 }
@@ -318,7 +318,7 @@ namespace Cocoar.SignalARRR.Server {
 
             await _database.StringSetAsync(
                 GetConnectionKey(registration.ConnectionId),
-                JsonSerializer.Serialize(registration, SerializerOptions)).ConfigureAwait(false);
+                Serialize(registration)).ConfigureAwait(false);
             await AddConnectionIndexesAsync(registration).ConfigureAwait(false);
         }
 

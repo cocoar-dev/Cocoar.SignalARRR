@@ -3,9 +3,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using Cocoar.Reflectensions;
 using Cocoar.SignalARRR.Common;
 using Cocoar.SignalARRR.Common.Exceptions;
 using Cocoar.SignalARRR.Common.Helper;
@@ -41,7 +41,7 @@ namespace Cocoar.SignalARRR.Server {
         private readonly TimeSpan _heartbeatInterval;
         private readonly ConcurrentDictionary<Guid, PendingInvoke> _pendingInvocations = new ConcurrentDictionary<Guid, PendingInvoke>();
         private readonly ConcurrentDictionary<Guid, PendingQueryInvoke> _pendingQueryInvocations = new ConcurrentDictionary<Guid, PendingQueryInvoke>();
-        private readonly JsonSerializerOptions _serializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        private JsonSerializerOptions? _serializerOptions;
         private readonly SemaphoreSlim _cleanupSemaphore = new SemaphoreSlim(1, 1);
 
         private CancellationTokenSource? _heartbeatCts;
@@ -90,8 +90,35 @@ namespace Cocoar.SignalARRR.Server {
 
         protected ILogger Logger => _logger;
 
-        /// <summary>The options every envelope and registration is serialized with.</summary>
-        protected JsonSerializerOptions SerializerOptions => _serializerOptions;
+        /// <summary>Serializes an envelope or registration in the backplane's wire format.</summary>
+        protected string Serialize<T>(T value) => JsonSerializer.Serialize(value, TypeInfo<T>());
+
+        /// <summary>Deserializes what <see cref="Serialize{T}"/> wrote.</summary>
+        protected T? Deserialize<T>(string json) => JsonSerializer.Deserialize(json, TypeInfo<T>());
+
+        private JsonTypeInfo<T> TypeInfo<T>() => (JsonTypeInfo<T>)SerializerOptions.GetTypeInfo(typeof(T));
+
+        /// <summary>
+        /// The wire format's contracts, then the app's from the hub protocol's resolvers (for message
+        /// arguments). Built on first use, once the hub protocol's options are configured.
+        /// </summary>
+        private JsonSerializerOptions SerializerOptions => _serializerOptions ??= new JsonSerializerOptions(JsonSerializerDefaults.Web) {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(SignalARRRBackplaneJsonContext.Default, _localDispatcher.PayloadOptions.TypeInfoResolver),
+        };
+
+        /// <summary>
+        /// A client's answer as JSON, for the node that asked: the raw JSON when the hub protocol
+        /// delivered it as such, otherwise serialized by its runtime type (the MessagePack protocol,
+        /// which is JIT-only).
+        /// </summary>
+        private string? ResultJson(object? value) => value switch {
+            null => null,
+            JsonElement element => element.GetRawText(),
+            _ => JsonSerializer.Serialize(value, SerializerOptions.GetTypeInfo(value.GetType())),
+        };
+
+        private object? ReadResult(string? json, Type resultType) =>
+            json == null ? null : JsonSerializer.Deserialize(json, SerializerOptions.GetTypeInfo(resultType));
 
         // --- What a concrete backplane provides: transport ---
 
@@ -254,7 +281,7 @@ namespace Cocoar.SignalARRR.Server {
             if (targetKind == SignalARRRBackplaneTargetKind.Connections) {
                 var routing = await ResolveConnectionOrThrowAsync(connectionIds, cancellationToken).ConfigureAwait(false);
                 targetNodeId = routing.NodeId;
-                hubType ??= ResolveType(routing.HubType);
+                hubType ??= ResolveHubType(routing.HubType);
             }
 
             var envelope = new SignalARRRBackplaneEnvelope {
@@ -280,7 +307,7 @@ namespace Cocoar.SignalARRR.Server {
             Type resultType,
             CancellationToken cancellationToken = default) {
             var routing = await ResolveConnectionOrThrowAsync(new[] { connectionId }, cancellationToken).ConfigureAwait(false);
-            hubType ??= ResolveType(routing.HubType);
+            hubType ??= ResolveHubType(routing.HubType);
 
             var requestId = Guid.NewGuid();
             var pending = new PendingInvoke(resultType);
@@ -384,7 +411,7 @@ namespace Cocoar.SignalARRR.Server {
             SignalARRRBackplaneGroupAction action,
             CancellationToken cancellationToken = default) {
             var routing = await ResolveConnectionOrThrowAsync(new[] { connectionId }, cancellationToken).ConfigureAwait(false);
-            hubType ??= ResolveType(routing.HubType);
+            hubType ??= ResolveHubType(routing.HubType);
 
             var envelope = new SignalARRRBackplaneEnvelope {
                 OriginNodeId = NodeId,
@@ -468,7 +495,7 @@ namespace Cocoar.SignalARRR.Server {
         protected async Task HandleIncomingPayloadAsync(string payload) {
             SignalARRRBackplaneEnvelope? envelope;
             try {
-                envelope = JsonSerializer.Deserialize<SignalARRRBackplaneEnvelope>(payload, _serializerOptions);
+                envelope = Deserialize<SignalARRRBackplaneEnvelope>(payload);
             } catch (Exception ex) {
                 _logger.LogError(ex, "Unhandled SignalARRR backplane message error.");
                 return;
@@ -526,7 +553,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private async Task HandleDispatchAsync(SignalARRRBackplaneEnvelope envelope) {
-            var hubType = ResolveType(envelope.HubType);
+            var hubType = ResolveHubType(envelope.HubType);
             if (envelope.Message == null) {
                 return;
             }
@@ -542,7 +569,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private async Task HandleGroupCommandAsync(SignalARRRBackplaneEnvelope envelope) {
-            var hubType = ResolveType(envelope.HubType);
+            var hubType = ResolveHubType(envelope.HubType);
             if (envelope.GroupAction == null || envelope.ConnectionIds.Length == 0 || string.IsNullOrWhiteSpace(envelope.GroupName)) {
                 return;
             }
@@ -561,19 +588,19 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         private async Task HandleInvokeRequestAsync(SignalARRRBackplaneEnvelope envelope) {
-            var hubType = ResolveType(envelope.HubType);
-            var resultType = ResolveType(envelope.ResultType);
+            var hubType = ResolveHubType(envelope.HubType);
 
-            if (resultType == null || envelope.Message == null || envelope.RequestId == null || envelope.ConnectionIds.Length == 0) {
+            if (envelope.Message == null || envelope.RequestId == null || envelope.ConnectionIds.Length == 0) {
                 return;
             }
 
             try {
-                var (handled, result) = await _localDispatcher.InvokeConnectionAsync(
+                // Forwarded as the client sent it: only the asking node knows the result type, so
+                // nothing here has to resolve a type by name.
+                var (handled, result) = await _localDispatcher.InvokeConnectionRawAsync(
                     hubType,
                     envelope.ConnectionIds[0],
-                    envelope.Message,
-                    resultType).ConfigureAwait(false);
+                    envelope.Message).ConfigureAwait(false);
 
                 if (!handled) {
                     return;
@@ -585,7 +612,7 @@ namespace Cocoar.SignalARRR.Server {
                     Kind = SignalARRRBackplaneEnvelopeKind.InvokeResponse,
                     HubType = envelope.HubType,
                     RequestId = envelope.RequestId,
-                    ResultJson = result == null ? null : JsonSerializer.Serialize(result, resultType, _serializerOptions)
+                    ResultJson = ResultJson(result)
                 }).ConfigureAwait(false);
             } catch (Exception ex) {
                 // The full structured error, not ex.Message: flattening here was why single-node
@@ -622,10 +649,7 @@ namespace Cocoar.SignalARRR.Server {
                 return;
             }
 
-            object? result = null;
-            if (envelope.ResultJson != null) {
-                result = JsonSerializer.Deserialize(envelope.ResultJson, pending.ResultType, _serializerOptions);
-            }
+            var result = ReadResult(envelope.ResultJson, pending.ResultType);
 
             pending.Completion.TrySetResult(result);
         }
@@ -636,25 +660,24 @@ namespace Cocoar.SignalARRR.Server {
             }
 
             try {
-                var hubType = ResolveType(envelope.HubType);
-                var resultType = ResolveType(envelope.ResultType);
+                var hubType = ResolveHubType(envelope.HubType);
 
                 // Inside the try on purpose. This used to return before it, so the finally that
                 // publishes InvokeQueryCompleted never ran and the asking node waited out its full
                 // timeout for an answer that could never come. A node unable to resolve the types --
                 // during a rolling deployment, or when a second application shares the same store
                 // and prefix -- silently stalled every cluster query.
-                if (hubType == null || resultType == null || envelope.Message == null) {
+                if (hubType == null || envelope.Message == null) {
                     _logger.LogDebug(
-                        "Ignoring cluster query {RequestId} from node {OriginNodeId}: hub type '{HubType}' or result type '{ResultType}' is unknown here.",
-                        envelope.RequestId, envelope.OriginNodeId, envelope.HubType, envelope.ResultType);
+                        "Ignoring cluster query {RequestId} from node {OriginNodeId}: hub '{HubType}' is unknown here.",
+                        envelope.RequestId, envelope.OriginNodeId, envelope.HubType);
                     return;
                 }
 
                 var singleResult = string.Equals(envelope.ErrorMessage, "single", StringComparison.Ordinal);
                 var results = singleResult
-                    ? await GetLocalSingleInvokeResultAsync(hubType, envelope.TargetKind, envelope.Message, resultType, envelope.GroupName, envelope.UserId, CancellationToken.None).ConfigureAwait(false)
-                    : await _localDispatcher.InvokeAsync(hubType, envelope.TargetKind, envelope.Message, resultType, envelope.ConnectionIds, envelope.GroupName, envelope.UserId, CancellationToken.None).ConfigureAwait(false);
+                    ? await GetLocalSingleInvokeResultAsync(hubType, envelope.TargetKind, envelope.Message, resultType: null, envelope.GroupName, envelope.UserId, CancellationToken.None).ConfigureAwait(false)
+                    : await _localDispatcher.InvokeAsync(hubType, envelope.TargetKind, envelope.Message, resultType: null, envelope.ConnectionIds, envelope.GroupName, envelope.UserId, CancellationToken.None).ConfigureAwait(false);
 
                 foreach (var result in results) {
                     await PublishResponseAsync(envelope.OriginNodeId, new SignalARRRBackplaneEnvelope {
@@ -664,7 +687,7 @@ namespace Cocoar.SignalARRR.Server {
                         HubType = envelope.HubType,
                         RequestId = envelope.RequestId,
                         ConnectionIds = new[] { result.ConnectionId },
-                        ResultJson = result.Value == null ? null : JsonSerializer.Serialize(result.Value, resultType, _serializerOptions)
+                        ResultJson = ResultJson(result.Value)
                     }).ConfigureAwait(false);
                 }
             } catch (Exception ex) {
@@ -689,10 +712,7 @@ namespace Cocoar.SignalARRR.Server {
                 return;
             }
 
-            object? result = null;
-            if (envelope.ResultJson != null) {
-                result = JsonSerializer.Deserialize(envelope.ResultJson, pending.ResultType, _serializerOptions);
-            }
+            var result = ReadResult(envelope.ResultJson, pending.ResultType);
 
             pending.TryAddResult(new SignalARRRBackplaneInvokeResult {
                 ConnectionId = envelope.ConnectionIds[0],
@@ -873,9 +893,9 @@ namespace Cocoar.SignalARRR.Server {
 
         // --- Helpers for implementations ---
 
-        protected static Type? ResolveType(string? typeName) {
-            return WireTypeName.Resolve(typeName);
-        }
+        /// <summary>A hub this node serves, by the name another node sent; <c>null</c> when it serves none of that name.</summary>
+        protected static Type? ResolveHubType(string? typeName) =>
+            typeName == null ? null : ServerDispatchRegistry.HubByName(typeName);
 
         private async Task<SignalARRRConnectionRegistration> ResolveConnectionOrThrowAsync(IReadOnlyList<string>? connectionIds, CancellationToken cancellationToken) {
             if (connectionIds == null || connectionIds.Count == 0) {
@@ -894,7 +914,7 @@ namespace Cocoar.SignalARRR.Server {
             Type hubType,
             SignalARRRBackplaneTargetKind targetKind,
             ServerRequestMessage message,
-            Type resultType,
+            Type? resultType,
             string? groupName,
             string? userId,
             CancellationToken cancellationToken) {
@@ -937,7 +957,7 @@ namespace Cocoar.SignalARRR.Server {
                 }
 
                 if (!string.IsNullOrWhiteSpace(filter.Value) &&
-                    !attribute.Values.Any(v => v.Match(filter.Value))) {
+                    !attribute.Values.Any(v => WildcardPattern.IsMatch(v, filter.Value))) {
                     return false;
                 }
             }

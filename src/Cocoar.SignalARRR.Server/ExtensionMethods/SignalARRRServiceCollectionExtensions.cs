@@ -25,6 +25,7 @@ namespace Microsoft.Extensions.DependencyInjection {
             // It converts with the hub protocol's JSON options, the ones the arguments were written with.
             serviceCollection.PostConfigure<Microsoft.AspNetCore.SignalR.JsonHubProtocolOptions>(o => SignalARRRJson.AddTo(o.PayloadSerializerOptions));
             serviceCollection.AddSingleton<ServerPayloadOptions>();
+            serviceCollection.AddHostedService<ServerWireTypeCheck>();
             serviceCollection.AddSingleton<IProtocolSerializer>(sp => new JsonProtocolSerializer(sp.GetRequiredService<ServerPayloadOptions>().Options));
             serviceCollection.AddSingleton(sp => new ServerPushStreamManager(
                 sp.GetRequiredService<SignalARRRServerOptions>().UploadSlotExpiration));

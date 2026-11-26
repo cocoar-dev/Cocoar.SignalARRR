@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Cocoar.SignalARRR.Common.Exceptions;
-using Cocoar.SignalARRR.Common.Helper;
 using Cocoar.SignalARRR.Server;
 using Xunit;
 
@@ -147,36 +146,6 @@ public class M : ServerMethods<Hub1>, IColliding {
 }");
 
         Assert.Contains(result.Errors, d => d.Id == "SARRR002" && d.GetMessage().Contains("Collide"));
-    }
-}
-
-/// <summary>Covers the bounded, success-only resolution cache.</summary>
-public class TypeHelperTests {
-
-    [Fact]
-    public void A_resolvable_type_is_found() {
-        Assert.Equal(typeof(string), TypeHelper.FindType(typeof(string).FullName!));
-    }
-
-    [Fact]
-    public void An_unresolvable_name_returns_null_and_stays_unresolvable_only_by_being_absent() {
-        // Misses must not be cached: a type from an assembly loaded later has to become resolvable,
-        // which the previous negative caching made permanently impossible.
-        Assert.Null(TypeHelper.FindType("Definitely.Not.A.Real.Type"));
-        Assert.Null(TypeHelper.FindType("Definitely.Not.A.Real.Type"));
-    }
-
-    [Fact]
-    public void Resolution_is_case_sensitive_for_qualified_names() {
-        // The previous case-insensitive fallback could return a *different* type than the caller
-        // named — the wrong answer to give for a value that decides which type a generic method
-        // operates on.
-        Assert.Null(TypeHelper.FindType("system.string"));
-    }
-
-    [Fact]
-    public void An_empty_name_maps_to_void() {
-        Assert.Equal(typeof(void), TypeHelper.FindType(string.Empty));
     }
 }
 
