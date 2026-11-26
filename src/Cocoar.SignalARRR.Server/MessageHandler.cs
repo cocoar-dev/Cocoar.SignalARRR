@@ -247,13 +247,15 @@ namespace Cocoar.SignalARRR.Server {
             // bound to (V-2): waiting for an upload from a client that already disconnected parked
             // a thread-pool thread permanently — the wait must die with the connection even when
             // the invoked method deliberately keeps running (the send path).
-            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, parameterCancellation, HARRR.Context.ConnectionAborted).ConfigureAwait(false);
-
-            SetInvokingInstanceProperties(instance);
-
+            // Closed before binding: the parameters of a generic method are typed by its type
+            // arguments, so binding against the open definition tried to deserialize into 'T'.
             if (genericArguments?.Any() == true) {
                 methodInfo = MakeGenericMethodChecked(methodInfo, genericArguments);
             }
+
+            var parameters = await BuildExecuteMethodParametersAsync(methodInfo, arguments, parameterCancellation, HARRR.Context.ConnectionAborted).ConfigureAwait(false);
+
+            SetInvokingInstanceProperties(instance);
 
             if (methodInfo.ReturnType == typeof(void) || methodInfo.ReturnType == typeof(Task)) {
                 await InvokeHelper.InvokeVoidMethodAsync(instance, methodInfo, parameters);

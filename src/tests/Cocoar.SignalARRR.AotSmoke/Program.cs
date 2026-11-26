@@ -5,17 +5,19 @@ using Cocoar.SignalARRR.Tests.SharedModels;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 
-// Usage: AotSmoke <server-url>
-// Runs the client paths a NativeAOT app depends on against the IntegrationTestServer and exits
-// non-zero when any of them fails. Each step prints one line, "OK" or "FAIL", so a red run says
-// exactly which direction broke.
+// Usage: AotSmoke <server-url> [--smoke-server]
+// Runs the client paths a NativeAOT app depends on against a server and exits non-zero when any
+// of them fails. Each step prints one line, "OK" or "FAIL", so a red run says exactly which
+// direction broke. With --smoke-server the server is the NativeAOT smoke server
+// (Cocoar.SignalARRR.AotSmokeServer), and the steps for its generated server dispatch run too.
 
-if (args.Length != 1) {
-    Console.Error.WriteLine("Usage: AotSmoke <server-url>");
+if (args.Length is < 1 or > 2 || (args.Length == 2 && args[1] != "--smoke-server")) {
+    Console.Error.WriteLine("Usage: AotSmoke <server-url> [--smoke-server]");
     return 2;
 }
 
 var url = args[0].TrimEnd('/');
+var smokeServer = args.Length == 2;
 Console.WriteLine($"Dynamic code supported: {RuntimeFeature.IsDynamicCodeSupported}");
 
 var failures = 0;
@@ -34,6 +36,15 @@ async Task Step(string name, Func<Task<object?>> body) {
 
 static void Expect(bool condition, string message) {
     if (!condition) throw new InvalidOperationException(message);
+}
+
+static async Task<object?> ExpectUnauthorized(Func<Task<string>> call) {
+    try {
+        var result = await call();
+        throw new InvalidOperationException($"expected the call to be denied, got '{result}'");
+    } catch (Cocoar.SignalARRR.Common.Exceptions.HARRRRemoteException ex) when (ex.Error.NormalizedCode == Cocoar.SignalARRR.Common.HARRRErrorCodes.Unauthorized) {
+        return "denied";
+    }
 }
 
 HARRRConnection? connection = null;
@@ -97,6 +108,44 @@ await Step("Server->Client RequestClientInfo() -> Task<string>", async () => {
     Expect(response.IsSuccessStatusCode && body.Contains("aot-smoke-client"), $"{(int)response.StatusCode} {body}");
     return body;
 });
+
+if (smokeServer) {
+    var smoke = c.GetTypedMethods<IAotSmokeServerMethods>();
+    await Step("Server: interface method on ServerMethods (Add)", async () => {
+        var sum = await smoke.Add(2, 3);
+        Expect(sum == 5, $"expected 5, got {sum}");
+        return sum;
+    });
+    await Step("Server: omitted default parameter (Page)", async () => {
+        var page = await c.InvokeCoreAsync<string>("SmokeMethods.Page", new object[] { 3 });
+        Expect(page == "3:25", $"expected '3:25', got '{page}'");
+        return page;
+    });
+    await Step("Server: generic method Echo<int>", () => Task.Run<object?>(() => {
+        var value = smoke.Echo(7);
+        Expect(value == 7, $"expected 7, got {value}");
+        return value;
+    }));
+    await Step("Server: generic method Echo<string>", () => Task.Run<object?>(() => {
+        var value = smoke.Echo("generic");
+        Expect(value == "generic", $"expected 'generic', got '{value}'");
+        return value;
+    }));
+    await Step("Server: [FromServices] parameter", async () => {
+        var injected = await c.InvokeCoreAsync<string>("SmokeMethods.Inject", Array.Empty<object>());
+        Expect(injected == "injected", $"expected 'injected', got '{injected}'");
+        return injected;
+    });
+    await Step("Server: Stream argument (upload)", async () => {
+        var content = await c.InvokeCoreAsync<string>("SmokeMethods.ReadStream",
+            new object[] { new MemoryStream(System.Text.Encoding.UTF8.GetBytes("uploaded")) });
+        Expect(content == "uploaded", $"expected 'uploaded', got '{content}'");
+        return content;
+    });
+    await Step("Server: method-level [Authorize] denies", () => ExpectUnauthorized(() => c.InvokeCoreAsync<string>("SmokeMethods.Secret", Array.Empty<object>())));
+    await Step("Server: type-level [Authorize] denies", () => ExpectUnauthorized(() => c.InvokeCoreAsync<string>("SecureMethods.Closed", Array.Empty<object>())));
+    await Step("Server: [AllowAnonymous] opts out", async () => await c.InvokeCoreAsync<string>("SecureMethods.Open", Array.Empty<object>()));
+}
 
 await c.StopAsync();
 await c.DisposeAsync();

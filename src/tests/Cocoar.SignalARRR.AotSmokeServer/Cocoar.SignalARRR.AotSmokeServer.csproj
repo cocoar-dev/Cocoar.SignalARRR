@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- NativeAOT smoke server: published with PublishAot by scripts/run-aot-smoke.sh, which then runs
+       the NativeAOT client probe (Cocoar.SignalARRR.AotSmoke) against it. It covers what a server
+       needs from SignalARRR under AOT: generated dispatch of hub, ServerMethods and interface
+       methods, [Authorize]/[AllowAnonymous], [FromServices], default parameters, uploads, generic
+       methods with [GenericArguments], and server-to-client calls. JSON only: SignalR's MessagePack
+       protocol is not AOT-capable. Not part of the solution, like the client probe. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <PublishAot>true</PublishAot>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- One line per trim/AOT warning; the script fails on those from Cocoar.SignalARRR.* itself. -->
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- See Cocoar.SignalARRR.Server.csproj: the generator assembly reference brings Roslyn's own
+         System.Collections.Immutable, irrelevant at runtime. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Cocoar.SignalARRR.Server\Cocoar.SignalARRR.Server.csproj" />
+    <ProjectReference Include="..\Cocoar.SignalARRR.Tests.SharedModels\Cocoar.SignalARRR.Tests.SharedModels.csproj" />
+  </ItemGroup>
+
+</Project>
