@@ -168,7 +168,7 @@ An assembly passed to `AddServerMethodsFrom` that was built without the generato
 
 ## NativeAOT
 
-The .NET client (`Cocoar.SignalARRR.Client`) and the server (`Cocoar.SignalARRR.Server`, with the Redis and Postgres backplanes) run under NativeAOT and trimming — the server on net9.0 and net10.0, since SignalR supports a NativeAOT server only from .NET 9; on net8.0 it stays JIT-only. Proxies, dispatchers and the server's method table are generated, so the one thing an AOT app adds is JSON metadata for its own argument and result types: a `JsonSerializerContext`, inserted at the front of the hub protocol's resolver chain.
+The .NET client (`Cocoar.SignalARRR.Client`) and the server (`Cocoar.SignalARRR.Server`, with the Redis and Postgres backplanes) run under NativeAOT and trimming. Proxies, dispatchers and the server's method table are generated, so the one thing an AOT app adds is JSON metadata for its own argument and result types: a `JsonSerializerContext`, inserted at the front of the hub protocol's resolver chain.
 
 ```csharp
 [JsonSerializable(typeof(LiveNudge))]

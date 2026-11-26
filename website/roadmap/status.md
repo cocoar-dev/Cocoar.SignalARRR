@@ -15,7 +15,7 @@ Current implementation status across all platforms. See [Client Comparison](/ref
 | CancellationToken propagation | Done | Done | Done | Done | Done |
 | Authorization + token refresh | Done | Done | Done | Done | Done |
 | Compile-time proxies | Done | Done (Source Generator) | N/A | Done (@HubProxy Macro) | Done (@HubProxy + KSP) |
-| NativeAOT | Done (net9.0+) | Done | N/A | N/A | N/A |
+| NativeAOT | Done | Done | N/A | N/A | N/A |
 | File transfer (HTTP stream refs) | Done | Done | Done | Done | Done |
 | Structured error types | Done | Done | Done | Done | Done |
 | MessagePack protocol | Done | Done | Done | Done | Done |

@@ -333,7 +333,7 @@ The envelopes the nodes exchange kept their format in 6.0, so 5.x and 6.0 nodes 
 
 ## NativeAOT
 
-Both backplane packages run under NativeAOT on net9.0 and net10.0, like the [server](/guide/advanced/proxy-generation#nativeaot). The envelopes between nodes are serialized through a JSON context SignalARRR generates, so they need nothing from the app. A client's answer to a server call travels between nodes as raw JSON; only the node that made the call deserializes it, into the result type its own `JsonSerializerContext` already covers. The one type to add is the event type of each [cluster subject](#cluster-aware-observables): put it into the same `JsonSerializerContext` you insert in `AddJsonProtocol`.
+Both backplane packages run under NativeAOT, like the [server](/guide/advanced/proxy-generation#nativeaot). The envelopes between nodes are serialized through a JSON context SignalARRR generates, so they need nothing from the app. A client's answer to a server call travels between nodes as raw JSON; only the node that made the call deserializes it, into the result type its own `JsonSerializerContext` already covers. The one type to add is the event type of each [cluster subject](#cluster-aware-observables): put it into the same `JsonSerializerContext` you insert in `AddJsonProtocol`.
 
 ```csharp
 [JsonSerializable(typeof(OrderChanged))]

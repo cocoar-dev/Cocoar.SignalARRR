@@ -17,6 +17,14 @@ probably just the version number.
 
 ## Affects almost everyone
 
+### .NET 10 or later
+
+6.0 targets net10.0 and net11.0; net8.0 and net9.0, both out of support since 10 November 2026,
+are dropped. Move the server and the .NET clients to .NET 10 or 11 together with the update — an
+application that has to stay on .NET 8 or 9 stays on 5.x. The .NET Framework client is not
+affected: `Cocoar.SignalARRR.Client.FullFramework` and the `netstandard2.0` targets of
+`Contracts`, `ProxyGenerator` and `Common` remain.
+
 ### Every contract needs `[SignalARRRContract]`
 
 The attribute was already required for `GetTypedMethods<T>()` on modern .NET, unless you used the
@@ -169,8 +177,8 @@ targets that lack it.
 
 ### Running under NativeAOT
 
-*New, not a migration — but the reason for the rest.* The .NET client and the server (net9.0 and
-net10.0) run under NativeAOT. An AOT app adds a `JsonSerializerContext` with the types of its
+*New, not a migration — but the reason for the rest.* The .NET client and the server run under
+NativeAOT. An AOT app adds a `JsonSerializerContext` with the types of its
 arguments and results; the client's `StartAsync` and the server's startup list any it misses.
 MessagePack is not available under AOT. See [NativeAOT](../advanced/proxy-generation.md#nativeaot).
 

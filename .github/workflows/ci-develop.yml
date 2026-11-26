@@ -35,15 +35,14 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.checkout_ref || github.sha }}
 
-      # All three SDKs: the packages multi-target net8.0/net9.0/net10.0, and running the tests
+      # Both SDKs: the packages multi-target net10.0/net11.0, and running the tests
       # for a framework needs its runtime, not just an SDK able to build for it.
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
-            8.0.x
-            9.0.x
             10.0.x
+            11.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -70,8 +69,8 @@ jobs:
             $testFilter = '(Type!=Performance)&(FullyQualifiedName!~BackplaneIntegrationTests)'
           }
           # No --framework: dotnet test then runs every target framework of each test project,
-          # so one job covers all three. Pinning net10.0 meant the gate never exercised net8.0 or
-          # net9.0, although both are shipped.
+          # so one job covers both. Pinning one framework meant the gate never exercised the
+          # other, although both are shipped.
           dotnet test Cocoar.SignalARRR.slnx -c Release --verbosity normal --filter $testFilter
         shell: pwsh
 
@@ -153,7 +152,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -196,7 +197,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       # Publishes the client with PublishAot and runs it against the IntegrationTestServer. Fails
       # on a failed step and on any ILC warning raised in a Cocoar.SignalARRR assembly.
@@ -221,7 +224,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v4
@@ -273,7 +278,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v4

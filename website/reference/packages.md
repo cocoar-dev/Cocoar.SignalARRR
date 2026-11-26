@@ -10,11 +10,11 @@ SignalARRR is distributed as multiple NuGet packages, one npm package, one Swift
 
 | Package | Target | Purpose |
 |---------|--------|---------|
-| `Cocoar.SignalARRR.Contracts` | netstandard2.0 / net8.0 / net9.0 / net10.0 | `[SignalARRRContract]` attribute. Reference from shared interface projects, including .NET Framework ones. |
-| `Cocoar.SignalARRR.Server` | net8.0 / net9.0 / net10.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. NativeAOT- and trim-compatible on net9.0 and net10.0, with the backplane packages — see [NativeAOT](/guide/advanced/proxy-generation#nativeaot). |
-| `Cocoar.SignalARRR.Server.Backplane.Redis` | net8.0 / net9.0 / net10.0 | Multi-node scale-out: `AddSignalARRRRedisBackplane`. Add only when running more than one node — this is where the `StackExchange.Redis` dependency lives. |
-| `Cocoar.SignalARRR.Server.Backplane.Postgres` | net8.0 / net9.0 / net10.0 | Multi-node scale-out over PostgreSQL `LISTEN`/`NOTIFY`: `AddSignalARRRPostgresBackplane`. For deployments whose only stateful dependency is Postgres — this is where the `Npgsql` dependency lives. Requires Npgsql 8.0.6 or later on every target framework, so it fits whatever version the rest of your stack (Marten, EF Core) pins. |
-| `Cocoar.SignalARRR.Client` | net8.0 / net9.0 / net10.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. NativeAOT- and trim-compatible — see [NativeAOT](/guide/advanced/proxy-generation#nativeaot). |
+| `Cocoar.SignalARRR.Contracts` | netstandard2.0 / net10.0 / net11.0 | `[SignalARRRContract]` attribute. Reference from shared interface projects, including .NET Framework ones. |
+| `Cocoar.SignalARRR.Server` | net10.0 / net11.0 | Server-side: `HARRR` hub, `ServerMethods<T>`, authorization, `ClientManager`, streaming. NativeAOT- and trim-compatible, with the backplane packages — see [NativeAOT](/guide/advanced/proxy-generation#nativeaot). |
+| `Cocoar.SignalARRR.Server.Backplane.Redis` | net10.0 / net11.0 | Multi-node scale-out: `AddSignalARRRRedisBackplane`. Add only when running more than one node — this is where the `StackExchange.Redis` dependency lives. |
+| `Cocoar.SignalARRR.Server.Backplane.Postgres` | net10.0 / net11.0 | Multi-node scale-out over PostgreSQL `LISTEN`/`NOTIFY`: `AddSignalARRRPostgresBackplane`. For deployments whose only stateful dependency is Postgres — this is where the `Npgsql` dependency lives. Requires Npgsql 8.0.6 or later on every target framework, so it fits whatever version the rest of your stack (Marten, EF Core) pins. |
+| `Cocoar.SignalARRR.Client` | net10.0 / net11.0 | Client-side: `HARRRConnection`, typed proxies, server-to-client handlers. NativeAOT- and trim-compatible — see [NativeAOT](/guide/advanced/proxy-generation#nativeaot). |
 | `Cocoar.SignalARRR.Client.FullFramework` | netstandard2.0 (.NET Framework 4.6.2+) | Client for .NET Framework — the same generated proxies and dispatchers as the .NET client, streaming via polyfills. |
 
 ### Internal packages
@@ -108,7 +108,7 @@ dependencies {
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Cocoar.SignalARRR.Contracts" Version="6.*" />

@@ -22,7 +22,7 @@ Choosing a communication framework is one of the first architectural decisions i
 | **Mobile (iOS/Swift)** | Native client with `@HubProxy` macro | grpc-swift | URLSession |
 | **JavaScript/TypeScript** | `@cocoar/signalarrr` npm package | grpc-web (limited) | fetch/axios |
 | **.NET Framework** | Full client (netstandard2.0) | Deprecated `Grpc.Core` only | HttpClient |
-| **.NET support** | net8.0 / net9.0 / net10.0 + .NET Framework 4.6.2+ | .NET Core 3.0+ only (modern client) | Any |
+| **.NET support** | net10.0 / net11.0 + .NET Framework 4.6.2+ | .NET Core 3.0+ only (modern client) | Any |
 
 ## When to use what
 

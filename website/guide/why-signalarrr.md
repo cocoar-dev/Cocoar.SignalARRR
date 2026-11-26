@@ -115,7 +115,7 @@ Separately from file transfer, SignalARRR supports **item streaming** — sendin
 
 ## Bridge between .NET Core and .NET Framework
 
-SignalARRR supports **.NET 8, .NET 9, .NET 10** on server and client — and **.NET Framework 4.6.2+** on the client side. This enables a powerful pattern in enterprise environments: **use a modern .NET server while keeping legacy .NET Framework clients**.
+SignalARRR supports **.NET 10 and .NET 11** on server and client — and **.NET Framework 4.6.2+** on the client side. This enables a powerful pattern in enterprise environments: **use a modern .NET server while keeping legacy .NET Framework clients**.
 
 Real-world example: Your server runs on .NET 10 with the latest frontend technology, while legacy clients on .NET Framework 4.8 connect to the same hub. Those legacy clients can load platform-specific DLLs (SCCM, SCSM, COM interop, legacy SDKs) that don't run on .NET Core — but they still get typed bidirectional RPC through SignalARRR.
 
@@ -130,7 +130,7 @@ Real-world example: Your server runs on .NET 10 with the latest frontend technol
           │           same typed RPC               │
           ▼                 ▼                       ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌─────────────────────┐
-│  .NET 8 Client   │ │  TypeScript      │ │  .NET Framework 4.8 │
+│  .NET 11 Client  │ │  TypeScript      │ │  .NET Framework 4.8 │
 │  Cross-platform  │ │  Browser UI      │ │  SCCM/SCSM/COM DLLs │
 └──────────────────┘ └──────────────────┘ └─────────────────────┘
 ```

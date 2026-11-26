@@ -26,7 +26,7 @@ bottom says which page answers what.
 
 | Package | Purpose |
 |---|---|
-| `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects; runs under NativeAOT on net9.0+ |
+| `Cocoar.SignalARRR.Server` | Server: `HARRR` hub base class, `ServerMethods<T>`, authorization, `ClientManager`, streaming, cluster subjects; runs under NativeAOT |
 | `Cocoar.SignalARRR.Server.Backplane.Redis` | Multi-node scale-out over Redis, Valkey or Garnet (`AddSignalARRRRedisBackplane`) |
 | `Cocoar.SignalARRR.Server.Backplane.Postgres` | Multi-node scale-out over the PostgreSQL primary the app already has (`AddSignalARRRPostgresBackplane`), with catch-up after a subscription drop |
 | `Cocoar.SignalARRR.Client` | .NET client: `HARRRConnection`, typed proxies, server-to-client handlers; runs under NativeAOT |
@@ -59,7 +59,7 @@ bottom says which page answers what.
 - **A NativeAOT client or server adds its own `JsonSerializerContext`** for its argument and
   result types, inserted at index 0 of `PayloadSerializerOptions.TypeInfoResolverChain` in
   `AddJsonProtocol`; the client's `StartAsync` and the server's startup list any type still
-  missing. The server runs under AOT on net9.0+. MessagePack does not work under AOT.
+  missing. MessagePack does not work under AOT.
 - **A generic server method needs `[GenericArguments(typeof(...))]`** listing the instantiations
   clients may call; without it the build fails with `SARRR003`. Server methods sharing a wire name
   must differ in argument count (`SARRR002`).
@@ -130,7 +130,7 @@ whose description matches the task; they are independent of each other.
 
 ### Migration
 
-- [Migration from v5.x](references/guide/migration/from-v5.md) — Upgrade from 5.x to 6.0: the .NET client and the server under NativeAOT, [SignalARRRContract] required everywhere, the removed DynamicProxy package, the new RegisterInterface overloads, no generic server-to-client methods, [GenericArguments] on generic server methods, the new build errors SARRR002–004, the .NET Framework client on the source generator
+- [Migration from v5.x](references/guide/migration/from-v5.md) — Upgrade from 5.x to 6.0: the .NET client and the server under NativeAOT, .NET 10 or later, [SignalARRRContract] required everywhere, the removed DynamicProxy package, the new RegisterInterface overloads, no generic server-to-client methods, [GenericArguments] on generic server methods, the new build errors SARRR002–004, the .NET Framework client on the source generator
 - [Migration from v4.x](references/guide/migration/from-v4.md) — Upgrade from 4.x to 5.0: WithHub<T>() returns IClientQuery, the message credential for token clients, the moved namespaces, the separate Redis backplane package, removed APIs, and exception detail that no longer reaches the caller
 - [Migration from v2.x](references/guide/migration/from-v2.md) — Upgrade from 2.x to 4.x: target frameworks, source-generated proxies instead of ImpromptuInterface, the authentication model, hub-level authorization inheritance, removed APIs and new packages
 

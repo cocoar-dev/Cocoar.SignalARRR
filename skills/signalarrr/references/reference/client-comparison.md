@@ -8,7 +8,7 @@ SignalARRR has five client implementations. This page shows what each client sup
 
 | | .NET | .NET Framework | TS | Swift | Kotlin |
 |-|:----:|:--------------:|:--:|:-----:|:------:|
-| Target | net8.0 / net9.0 / net10.0 | net462+ (netstandard2.0) | Node 22 / browsers | iOS 14+ / macOS 11+ | Android 5+ (API 21) / JVM 8+ |
+| Target | net10.0 / net11.0 | net462+ (netstandard2.0) | Node 22 / browsers | iOS 14+ / macOS 11+ | Android 5+ (API 21) / JVM 8+ |
 | Package | `Cocoar.SignalARRR.Client` | `Cocoar.SignalARRR.Client.FullFramework` | `@cocoar/signalarrr` | `CocoarSignalARRR` | `dev.cocoar:signalarrr` |
 
 ## RPC
