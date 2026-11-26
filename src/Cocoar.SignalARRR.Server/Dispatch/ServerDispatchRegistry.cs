@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -45,7 +46,7 @@ namespace Cocoar.SignalARRR.Server {
         }
 
         /// <summary>Registers a <see cref="ServerMethods{T}"/> class of <paramref name="hubType"/> and its methods.</summary>
-        public static void RegisterServerMethods<T>(Type hubType, ServerMethodDescriptor[] methods) where T : ServerMethods {
+        public static void RegisterServerMethods<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>(Type hubType, ServerMethodDescriptor[] methods) where T : ServerMethods {
             lock (Gate) {
                 Registrations.RemoveAll(r => !r.IsHub && r.DeclaringType == typeof(T));
                 Registrations.Add(new Registration(hubType, typeof(T), methods, services => services.AddTransient<T>()));

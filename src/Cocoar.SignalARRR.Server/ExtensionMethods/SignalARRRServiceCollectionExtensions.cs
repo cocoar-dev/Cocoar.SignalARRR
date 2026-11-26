@@ -24,6 +24,7 @@ namespace Microsoft.Extensions.DependencyInjection {
             // SignalR supports both protocols simultaneously — different clients can use different protocols.
             // It converts with the hub protocol's JSON options, the ones the arguments were written with.
             serviceCollection.PostConfigure<Microsoft.AspNetCore.SignalR.JsonHubProtocolOptions>(o => SignalARRRJson.AddTo(o.PayloadSerializerOptions));
+            serviceCollection.Configure<Microsoft.AspNetCore.SignalR.HubOptions>(o => Microsoft.AspNetCore.SignalR.HubOptionsExtensions.AddFilter(o, new SignalARRRHubFilter()));
             serviceCollection.AddSingleton<ServerPayloadOptions>();
             serviceCollection.AddHostedService<ServerWireTypeCheck>();
             serviceCollection.AddSingleton<IProtocolSerializer>(sp => new JsonProtocolSerializer(sp.GetRequiredService<ServerPayloadOptions>().Options));

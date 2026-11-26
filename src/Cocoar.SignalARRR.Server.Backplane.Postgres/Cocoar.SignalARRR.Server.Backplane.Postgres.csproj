@@ -6,6 +6,9 @@
     <RootNamespace>Cocoar.SignalARRR.Server</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Trim and AOT analyzers from net9.0 on (warnings are errors): SignalR supports a NativeAOT
+         server from .NET 9, so the net8.0 target stays JIT-only. -->
+    <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)', 'net9.0'))">true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
